@@ -98,6 +98,7 @@ export async function writeCommand(db:Database,ownerId:string,command:{operation
  const gate='EXISTS (SELECT 1 FROM orbit_workspaces WHERE owner_id = ? AND mutation_id = ? AND revision = ?)';
  const gateValues:SqlValue[]=[ownerId,command.operationId,revision];
  const statements:Statement[]=[update];
+ if(action.type==='project.delete')statements.push(db.prepare(`UPDATE orbit_conversations SET project_id=NULL,revision=revision+1,updated_at=? WHERE owner_id=? AND project_id=? AND ${gate}`).bind(timestamp,ownerId,action.id,...gateValues));
  // Lazy v2 migration and the first v3 edit share the winning transaction. No data in SQL migrations.
  if(legacy.length)statements.push(db.prepare(`INSERT INTO orbit_note_revisions (owner_id, note_id, revision, title, note_json, updated_at)
  SELECT ?, json_extract(value, '$.id'), json_extract(value, '$.revision'), json_extract(value, '$.title'), value, ? FROM json_each(?) WHERE ${gate}
