@@ -29,6 +29,20 @@
       "when": 1788689735758,
       "tag": "0003_outstanding_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788692584511,
+      "tag": "0004_uneven_shiver_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788692774924,
+      "tag": "0005_wise_ozymandias",
+      "breakpoints": true
     }
   ]
 }

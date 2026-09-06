@@ -2,7 +2,7 @@
 
 일정, 프로젝트, 개인 위키, 지식창고, 저녁 회고와 다음 날 제안을 연결하는 개인 매니지먼트 앱.
 
-**현재: v0.4 대화 중심 AI 에이전트와 연결 설정.** 첫 화면에서 업무·회의록·회고를 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. Plaud 공식 MCP와 Google Calendar MCP/OAuth를 지원합니다. 실제 사용 전 앱의 연결 화면에서 OpenAI API 키와 각 서비스의 실행 권한을 설정해야 합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
+**현재: v0.5 헤르메스 실행 연결과 Plaud 인증 수정.** 첫 화면에서 내 Hermes Agent와 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. [Mac의 Hermes 연결 안내](docs/Hermes_Setup.ko.md)에 따라 HTTPS gateway 주소와 연결 암호를 등록합니다. Plaud 공식 MCP와 Google Calendar OAuth를 통해 기록을 조회합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
 
 ## Phone installation
 

@@ -1,4 +1,4 @@
-# Orbit 에이전트 · v0.4
+# Orbit 에이전트 · v0.5
 
 앱을 열면 대화 화면이 먼저 나옵니다. 오늘의 우선순위, Plaud 회의 후속 업무, 멈춘 프로젝트, 저녁 회고를 대화로 시작할 수 있습니다. 기존 오늘·일정·할 일·프로젝트·위키·지식창고 화면도 그대로 사용할 수 있습니다.
 
@@ -8,13 +8,13 @@
 
 | 연결 | 설정 | 사용 범위 |
 |---|---|---|
-| AI 에이전트 | OpenAI API 키를 앱 안에 입력하고 확인·저장 | Responses API로 대화와 변경 제안 생성. API 요금은 ChatGPT 구독과 별도 |
+| 헤르메스 에이전트 | 실행 중인 Hermes의 HTTPS 주소와 연결 암호 | 기존 Hermes 모델·설정으로 대화와 변경 제안 생성 |
 | Plaud | Plaud 연결 → 계정 로그인·승인 | 공식 원격 MCP의 읽기 도구로 회의 기록 조회 |
-| Google Calendar | 최초 OAuth 클라이언트 설정 → Google 연결·승인 | MCP 조회, 기본 캘린더 동기화, 사용자가 승인한 새 일정 등록 |
+| Google Calendar | 최초 OAuth 클라이언트 설정 → Google 연결·승인 | 기본 캘린더 조회·동기화와 사용자가 승인한 새 일정 등록 |
 
-AI의 기본 모델은 `gpt-5.6-terra`이며 연결 설정에서 변경할 수 있습니다. 키/모델 조회 성공은 연결 정보의 유효성 확인입니다. 실제 생성에는 계정의 API 잔액·한도와 선택한 모델의 Responses/도구 지원이 필요합니다. 설정을 마치기 전에는 AI 답변을 흉내 내지 않습니다.
+[Mac의 헤르메스 연결 안내](Hermes_Setup.ko.md)에 준비 스크립트와 실행 방법이 있습니다. Orbit이 모델 업체 API를 직접 호출하는 경로와 OpenAI 키 입력은 제거했습니다. 모델 선택과 자격은 현재 Hermes에서 관리합니다. 연결 확인은 실제 응답 생성의 성공을 보장하지 않으며, Mac의 실행 환경과 모델 준비가 필요합니다.
 
-Plaud 연결은 Orbit 전용 클라이언트를 동적으로 등록하고 PKCE를 사용합니다. 사용자 동의 이후 토큰을 암호화해 보관합니다. 임의 MCP 주소나 다른 앱의 클라이언트 ID는 사용하지 않습니다.
+Plaud는 Orbit 전용 공개 OAuth 클라이언트와 PKCE를 사용합니다. 운영 환경에 등록한 클라이언트가 있으면 로그인 시작 시 외부 등록 요청 없이 인증 URL을 만듭니다. 없으면 동적 등록을 시도합니다. 사용자 동의 이후 토큰을 암호화해 보관합니다. 연결 버튼 아래에 진행 상태·오류·인증 화면 직접 열기 링크를 표시합니다.
 
 Google은 Google Cloud 프로젝트에서 Calendar API를 활성화하고 OAuth 동의 화면 및 **웹 애플리케이션** 클라이언트를 만들어야 합니다. 테스트 상태라면 사용할 Google 계정을 테스트 사용자로 추가합니다. 아래 주소를 승인된 리디렉션 URI에 정확히 등록합니다.
 
@@ -22,7 +22,7 @@ Google은 Google Cloud 프로젝트에서 Calendar API를 활성화하고 OAuth 
 https://orbit-personal-os.hflameb.chatgpt.site/api/integrations/callback
 ```
 
-클라이언트 ID와 보안 비밀번호를 Orbit 연결 화면에 저장한 다음 Google 연결을 누릅니다. 사이트 주소를 변경하면 리디렉션 URI도 갱신해야 합니다. 테스트 상태의 Google 앱은 장기 사용 시 재승인이 필요할 수 있습니다. 클라이언트 보안 비밀번호나 API 키를 대화·GitHub에 올리지 마세요.
+클라이언트 ID와 보안 비밀번호를 Orbit 연결 화면에 저장한 다음 Google 연결을 누릅니다. 사이트 주소를 변경하면 리디렉션 URI도 갱신해야 합니다. 테스트 상태의 Google 앱은 장기 사용 시 재승인이 필요할 수 있습니다. 클라이언트 보안 비밀번호나 헤르메스 연결 암호를 대화·GitHub에 올리지 마세요.
 
 ## 대화에서 실행까지
 
@@ -33,12 +33,12 @@ https://orbit-personal-os.hflameb.chatgpt.site/api/integrations/callback
 5. **보류**할 때 이유와 다음 검토일을 남깁니다. 검토함에서 다시 검토하거나 닫을 수 있습니다.
 6. 저녁에는 실제 성과·막힌 점·에너지를 답합니다. 회고 저장과 다음 날 계획도 승인 후 생성합니다. 내일 제안 화면에서 개별 집중 시간을 최종 승인합니다.
 
-완료된 대화와 결정은 서버에 저장됩니다. 답변 도중 연결이 끊기면 다시 불러와 상태를 확인하거나 같은 메시지를 재시도합니다. 입력 중인 미전송 문장은 화면을 닫으면 사라질 수 있습니다. 긴 조회는 범위를 줄여 요청하세요. 최근 대화 30개씩 읽고, 미결 카드는 검토함에 유지합니다. 미결 카드 200개에 도달하면 기존 제안을 정리한 뒤 추가 제안을 만들 수 있습니다.
+완료된 대화와 결정은 서버에 저장됩니다. Hermes 실행 번호와 동일 요청 재전송 키를 저장합니다. 답변 도중 연결이 끊기면 대화를 다시 열어 같은 실행의 상태를 확인합니다. 화면을 닫은 동안에는 Orbit의 다음 조회 단계가 대기합니다. 진행 중인 요청은 중지 버튼으로 종료를 요청할 수 있습니다. 입력 중인 미전송 문장은 화면을 닫으면 사라질 수 있습니다. 긴 조회는 범위를 줄여 요청하세요. 최근 대화 30개씩 읽고, 미결 카드는 검토함에 유지합니다. 미결 카드 200개에 도달하면 기존 제안을 정리한 뒤 추가 제안을 만들 수 있습니다.
 
 ## 일정 반영 범위
 
 - Google 기본 캘린더만 화면과 결정 규칙에 동기화합니다. 선택 날짜 기준 과거 7일~미래 30일을 조회하며 반복 일정 인스턴스, 종일·여러 날 일정, 취소·거절·빈 시간 표시를 처리합니다. 일정 화면에서 날짜를 바꾸거나 대화/계획/승인을 실행할 때 다시 확인합니다.
-- 다른 캘린더를 MCP로 조회한 내용은 대화의 참고가 될 수 있지만 기본 캘린더의 시간 충돌 계산에 자동 합쳐지지는 않습니다.
+- 이 버전의 Google 연동은 Google 공식 Calendar API로 기본 캘린더를 읽습니다. OpenAI 호스팅 MCP 커넥터 의존성을 제거했으며, 다른 캘린더 조회는 현재 지원하지 않습니다.
 - Google에서 가져온 일정은 Google Calendar에서 수정합니다. Orbit의 집중 시간 승인은 Orbit 내부 계획입니다. Google에 쓰려면 별도의 **Google 일정 생성** 카드를 승인합니다. 같은 시간에 내부/Google 일정을 중복으로 만들지 않도록 요청합니다.
 - Google 일정 생성은 초대할 사람 없이 내 기본 캘린더에 등록합니다. 초대장·이메일 알림·참석자 변경은 구현하지 않습니다.
 - 승인 직전에 최신 일정을 확인하고 중복 요청은 같은 Google 이벤트 ID를 사용합니다. 외부 서비스나 다른 기기에서 동시에 발생한 변경을 완전히 잠글 수는 없습니다. 새 충돌이나 동기화 실패는 재조회 후 검토합니다.
@@ -46,11 +46,12 @@ https://orbit-personal-os.hflameb.chatgpt.site/api/integrations/callback
 ## 운영과 현재 한계
 
 - `ORBIT_ENCRYPTION_KEY`: 운영 환경의 32바이트 Base64 비밀키. 연결 정보는 AES-256-GCM과 사용자/서비스별 인증 데이터로 암호화합니다. 이 키를 임의로 바꾸면 저장된 연결을 복호화할 수 없습니다.
-- `OPENAI_API_KEY`, `OPENAI_MODEL`: 선택적 운영 환경 기본값. 사용자 연결 화면에서 저장한 설정이 우선합니다. 운영자가 공통 키를 설정했다면 앱의 사용자 키 삭제만으로 공통 설정을 해제할 수 없습니다.
+- `PLAUD_OAUTH_CLIENT_ID`: 해당 사이트의 콜백 주소로 미리 등록한 Orbit 전용 공개 OAuth 클라이언트 ID. 비밀키가 아닙니다. 사이트 주소 변경 시 다시 등록합니다.
+- 헤르메스 주소와 연결 암호는 사용자별로 암호화해 저장합니다. 클라우드에서 Mac의 localhost로 직접 연결할 수는 없습니다. 실제 HTTPS gateway 주소가 필요합니다.
 - 모든 API는 플랫폼 사용자 인증을 요구하며 변경 요청의 출처를 확인합니다. 연결 상태 API는 토큰이나 클라이언트 비밀번호를 반환하지 않습니다. OAuth 상태는 10분 만료·쿠키 일치·사용자 일치·일회 사용을 확인합니다.
-- AI의 원격 MCP 도구는 읽기 전용으로 필터링합니다. 업무 변경과 외부 일정 생성은 에이전트에게 노출한 도구로 직접 실행할 수 없습니다. 사용자가 저장된 카드를 승인하는 별도 API만 실행합니다.
+- Orbit의 Plaud MCP 클라이언트는 확인된 읽기 도구만 호출합니다. Hermes가 실행을 마친 뒤 돌려준 구조화 응답을 검증하고 승인 대기 카드로 저장합니다. 업무 변경과 외부 일정 생성은 사용자가 저장된 카드를 승인하는 별도 API에서 실행합니다. Hermes 자체 도구/자동화의 권한은 Mac 설정에서도 관리합니다.
 - 기존 JSON 내보내기는 업무·문서의 현재 기록을 포함합니다. 대화·AI 승인 이력·연결 정보는 포함하지 않습니다.
 - 자동 저녁 예약 실행·백그라운드 푸시·자동 대량 회의 수집·지속 기억의 벡터 검색은 이번 구현 범위에 없습니다. 회고는 직접 대화 또는 저녁 회고 화면에서 시작합니다.
-- 자동 검증은 합성 데이터 및 모의 외부 응답을 사용합니다. 실제 계정 OAuth와 유료 AI 응답, 실기기 설치는 별도의 계정 설정과 기기 실행이 필요합니다.
+- 자동 검증은 합성 데이터 및 모의 외부 응답을 사용합니다. 실제 계정 OAuth와 Mac의 Hermes 실행, 실기기 설치는 별도의 계정 설정과 기기 실행이 필요합니다.
 
-공식 자료: [OpenAI MCP와 커넥터](https://developers.openai.com/api/docs/guides/tools-connectors-mcp), [Plaud MCP](https://docs.plaud.ai/plaud-mcp-cli/mcp), [Google OAuth 웹 서버](https://developers.google.com/identity/protocols/oauth2/web-server), [Google 일정 조회](https://developers.google.com/workspace/calendar/api/v3/reference/events/list), [Google 일정 생성](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert).
+공식 자료: [Hermes Agent 실행 연결](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server), [Plaud MCP](https://docs.plaud.ai/plaud-mcp-cli/mcp), [Google OAuth 웹 서버](https://developers.google.com/identity/protocols/oauth2/web-server), [Google 일정 조회](https://developers.google.com/workspace/calendar/api/v3/reference/events/list), [Google 일정 생성](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert).

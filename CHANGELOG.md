@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5 · 2026-09-06
+
+- Replaced direct OpenAI model calls and API-key setup with authenticated native Hermes Agent runs; model/provider remain managed by the existing Hermes instance.
+- Added durable run IDs, native idempotency keys, foreground reconciliation, explicit stop control and owner isolation. Responses become validated approval cards; transport errors never publish partial cards.
+- Added a direct read-only Plaud Streamable HTTP MCP client, independent of model-provider connectors. Google primary calendar uses its existing official Calendar adapter.
+- Fixed Plaud login startup to use the app's pre-registered OAuth client; retained PKCE and one-use owner/cookie state. Connection cards show local progress/errors and an authorization link fallback.
+- Added an existing-Mac Hermes setup helper and guide, plus regression coverage for failed connections, lost acknowledgements, cancellation and stale proposals.
+
+
 ## 0.4.0 — 2026-09-06
 
 - Conversation is the default screen; Korean mobile composer, persistent history, source references and approval/defer inbox.
