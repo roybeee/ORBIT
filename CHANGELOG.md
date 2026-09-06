@@ -4,6 +4,7 @@
 
 - Orbit conversations now send an explicit reasoning effort with every Hermes run: `medium` by default, `high` for the whole turn when the request asks to think deeply (깊게·깊이·심층·꼼꼼 등, deeply/thorough). Regression test covers both paths across read rounds.
 - Setup guide documents the effort rule and that the profile's `reasoning_effort` only governs non-Orbit channels.
+- `scripts/hermes-deep-effort-patch.py` applies the same deep-thinking rule inside a Hermes gateway checkout (per-turn, non-API platforms only, backup and compile check, verified against v0.21.0) so Slack/CLI turns follow it too.
 
 ## v0.5.1 · 2026-09-06
 

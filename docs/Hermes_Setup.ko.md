@@ -129,6 +129,12 @@ Orbit에서 **Plaud 연결**을 누르고 계정을 승인합니다. 인증 화�
 
 Orbit은 대화마다 Hermes에 노력 정도를 직접 지정합니다. 평소 요청은 `medium`으로 보내고, 문장에 **깊게·깊이·깊은·심층·꼼꼼·신중·철저·곰곰**(영문 deeply/thorough)처럼 더 생각하라는 표현이 있으면 그 대화의 모든 라운드를 `high`로 보냅니다. 다음 대화에는 이어지지 않으므로 필요할 때마다 표현을 넣으면 됩니다. Hermes 설정 파일의 `reasoning_effort` 값은 Orbit 대화에는 적용되지 않고 Slack 등 다른 경로에만 적용됩니다.
 
+Slack·CLI 등 Orbit 밖의 대화에도 같은 규칙을 적용하려면 서버의 Hermes 소스에 `scripts/hermes-deep-effort-patch.py`를 적용합니다. 이 스크립트는 gateway가 대화마다 노력 정도를 정하는 지점에 같은 단어 규칙을 넣고, 원본을 백업한 뒤 문법 검사를 통과할 때만 적용합니다. Hermes v0.21.0(2026.8.31) 기준으로 확인했으며, 코드 위치가 다른 버전에서는 아무것도 바꾸지 않고 멈춥니다. 적용 후 `hermes gateway restart`가 필요하고, 설정 파일의 `reasoning_effort`는 `medium`으로 둡니다.
+
+```bash
+python3 scripts/hermes-deep-effort-patch.py ~/.hermes/hermes-agent
+```
+
 `API_SERVER_KEY`를 프로필 `.env`에 두면 gateway가 API 서버를 자동으로 켭니다. 설정 파일에서 `api_server`를 명시적으로 `enabled: false`로 꺼 둔 프로필은 그 설정을 먼저 지워야 합니다.
 
 공식 동작은 [Hermes API Server](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server), [프로필 명령](https://hermes-agent.nousresearch.com/docs/reference/profile-commands), [플랫폼 도구 설정 구현](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/tools_config.py)을 참고하세요.
