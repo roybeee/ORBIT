@@ -19,11 +19,13 @@ export function useWorkspace(demo:boolean){
  const send=useCallback(async(command:NonNullable<typeof pending.current>):Promise<boolean>=>{
   if(!demo&&!navigator.onLine){setOnline(false);toast.error('인터넷 연결 후 다시 저장해 주세요. 입력 내용은 이 화면에 남아 있습니다.');return false}
   if(busyRef.current){toast('저장 중입니다. 잠시 기다려 주세요.');return false}busyRef.current=true;setBusy(true);pending.current=command;
+  const before=snapshotRef.current;let optimistic=false;
+  if(!demo&&['task.status','task.focus'].includes(command.action.type)){try{publish({...before,data:applyAction(before.data,command.action)});optimistic=true}catch{}}
   try{
    if(demo){const data=applyAction(snapshotRef.current.data,command.action,new Date('2026-09-06T09:00:00Z'));publish({data,revision:snapshotRef.current.revision+1,updatedAt:new Date().toISOString()})}
    else{const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);try{const r=await fetch('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(command),signal:controller.signal});const body=await r.json();if(!r.ok)throw {message:body.error,code:body.code};publish(body)}finally{clearTimeout(timeout)}}
    pending.current=null;setFailure(null);return true;
-  }catch(e){const err=e as Failure;const failure={message:err.message||'저장을 확인하지 못했습니다. 다시 저장해 주세요.',code:err.code||(e instanceof DomainError?'INPUT':'NETWORK')};if(failure.code==='INPUT')pending.current=null;setFailure(failure);toast.error(failure.message);return false}
+  }catch(e){if(optimistic)publish(before);const err=e as Failure;const failure={message:err.message||'저장을 확인하지 못했습니다. 다시 저장해 주세요.',code:err.code||(e instanceof DomainError?'INPUT':'NETWORK')};if(failure.code==='INPUT')pending.current=null;setFailure(failure);toast.error(failure.message);return false}
   finally{busyRef.current=false;if(mounted.current)setBusy(false)}
  },[demo,publish]);
  const mutate=useCallback(async(action:WorkspaceAction)=>{if(!loaded){toast.error('먼저 저장된 내용을 불러와 주세요.');return false}if(pending.current&&!busyRef.current){toast.error('이전 저장 결과를 먼저 확인해 주세요.');return false}return send({operationId:crypto.randomUUID(),expectedRevision:snapshotRef.current.revision,action})},[loaded,send]);

@@ -41,6 +41,7 @@ export function applyAction(current:WorkspaceData,action:WorkspaceAction,now=new
  }
  case 'note.delete':if(data.tasks.some(t=>t.noteId===action.id))fail('이 기록을 참조하는 할 일이 있습니다. 연결을 먼저 해제해 주세요.');data.notes=data.notes.filter(n=>n.id!==action.id);break;
  case 'event.upsert':{const e=action.event;if(e.id.startsWith('google:'))fail('Google 일정은 원본 캘린더에서 수정해 주세요.');if(e.id.startsWith('approved:'))fail('승인한 집중 시간은 제안 화면에서 조정해 주세요.');if(data.events.some(x=>x.id!==e.id&&x.date===e.date&&overlaps(x,e)))fail('같은 시간에 다른 일정이 있습니다.');data.events=replace(data.events,e);break;}
+ case 'event.attach':{if(!data.events.some(e=>e.id===action.id))fail('첨부할 일정을 찾을 수 없습니다.');break;}
  case 'event.delete':{if(action.id.startsWith('google:'))fail('Google 일정은 원본 캘린더에서 삭제해 주세요.');if(action.id.startsWith('approved:'))fail('집중 시간은 제안 화면에서 승인을 취소해 주세요.');data.events=data.events.filter(e=>e.id!==action.id);break;}
  case 'review.saveGenerate':{if(action.review.date>today)fail('미래 날짜의 회고는 아직 기록할 수 없습니다.');data.reviews=replace(data.reviews,{...action.review,id:action.review.date,completedIds:data.tasks.filter(t=>t.completedOn===action.review.date&&t.status==='done').map(t=>t.id),updatedAt:now.toISOString()});const date=addDays(action.review.date,1);saveProposal(generateProposal(data.tasks,data.events,date,action.review.energy,data.proposals.find(p=>p.date===date),data.preferences));break;}
  case 'proposal.generate':saveProposal(generateProposal(data.tasks,data.events,action.date,action.energy,data.proposals.find(p=>p.date===action.date),data.preferences));break;

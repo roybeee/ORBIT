@@ -1,10 +1,11 @@
 import {z} from 'zod';
+import {fileIds} from '../attachments/storage.ts';
 import {conversationIdSchema} from './conversations.ts';
 import {actionSchema,dateSchema} from '../validation.ts';
 import {AgentError} from './errors.ts';
 import type {GoogleEventAction} from './types.ts';
 export const googleActionSchema=z.object({type:z.literal('google.event.create'),event:z.object({title:z.string().min(1).max(160),date:dateSchema,start:z.number().int().min(0).max(1439),end:z.number().int().min(1).max(1440),timeZone:z.string().refine(value=>{try{new Intl.DateTimeFormat('ko',{timeZone:value});return true}catch{return false}}),description:z.string().max(4000)}).strict().refine(e=>e.end>e.start)}).strict();
-export const agentInput=z.object({conversationId:conversationIdSchema.optional(),id:z.string().uuid(),message:z.string().trim().min(1).max(8000)}).strict();
+export const agentInput=z.object({attachmentIds:fileIds.optional(),conversationId:conversationIdSchema.optional(),id:z.string().uuid(),message:z.string().trim().min(1).max(8000)}).strict();
 const allowed=new Set(['project.upsert','task.upsert','task.status','task.focus','note.upsert','event.upsert','review.saveGenerate','proposal.generate','proposal.approve','proposal.defer','proposal.reconsider','proposal.revoke','preferences.update']);
 export function parseAction(value:unknown){const google=googleActionSchema.safeParse(value);if(google.success)return google.data as GoogleEventAction;const parsed=actionSchema.safeParse(value);if(!parsed.success||!allowed.has(parsed.data.type))throw new AgentError('지원하는 변경 형식이 아닙니다. 더 구체적인 제안을 요청해 주세요.');return parsed.data}
 export const contract=`Supported action JSON examples (use actual user values and IDs):

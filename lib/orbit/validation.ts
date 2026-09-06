@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {validDate} from './dates.ts';
+const attachmentIds=z.array(z.string().uuid()).max(8).refine(ids=>new Set(ids).size===ids.length);
 const id=z.string().min(1).max(100);
 export const dateSchema=z.string().refine(validDate,'유효한 날짜를 입력해 주세요.');
 const title=z.string().trim().min(1,'제목을 입력해 주세요.').max(160);
@@ -21,8 +22,9 @@ export const actionSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('note.delete'),id}).strict(),
  z.object({type:z.literal('note.restore'),id,revision:z.number().int().positive(),expectedNoteRevision:z.number().int().positive()}).strict(),
  z.object({type:z.literal('meeting.acceptActions'),noteId:id,expectedNoteRevision:z.number().int().positive(),items:z.array(z.object({id,line:z.number().int().positive(),title,definition:z.string().max(4000),due:dateSchema,duration:z.number().int().min(5).max(480)}).strict()).min(1).max(20)}).strict(),
- z.object({type:z.literal('event.upsert'),event:eventSchema}).strict(),
+ z.object({type:z.literal('event.upsert'),event:eventSchema,attachmentIds:attachmentIds.optional()}).strict(),
  z.object({type:z.literal('event.delete'),id}).strict(),
+ z.object({type:z.literal('event.attach'),id,attachmentIds}).strict(),
  z.object({type:z.literal('review.saveGenerate'),review}).strict(),
  z.object({type:z.literal('proposal.generate'),date:dateSchema,energy}).strict(),
  z.object({type:z.literal('proposal.approve'),date:dateSchema,itemId:id}).strict(),

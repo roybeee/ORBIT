@@ -1,0 +1,3 @@
+export const dynamic='force-dynamic';
+export async function POST(){return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orbit 공유 준비</title><main style="font-family:system-ui;padding:32px;line-height:1.7"><h1>Orbit을 한 번 열어 주세요.</h1><p>공유 기능을 준비한 뒤 갤러리에서 파일을 다시 공유해 주세요. 이번 파일은 아직 업로드되지 않았습니다.</p><a href="/">Orbit 열기</a></main>',{status:503,headers:{'Content-Type':'text/html;charset=utf-8','Cache-Control':'no-store'}})}
+export async function GET(request:Request){return Response.redirect(new URL('/share',request.url),303)}

@@ -1,0 +1,1 @@
+ALTER TABLE `orbit_attachments` ADD `prepared` integer DEFAULT 0 NOT NULL;
