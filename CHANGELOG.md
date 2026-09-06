@@ -7,6 +7,7 @@
 - Rejected submissions (400), idempotency-key conflicts and forgotten runs (404) now fail the turn once instead of being retried on every poll; concurrency limits (429) still keep the run ID and retry.
 - A stop request for a run the gateway no longer holds (409) no longer blocks cancellation; the turn finishes through the durable run status.
 - Connection check also rejects a gateway that reports `auth.required: false`. Setup guide documents the per-state behavior.
+- Setup guide adds the Hetzner server path for the Meal Zip workstation Hermes: Caddy HTTPS termination, systemd user service with linger, or an SSH reverse tunnel relay from the workstation.
 
 ## v0.5 · 2026-09-06
 

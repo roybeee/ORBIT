@@ -1,4 +1,4 @@
-# Mac의 헤르메스를 Orbit에 연결하기
+# 헤르메스를 Orbit에 연결하기 (Mac · Hetzner 서버)
 
 Orbit v0.5는 **이미 사용하는 Hermes Agent를 대화의 실행 주체로 연결**합니다. Orbit에서 OpenAI 키를 입력하거나 모델을 선택하지 않습니다. Hermes에 설정된 모델·공급자를 그대로 사용하며, 사용량 처리는 그 Hermes 설정을 따릅니다.
 
@@ -38,6 +38,71 @@ HERMES_HOME="$HOME/.hermes" hermes gateway
 | 헤르메스 연결 암호 | 해당 프로필의 `API_SERVER_KEY`, 또는 스크립트가 만든 암호 파일 내용 |
 
 **헤르메스 연결 확인**은 인증한 Hermes의 기능을 조회하고, 인증 없이 접근할 수 없는지도 확인합니다. 연결 확인은 모델의 응답 생성까지 시험하지는 않습니다. 실제 대화를 시작하면 Hermes 실행 상태가 표시됩니다. Mac이 꺼져 있거나 잠자기로 네트워크가 끊기면 연결이 완료되지 않습니다.
+
+## 3-1. Hetzner 서버를 거쳐 밀집 워크스테이션의 Hermes를 연결하기
+
+Mac Mini 워크스테이션의 Hermes는 전원이 꺼지거나 잠자기에 들어가면 응답하지 않습니다. Hetzner 서버는 두 가지 방식으로 쓸 수 있습니다. 두 방식 모두 Orbit에는 **Hetzner 서버의 HTTPS 주소**를 등록합니다.
+
+| 방식 | Hermes가 실제로 실행되는 곳 | Hetzner 서버의 역할 |
+|---|---|---|
+| A. 서버 실행 | Hetzner 서버(Linux) | gateway 실행 + HTTPS 종단 |
+| B. 릴레이 | 밀집 워크스테이션(Mac) | 워크스테이션이 열어 둔 SSH 역방향 터널을 HTTPS로 공개 |
+
+### 공통: 서버에 도메인과 HTTPS 준비
+
+1. Hetzner Cloud 콘솔에서 서버의 공인 IPv4를 확인하고, 보유한 도메인의 A 레코드(예: `hermes.example.com`)를 그 IP로 지정합니다. 도메인이 없으면 `<IP를 하이픈으로 연결>.sslip.io`(예: `1-2-3-4.sslip.io`) 형식의 이름을 그대로 쓸 수 있습니다. Orbit은 순수 IP 주소, `localhost`, 사설망 이름을 거부합니다.
+2. 방화벽은 22, 80, 443만 엽니다. 8642 포트는 외부에 열지 않습니다.
+
+```bash
+sudo ufw allow 22,80,443/tcp && sudo ufw enable
+sudo apt install -y caddy
+sudo tee /etc/caddy/Caddyfile >/dev/null <<'CADDY'
+hermes.example.com {
+    reverse_proxy 127.0.0.1:8642
+}
+CADDY
+sudo systemctl reload caddy
+```
+
+Caddy는 인증서를 자동 발급하고 `Authorization` 헤더를 그대로 전달합니다. 다른 호스트로 리디렉션하는 설정은 넣지 마세요.
+
+### 방식 A: Hetzner 서버에서 Hermes 실행
+
+서버에 sudo 권한이 있는 일반 사용자로 접속해 Hermes를 설치한 뒤, 이 저장소의 준비 스크립트를 그 프로필에 실행합니다. 모델 공급자 자격은 서버의 프로필 `.env`에 직접 둡니다.
+
+```bash
+git clone https://github.com/roybeee/ORBIT.git && cd ORBIT
+python3 scripts/configure-hermes-orbit.py --profile-home "$HOME/.hermes"
+hermes gateway install        # systemd 사용자 서비스 등록
+sudo loginctl enable-linger "$USER"   # 로그아웃·재부팅 후에도 유지
+hermes gateway status
+```
+
+연결 암호는 `~/.hermes/orbit-connection-key.txt`에 있습니다. Orbit에는 `https://hermes.example.com`을 등록합니다.
+
+### 방식 B: 워크스테이션의 Hermes를 Hetzner로 릴레이
+
+워크스테이션에서 준비 스크립트를 실행하고 gateway를 켠 뒤, 워크스테이션이 서버로 역방향 터널을 유지합니다. 서버의 Caddy는 위 설정 그대로 터널 포트를 공개합니다.
+
+```bash
+# 워크스테이션(Mac)에서
+python3 scripts/configure-hermes-orbit.py --profile-home "$HOME/.hermes"
+brew install autossh
+autossh -M 0 -N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -R 127.0.0.1:8642:127.0.0.1:8642 deploy@hermes.example.com
+```
+
+터널을 launchd 항목으로 등록해 로그인 시 자동 시작하게 하세요. 이 방식은 워크스테이션이 꺼지면 연결이 끊기므로, 워크스테이션 전원 독립이 목적이면 방식 A를 권장합니다.
+
+### Orbit에 등록하고 확인
+
+앱 오른쪽 위 **연결 → 헤르메스 에이전트**에 HTTPS 주소와 연결 암호를 입력하고 **헤르메스 연결 확인**을 누릅니다. 확인이 실패하면 서버에서 다음을 먼저 점검합니다.
+
+```bash
+curl -sS https://hermes.example.com/v1/capabilities            # 401이어야 정상 (암호 보호)
+curl -sS -H "Authorization: Bearer $(cat ~/.hermes/orbit-connection-key.txt)" \
+  https://hermes.example.com/v1/capabilities | head -c 300     # hermes.api_server.capabilities
+```
 
 ## 4. Plaud와 업무 흐름
 
