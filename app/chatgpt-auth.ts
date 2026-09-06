@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import {getDatabase} from '@/db/storage';
+import {resolveIdentity} from '@/db/identity';
 
 export type ChatGPTUser = {
   id: string;
@@ -20,8 +22,12 @@ const CALLBACK_PATH = "/callback";
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const email = requestHeaders.get(USER_EMAIL_HEADER);
-  const id = requestHeaders.get("oai-authenticated-user-id");
-  if (!email || !id) return null;
+  if (!email) return null;
+  const stableId = requestHeaders.get("oai-authenticated-user-id");
+  let id=stableId;
+  try { id=await resolveIdentity(getDatabase(),email,stableId); }
+  catch { console.error('Orbit identity link temporarily unavailable'); }
+  if (!id) return null;
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
   const fullName =
@@ -44,6 +50,12 @@ export async function requireChatGPTUser(
   const user = await getChatGPTUser();
   if (user) return user;
 
+  // Some standalone SIWC sessions forward verified email but omit the stable ID.
+  // Do not send an already signed-in visitor back to the reserved sign-in path.
+  if ((await headers()).get(USER_EMAIL_HEADER)) {
+    redirect('/account/recover?return_to='+encodeURIComponent(safeRelativeReturnPath(returnTo)));
+  }
+
   redirect(chatGPTSignInPath(returnTo));
 }
 
@@ -57,7 +69,7 @@ export function chatGPTSignOutPath(returnTo = "/"): string {
   return `${SIGN_OUT_PATH}?return_to=${encodeURIComponent(safeReturnTo)}`;
 }
 
-function safeRelativeReturnPath(value: string): string {
+export function safeRelativeReturnPath(value: string): string {
   if (!value.startsWith("/") || value.startsWith("//")) return "/";
 
   let url: URL;
@@ -76,7 +88,7 @@ function isReservedAuthPath(pathname: string): boolean {
   return (
     pathname === SIGN_IN_PATH ||
     pathname === SIGN_OUT_PATH ||
-    pathname === CALLBACK_PATH
+    pathname === CALLBACK_PATH || pathname === '/account/recover'
   );
 }
 

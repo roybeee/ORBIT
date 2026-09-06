@@ -14,6 +14,33 @@ test('anonymous browser access redirects to the platform sign-in flow',async()=>
 test('authenticated shell uses Korean, personal workspace and install manifest metadata',async()=>{const r=await request('/',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assert.match(html,/Orbit 에이전트/);assert.match(html,/lang="ko"/);assert.match(html,/<link[^>]*rel="manifest"[^>]*crossorigin="use-credentials"/i);assert.match(html,/apple-touch-icon/);assert.match(html,/viewport-fit=cover/);assert.equal((html.match(/name="viewport"/g)??[]).length,1);assert.doesNotMatch(html,/새로고침하면 초기화/);assert.doesNotMatch(html,/화덕피자 파일럿 운영안 확정/)});
 test('demo is clearly separated and does not create stored user records',async()=>{const before=await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first();const r=await request('/demo',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assert.match(html,/예시 체험/);assert.match(html,/변경은 저장되지 않습니다/);assert.match(html,/화덕피자 파일럿 운영안 확정/);assert.deepEqual(await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first(),before)});
 test('workspace API rejects anonymous reads and writes',async()=>{assert.equal((await request('/api/workspace')).status,401);assert.equal((await request('/api/workspace',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401)});
+test('unlinked email-only sessions show account recovery instead of redirecting to a missing sign-in page',async()=>{
+ const headers={'oai-authenticated-user-email':'unlinked@example.test'};
+ const r=await request('/install',{headers});assert.equal(r.status,307);assert.equal(new URL(r.headers.get('location'),'https://orbit.test').href,'https://orbit.test/account/recover?return_to=%2Finstall');
+ const recovery=await request('/account/recover?return_to=%2Finstall',{headers});assert.equal(recovery.status,200);const html=await recovery.text();assert.match(html,/기존 계정에 다시 연결/);assert.match(html,/href="\/install"/);
+ assert.equal((await request('/api/workspace',{headers})).status,401);
+ assert.equal((await request('/api/workspace',{headers:{'oai-authenticated-user-id':'owner-a'}})).status,401);
+});
+test('standalone email-only sessions reuse the verified stable owner and existing records across page and API requests',async()=>{
+ const stable='standalone-owner',headers=identity(stable);
+ const action={type:'project.upsert',project:{id:'stable-project',name:'기존 컴퓨터와 폰의 프로젝트',color:'#5558e8',symbol:'S',goal:'Keep owner',due:'2026-09-30',priority:3}};
+ const saved=await request('/api/workspace',{method:'POST',headers:{...headers,'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify({expectedRevision:0,operationId:randomUUID(),action})});assert.equal(saved.status,200);
+ const legacy={'oai-authenticated-user-email':headers['oai-authenticated-user-email']};
+ const same=await request('/api/workspace',{headers:legacy});assert.equal(same.status,200);assert.equal((await same.json()).data.projects[0].id,'stable-project');
+ for(const path of ['/','/install'])assert.equal((await request(path,{headers:legacy})).status,200);
+ const recovered=await request('/account/recover?return_to=%2Finstall',{headers:legacy});assert.equal(recovered.status,307);assert.equal(new URL(recovered.headers.get('location'),'https://orbit.test').href,'https://orbit.test/install');
+ const external=await request('/account/recover?return_to=https%3A%2F%2Fevil.test',{headers:legacy});assert.equal(new URL(external.headers.get('location'),'https://orbit.test').href,'https://orbit.test/');
+ const different=await request('/api/workspace',{headers:identity('different-owner')});assert.equal((await different.json()).data.projects.length,0);
+ const keys=await db.prepare('SELECT owner_id FROM orbit_workspaces WHERE owner_id=?').bind(stable).first();assert.equal(keys.owner_id,stable);
+});
+test('a conflicting stable identity disables email-only recovery instead of merging accounts',async()=>{
+ const email='reassigned@example.test';
+ const results=await Promise.all(['first-id','second-id'].map(id=>request('/api/workspace',{headers:{...identity(id),'oai-authenticated-user-email':email}})));
+ for(const r of results)assert.equal(r.status,200);
+ const legacy={'oai-authenticated-user-email':email};assert.equal((await request('/api/workspace',{headers:legacy})).status,401);
+ await request('/api/workspace',{headers:{...identity('first-id'),'oai-authenticated-user-email':email}});
+ assert.equal((await request('/api/workspace',{headers:legacy})).status,401);
+});
 test('API rejects foreign origins and stores owner-scoped commands',async()=>{
  const action={type:'project.upsert',project:{id:'http-project',name:'HTTP persisted',color:'#5558e8',symbol:'H',goal:'Persist',due:'2026-09-30',priority:3}};
  const body=JSON.stringify({expectedRevision:0,operationId:randomUUID(),action});
