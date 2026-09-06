@@ -38,9 +38,12 @@ test('document and export HTTP routes enforce ownership and return complete save
  const exported=await request('/api/export',{headers:identity(owner)});assert.equal(exported.status,200);assert.match(exported.headers.get('cache-control'),/no-store/);assert.equal((await exported.json()).data.notes[0].body,'할 일: 원문 확인');
 });
 
-test('phone installation guide is authenticated, actionable and isolated from stored records',async()=>{
+test('desktop and phone installation guide is authenticated, launches the agent and does not alter stored records',async()=>{
  const denied=await request('/install');assert.ok([302,303,307,308].includes(denied.status));assert.match(denied.headers.get('location')??'',/signin-with-chatgpt/);
- const before=await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first();const page=await request('/install',{headers:identity()});assert.equal(page.status,200);const html=await page.text();assert.match(html,/갤럭시/);assert.match(html,/Chrome/);assert.match(html,/홈 화면에 추가/);assert.match(html,/같은|ChatGPT 계정/);assert.match(html,/인터넷 연결/);assert.deepEqual(await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first(),before);
+ const before=await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first();const page=await request('/install',{headers:identity()});assert.equal(page.status,200);const html=await page.text();
+ for(const platform of ['Mac','Windows','갤럭시','iPhone'])assert.ok(html.includes(platform));
+ assert.match(html,/Safari/);assert.match(html,/Dock에 추가/);assert.match(html,/href="\/\?install=mac&amp;browser=safari#agent"/);assert.match(html,/같은 ChatGPT 계정/);assert.match(html,/인터넷 연결/);
+ assert.deepEqual(await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first(),before);
 });
 
 test('agent and integration routes require owner identity and same-origin writes',async()=>{

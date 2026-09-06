@@ -2,11 +2,17 @@
 
 일정, 프로젝트, 개인 위키, 지식창고, 저녁 회고와 다음 날 제안을 연결하는 개인 매니지먼트 앱.
 
-**현재: v0.5 헤르메스 실행 연결과 Plaud 인증 수정.** 첫 화면에서 내 Hermes Agent와 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. [Mac의 Hermes 연결 안내](docs/Hermes_Setup.ko.md)에 따라 HTTPS gateway 주소와 연결 암호를 등록합니다. Plaud 공식 MCP와 Google Calendar OAuth를 통해 기록을 조회합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
+**현재: v0.5.1 Mac·Windows·휴대폰 설치 지원.** 첫 화면에서 내 Hermes Agent와 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. [Mac의 Hermes 연결 안내](docs/Hermes_Setup.ko.md)에 따라 HTTPS gateway 주소와 연결 암호를 등록합니다. Plaud 공식 MCP와 Google Calendar OAuth를 통해 기록을 조회합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
 
-## Phone installation
+## Mac, Windows and phone installation
 
-[Orbit 설치 안내](https://orbit-personal-os.hflameb.chatgpt.site/install)를 폰의 Chrome에서 열고 같은 ChatGPT 계정으로 로그인하세요. 설치 버튼 또는 브라우저 메뉴로 설치한 뒤 홈 화면의 Orbit 아이콘으로 실행합니다. iPhone은 Safari의 공유 → 홈 화면에 추가를 사용합니다. [자세한 모바일 안내](docs/Orbit_Mobile.ko.md).
+[Orbit 설치 안내](https://orbit-personal-os.hflameb.chatgpt.site/install)를 설치할 기기의 브라우저에서 열고 같은 ChatGPT 계정으로 로그인하세요. 기기와 브라우저를 감지해 설치 버튼 또는 메뉴 안내를 제공합니다. 첫 대화 화면의 **앱 설치**에서도 들어갈 수 있습니다.
+
+- **Mac:** Safari(macOS Sonoma 14 이상)의 파일 → Dock에 추가, 또는 Chrome·Edge의 앱 설치 메뉴를 사용합니다.
+- **Windows:** Edge 또는 Chrome으로 설치하고 시작 메뉴·작업표시줄에서 실행합니다.
+- **휴대폰:** Android는 Chrome, iPhone·iPad는 Safari의 홈 화면에 추가를 사용합니다.
+
+설치 안내의 **Orbit 열고 설치**로 대화 화면을 연 뒤 설치하면 Orbit 아이콘에서 에이전트 대화로 시작합니다. 설치형 웹 앱(PWA)이며 업무 저장과 Hermes 대화에는 인터넷 연결이 필요합니다. [컴퓨터 안내](docs/Orbit_Desktop.ko.md) · [휴대폰 안내](docs/Orbit_Mobile.ko.md).
 
 ## Use
 
@@ -22,6 +28,7 @@
 
 - [AI 에이전트·Plaud·Google 연결과 사용 안내](docs/Orbit_Agent.ko.md)
 
+- [Mac·Windows 설치와 사용 안내](docs/Orbit_Desktop.ko.md)
 - [휴대폰 설치와 사용 안내](docs/Orbit_Mobile.ko.md)
 - [v0.3 사용 안내와 현재 범위](docs/Orbit_Release_v0.3.ko.md)
 - [GitHub 생성·연결 준비](docs/GitHub_Connect.ko.md)
@@ -51,11 +58,11 @@ Use the Sites skills for development/hosting inside ChatGPT Work. The current Si
 
 The authenticated app deliberately does not fall back to a public dev identity or browser-only record storage. Local development must use the supported authenticated environment. Product dates default to Asia/Seoul; data timestamps and date-only values are kept distinct.
 
-## Storage and mobile scope
+## Storage and installation scope
 
 D1 stores atomic workspace metadata and request receipts, with immutable document versions in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. The metadata aggregate remains bounded to 950,000 UTF-8 bytes; each document to 100,000 characters, subject to the 400,000-byte request limit. Large collections still need a normalized/paged metadata catalog before bulk ingestion. JSON export streams current document versions; it excludes historical revisions, agent conversations/decisions, connection secrets and unsaved forms.
 
-The app includes an authenticated install guide, supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual installation and touch interaction on a physical phone still require device verification.
+The app includes an authenticated guide for Mac, Windows, Android and iOS, browser-specific menu instructions, a supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Manual installation opens the agent route first so Safari does not pin the help page as the launch URL. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual OS installation, login hand-off and touch interaction still require verification on the user’s device.
 
 ## GitHub source and workflow
 

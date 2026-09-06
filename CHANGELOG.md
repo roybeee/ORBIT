@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.1 · 2026-09-06
+
+- Extend installation to Mac (Safari, Chrome, Edge) and Windows (Edge, Chrome), retaining Android and iPhone/iPad support.
+- Detect the device and browser, provide accessible device tabs and browser selection, and distinguish install requests from completed installations.
+- Launch the agent before manual installation so Safari Add to Dock opens the conversation; remove setup parameters before pinning.
+- Add an install entry on the first conversation screen, root-address copying, same-account guidance and desktop documentation.
+- Validate desktop/mobile user-agent detection, standalone manifest launch and the protected install route. Physical OS installation remains a device-level verification.
+
 ## v0.5 · 2026-09-06
 
 - Replaced direct OpenAI model calls and API-key setup with authenticated native Hermes Agent runs; model/provider remain managed by the existing Hermes instance.
