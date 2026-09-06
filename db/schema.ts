@@ -34,9 +34,10 @@ export const noteRevisions=sqliteTable('orbit_note_revisions',{
 },table=>[primaryKey({columns:[table.ownerId,table.noteId,table.revision]})]);
 // Conversations, reviewable actions and encrypted connector credentials are owner-scoped.
 export const agentTurns=sqliteTable('orbit_agent_turns',{
+ conversationId:text('conversation_id').notNull().default('legacy'),
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),input:text('input').notNull(),
  status:text('status').notNull(),responseJson:text('response_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
-},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),uniqueIndex('idx_orbit_one_running_turn').on(table.ownerId).where(sql`${table.status} = 'running'`)]);
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),index('idx_orbit_turn_conversation_created').on(table.ownerId,table.conversationId,table.createdAt,table.id),uniqueIndex('idx_orbit_one_running_turn').on(table.ownerId).where(sql`${table.status} = 'running'`)]);
 export const agentActions=sqliteTable('orbit_agent_actions',{
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),turnId:text('turn_id').notNull(),
  title:text('title').notNull(),reason:text('reason').notNull(),actionJson:text('action_json').notNull(),expectedRevision:integer('expected_revision').notNull(),
@@ -57,3 +58,9 @@ export const hermesJobs=sqliteTable('orbit_hermes_jobs',{
  ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),turnLease:text('turn_lease').notNull(),
  jobJson:text('job_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),cancelRequested:integer('cancel_requested').notNull().default(0),
 },table=>[primaryKey({columns:[table.ownerId,table.turnId]})]);
+
+export const conversations=sqliteTable('orbit_conversations',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),title:text('title').notNull(),
+ projectId:text('project_id'),revision:integer('revision').notNull().default(0),
+ createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_conversation_recent').on(table.ownerId,table.updatedAt,table.id),index('idx_orbit_conversation_project').on(table.ownerId,table.projectId,table.updatedAt,table.id)]);
