@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-09-06
+
+- Conversation is the default screen; Korean mobile composer, persistent history, source references and approval/defer inbox.
+- Real Responses API tool loop uses owner-scoped workspace and document context; all changes are persisted proposal cards until explicit approval.
+- Plaud official remote MCP with dedicated dynamic registration, PKCE and encrypted app credentials.
+- Google Calendar MCP plus own OAuth setup, primary-calendar paging/normalization, live conflict checks and repeat-safe approved creation without attendees or notifications.
+- AES-GCM owner/provider-bound secrets; one-use OAuth state, serialized token refresh, turn/action leases and workspace revision checks.
+- Existing calendar/planner approvals refresh connected busy periods; imported events are edited in Google.
+- Sixteen agent/integration tests and protected API tests added to CI. External API tests use synthetic responses; real OAuth and paid inference require app-side credentials and consent.
+- No automatic nightly scheduler, push delivery, bulk import or physical-device QA.
+
 ## 0.3.1 — 2026-09-06
 
 - Private `/install` guide for Galaxy/Android and iPhone, deferred install prompt, cancellation fallback and actual standalone/install event detection.

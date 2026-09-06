@@ -3,6 +3,10 @@ import {getDatabase} from '@/db/storage';
 import {readWorkspace,writeCommand,RevisionConflict} from '@/db/repository';
 import {commandSchema} from '@/lib/orbit/validation';
 import {DomainError} from '@/lib/orbit/reducer';
+import {env} from 'cloudflare:workers';
+import {syncCalendar} from '@/lib/orbit/agent/calendar';
+import {AgentError} from '@/lib/orbit/agent/errors';
+import {addDays} from '@/lib/orbit/dates';
 export const dynamic='force-dynamic';
 const response=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
 export async function GET(){
@@ -17,6 +21,6 @@ export async function POST(request:Request){
  const bytes=await request.arrayBuffer();if(bytes.byteLength>400000)return response({error:'입력 내용이 너무 큽니다. 내용을 나누어 저장해 주세요.',code:'INPUT'},413);
  let parsed;try{parsed=commandSchema.safeParse(JSON.parse(new TextDecoder().decode(bytes)))}catch{return response({error:'입력 내용을 확인해 주세요.',code:'INPUT'},400)}
  if(!parsed.success)return response({error:parsed.error.issues[0]?.message??'입력 내용을 확인해 주세요.',code:'INPUT'},400);
- try{return response(await writeCommand(getDatabase(),user.id,parsed.data))}
- catch(error){if(error instanceof RevisionConflict)return response({error:error.message,code:'CONFLICT'},409);if(error instanceof DomainError)return response({error:error.message,code:'INPUT'},422);console.error('Orbit workspace write unavailable');return response({error:'저장 완료를 확인하지 못했습니다. 입력 내용을 유지하고 있으니 다시 저장해 주세요.',code:'STORAGE'},503)}
+ try{const action=parsed.data.action;if(['proposal.generate','proposal.approve','review.saveGenerate','event.upsert'].includes(action.type))await syncCalendar(getDatabase(),user.id,env,'date' in action?action.date:action.type==='event.upsert'?action.event.date:action.type==='review.saveGenerate'?addDays(action.review.date,1):undefined);return response(await writeCommand(getDatabase(),user.id,parsed.data))}
+ catch(error){if(error instanceof AgentError)return response({error:error.message,code:error.code},error.status);if(error instanceof RevisionConflict)return response({error:error.message,code:'CONFLICT'},409);if(error instanceof DomainError)return response({error:error.message,code:'INPUT'},422);console.error('Orbit workspace write unavailable');return response({error:'저장 완료를 확인하지 못했습니다. 입력 내용을 유지하고 있으니 다시 저장해 주세요.',code:'STORAGE'},503)}
 }

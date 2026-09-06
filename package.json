@@ -18,7 +18,8 @@
     "test:smoke": "node --test tests/rendered-html.test.mjs",
     "test:storage": "node --experimental-strip-types --test tests/storage.test.mjs",
     "test:notes": "node --experimental-strip-types --test tests/notes.test.mjs",
-    "test:pwa": "node --test tests/pwa.test.mjs"
+    "test:pwa": "node --test tests/pwa.test.mjs",
+    "test:agent": "node --experimental-strip-types --test tests/agent.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

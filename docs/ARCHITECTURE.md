@@ -47,4 +47,12 @@ These tests are local; they do not claim live browser, device or cloud D1 end-to
 
 ## Not yet active
 
-No LLM, external calendar/Notion adapter, scheduler, push subscription, attachments, semantic search, backup import or actual elapsed-time tracking. R2 remains disabled. Dates and work preferences are live; the demo intentionally keeps September 6–7, 2026 examples.
+Scheduler, push subscription, Notion adapter, attachments, semantic search, backup import and actual elapsed-time tracking remain unimplemented. Responses API, Plaud MCP and Google Calendar integration are implemented in v0.4 and require app-side provider configuration/authorization. R2 remains disabled. Dates and work preferences are live; the demo intentionally keeps September 6–7, 2026 examples.
+
+## v0.4 agent and integrations
+
+`lib/orbit/agent` contains the bounded Responses tool loop, owner-scoped conversation/proposal repository, user decision executor, encrypted connections, OAuth/PKCE and Google busy-period adapter. `/api/agent` separates chat from explicit user decisions. The LLM receives read-only MCP tools and a `propose_change` function which only stages cards. Failed turns publish no partial cards. Internal approvals reuse workspace CAS and mutation receipts; related pending cards advance revisions only after their own prerequisite commit.
+
+Migrations `0002` and `0003` add conversations, decisions, encrypted connection records, one-use OAuth states, an external calendar cache and in-flight uniqueness/refresh leases. External calendar records are overlaid for reads and stripped from the aggregate on writes; changes to cached busy time advance the workspace revision. Google event creation uses a deterministic action-derived event ID and verifies its ownership marker on retries. Provider credentials are never persisted in client storage, source control or API status responses.
+
+See [agent operations and setup](Orbit_Agent.ko.md) for the exact credentials, scopes, data window and known limits. Existing explicit-marker extraction remains available independently of AI.

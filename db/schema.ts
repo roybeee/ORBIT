@@ -1,4 +1,5 @@
-import {sqliteTable,text,integer,primaryKey} from 'drizzle-orm/sqlite-core';
+import {sql} from 'drizzle-orm';
+import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
 // One owner-scoped aggregate keeps task/proposal/calendar transitions atomic.
 // Schema-only migrations; no user records or demo data are seeded here.
 export const workspaces=sqliteTable('orbit_workspaces',{
@@ -24,3 +25,23 @@ export const noteRevisions=sqliteTable('orbit_note_revisions',{
  noteJson:text('note_json').notNull(),
  updatedAt:text('updated_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.noteId,table.revision]})]);
+// Conversations, reviewable actions and encrypted connector credentials are owner-scoped.
+export const agentTurns=sqliteTable('orbit_agent_turns',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),input:text('input').notNull(),
+ status:text('status').notNull(),responseJson:text('response_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),uniqueIndex('idx_orbit_one_running_turn').on(table.ownerId).where(sql`${table.status} = 'running'`)]);
+export const agentActions=sqliteTable('orbit_agent_actions',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),turnId:text('turn_id').notNull(),
+ title:text('title').notNull(),reason:text('reason').notNull(),actionJson:text('action_json').notNull(),expectedRevision:integer('expected_revision').notNull(),
+ state:text('state').notNull(),note:text('note').notNull(),revisitDate:text('revisit_date'),resultJson:text('result_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_action_owner_state').on(table.ownerId,table.state),uniqueIndex('idx_orbit_one_applying_action').on(table.ownerId).where(sql`${table.state} = 'applying'`)]);
+export const integrations=sqliteTable('orbit_integrations',{
+ refreshUntil:integer('refresh_until').notNull().default(0),
+ ownerId:text('owner_id').notNull(),provider:text('provider').notNull(),secretJson:text('secret_json').notNull(),publicJson:text('public_json').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.provider]})]);
+export const oauthStates=sqliteTable('orbit_oauth_states',{
+ state:text('state').primaryKey(),ownerId:text('owner_id').notNull(),provider:text('provider').notNull(),secretJson:text('secret_json').notNull(),expiresAt:text('expires_at').notNull(),
+});
+export const calendarCache=sqliteTable('orbit_calendar_cache',{
+ ownerId:text('owner_id').primaryKey(),eventsJson:text('events_json').notNull(),timeZone:text('time_zone').notNull(),rangeStart:text('range_start').notNull(),rangeEnd:text('range_end').notNull(),updatedAt:text('updated_at').notNull(),
+});

@@ -1,4 +1,4 @@
-export type View = 'today'|'calendar'|'tasks'|'projects'|'wiki'|'knowledge'|'review'|'proposal';
+export type View = 'agent'|'today'|'calendar'|'tasks'|'projects'|'wiki'|'knowledge'|'review'|'proposal';
 export type TaskStatus = 'todo'|'doing'|'waiting'|'done';
 export interface Project {id:string;name:string;color:string;symbol:string;goal:string;due:string;priority:number}
 export interface Task {id:string;title:string;projectId:string;status:TaskStatus;duration:number;due:string;impact:number;focus:boolean;focusDate?:string;definition:string;noteId?:string;noteCitation?:{revision:number;line:number;quote:string};blocker?:string;checkDate?:string;completedOn?:string;dependsOn?:string[];result?:string;planHoldUntil?:string;planHoldReason?:string;planHoldProposalId?:string}
