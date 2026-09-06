@@ -1,6 +1,6 @@
 # Architecture and implementation boundary
 
-## v0.2: authenticated personal workspace
+## v0.3: authenticated personal workspace and document history
 
 - `app/page.tsx`, `app/demo/page.tsx`: protected, dynamic server pages using the dispatch-owned ChatGPT sign-in flow. A stable Site-scoped user ID is required; email is display metadata.
 - `components/orbit/workspace.tsx`: Korean responsive workspace and forms. Demo mode is explicit and never invokes the persistence API.
@@ -18,9 +18,19 @@
 
 The first individual-use release stores a versioned aggregate per owner in D1, plus an idempotency receipt table. A single compare-and-swap update atomically records the related task, proposal and calendar state. Receipt insertion is gated on the winning mutation ID inside the same D1 batch. Duplicate or uncertain HTTP retries cannot create duplicate calendar blocks. Concurrent stale requests receive a conflict instead of overwriting data.
 
-This is a deliberate interim storage shape, not the final long-term knowledge architecture. Each owner aggregate is bounded to 950,000 UTF-8 bytes; a meeting note is capped at 100,000 characters. All queries and receipt keys include the authenticated owner. No client-supplied owner identifier is accepted. New users start with no fabricated records.
+Document bodies and every acknowledged version now live in `orbit_note_revisions`, keyed by authenticated owner, note ID and note revision. The workspace keeps compact metadata and immutable pointers. A note edit, its new revision and the request receipt commit in one guarded batch. Restore reads an existing version and appends a new one; it never rewrites history. Delete checks task references and removes only the target document's records.
 
-Before bulk ingestion or a growing personal knowledge base, migrate note bodies/revisions to individual owner-scoped records with paged metadata queries and on-demand body retrieval. Preserve IDs, links and existing data through an append-only migration/backfill sequence. Only then add broad AI ingestion. Do not silently truncate notes or replace the database with device-local storage when limits are reached.
+v2 aggregates remain readable. The next accepted command inserts all legacy note versions through one bounded `json_each` statement, writes the v3 metadata pointers, and records any new document version in the same transaction. Migration SQL is schema-only. The original `0000` migration remains unchanged; `0001_pale_charles_xavier.sql` adds the document version table.
+
+`GET /api/notes?id=...` loads an authorized body/version. `history=1` returns 10 versions with a monotonic before-revision cursor. Without an ID, the route joins the current metadata/version pointers and searches title, summary, tags and the current full body, returning 24 records per page. Old revisions do not pollute search. A workspace revision guard detects a changed catalog during paging. All SQL uses prepared parameters and owner constraints.
+
+`GET /api/export` streams current document versions against snapshot pointers, avoiding a single in-memory collection of all bodies. The client waits for the full response before downloading. A concurrent deletion that removes a pinned version fails the download; users can retry. Exports do not include history or unsaved forms.
+
+The catalog and non-document workspace data still share a 950,000-byte aggregate. Document text is separately bounded to 100,000 characters and the HTTP command to 400,000 bytes. This removes the former combined-body ceiling but does not mean unlimited storage. Normalize the remaining metadata catalog before large imports; search currently scans the active documents rather than a full-text index.
+
+`lib/orbit/meeting.ts` recognizes only explicit markers (`할 일:`, `액션:`, `TODO:`, `ACTION:`, `- [ ]`). No LLM is called and no implicit promise/date/assignee is inferred. The user selects candidates and edits title, due date, duration and completion criteria. Server acceptance reloads the pinned source, validates line references, writes task citations and prevents same-source duplicates across retries and later note revisions. Direct task edits cannot forge those citations. No calendar block is created until the normal proposal approval workflow.
+
+`components/orbit/note-detail.tsx` implements body retrieval, history comparison/restore and candidate approval; `note-library.tsx` implements paged search and recovery. Demo mode stays isolated and explicitly disables durable history.
 
 ## Auth and authorization
 
@@ -37,4 +47,4 @@ These tests are local; they do not claim live browser, device or cloud D1 end-to
 
 ## Not yet active
 
-No LLM, external calendar/Notion adapter, scheduler, push subscription, attachments, semantic search, wiki revision UI, restore/import or actual elapsed-time tracking. R2 remains disabled. Dates and work preferences are live; the demo intentionally keeps September 6–7, 2026 examples.
+No LLM, external calendar/Notion adapter, scheduler, push subscription, attachments, semantic search, backup import or actual elapsed-time tracking. R2 remains disabled. Dates and work preferences are live; the demo intentionally keeps September 6–7, 2026 examples.

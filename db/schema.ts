@@ -15,3 +15,12 @@ export const mutations=sqliteTable('orbit_mutations',{
  revision:integer('revision').notNull(),
  createdAt:text('created_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.operationId]})]);
+// Immutable document versions; the workspace keeps only their metadata/pointers.
+export const noteRevisions=sqliteTable('orbit_note_revisions',{
+ ownerId:text('owner_id').notNull(),
+ noteId:text('note_id').notNull(),
+ revision:integer('revision').notNull(),
+ title:text('title').notNull(),
+ noteJson:text('note_json').notNull(),
+ updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.noteId,table.revision]})]);

@@ -1,6 +1,7 @@
 import type {WorkspaceData,Task,Proposal} from './model.ts';
 import type {WorkspaceAction} from './validation.ts';
 import {todayInZone,addDays} from './dates.ts';
+import {meetingCandidates} from './meeting.ts';
 import {focusIds} from './derived.ts';
 import {generateProposal,approveProposalItem,overlaps} from './planner.ts';
 export class DomainError extends Error{}
@@ -21,11 +22,23 @@ export function applyAction(current:WorkspaceData,action:WorkspaceAction,now=new
  switch(action.type){
  case 'project.upsert':data.projects=replace(data.projects,action.project);break;
  case 'project.delete':if(data.tasks.some(t=>t.projectId===action.id)||data.notes.some(n=>n.projectId===action.id)||data.events.some(e=>e.projectId===action.id))fail('연결된 할 일·기록·일정을 먼저 정리해 주세요.');data.projects=data.projects.filter(p=>p.id!==action.id);break;
- case 'task.upsert':{const t={...action.task};if(t.focus){t.focusDate=t.focusDate??today;if(data.tasks.filter(x=>x.id!==t.id&&x.focus&&x.focusDate===t.focusDate&&x.status!=='done').length>=data.preferences.focusLimit)fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.')}if(t.status==='done')t.completedOn=t.completedOn??today;data.tasks=replace(data.tasks,t);for(const e of data.events.filter(e=>e.taskId===t.id)){e.title=t.title;e.projectId=t.projectId}break;}
+ case 'task.upsert':{const t={...action.task};const old=data.tasks.find(x=>x.id===t.id);t.noteCitation=old?.noteId===t.noteId?old?.noteCitation:undefined;if(t.focus){t.focusDate=t.focusDate??today;if(data.tasks.filter(x=>x.id!==t.id&&x.focus&&x.focusDate===t.focusDate&&x.status!=='done').length>=data.preferences.focusLimit)fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.')}if(t.status==='done')t.completedOn=t.completedOn??today;data.tasks=replace(data.tasks,t);for(const e of data.events.filter(e=>e.taskId===t.id)){e.title=t.title;e.projectId=t.projectId}break;}
  case 'task.status':{const t=task(action.id);t.status=action.status;t.completedOn=action.status==='done'?today:undefined;break;}
  case 'task.focus':{const t=task(action.id);if(action.focus&&data.tasks.filter(x=>x.id!==t.id&&x.focus&&x.focusDate===today&&x.status!=='done').length>=data.preferences.focusLimit)fail('오늘의 핵심 결과물이 충분합니다. 먼저 다른 항목을 해제해 주세요.');if(action.focus&&t.planHoldUntil&&t.planHoldUntil>today)fail('아직 보류 중인 업무입니다. 제안 화면에서 먼저 다시 검토해 주세요.');t.focus=action.focus;t.focusDate=action.focus?today:undefined;break;}
  case 'task.delete':if(data.tasks.some(t=>t.dependsOn?.includes(action.id)))fail('다른 업무의 선행 작업입니다. 연결을 먼저 해제해 주세요.');data.tasks=data.tasks.filter(t=>t.id!==action.id);data.events=data.events.filter(e=>e.taskId!==action.id);for(const p of data.proposals){p.items=p.items.filter(i=>i.taskId!==action.id);p.unscheduled=p.unscheduled.filter(id=>id!==action.id)}break;
- case 'note.upsert':data.notes=replace(data.notes,{...action.note,updated:today});break;
+ case 'note.upsert':data.notes=replace(data.notes,{...action.note,updated:today,revision:(data.notes.find(n=>n.id===action.note.id)?.revision??(data.notes.some(n=>n.id===action.note.id)?1:0))+1,bodyStored:false});break;
+ case 'note.restore':fail('이전 내용은 서버에서 확인한 뒤 복원해 주세요.');break;
+ case 'meeting.acceptActions':{
+  const note=data.notes.find(n=>n.id===action.noteId)??fail('회의록을 찾을 수 없습니다.');
+  if((note.revision??1)!==action.expectedNoteRevision)fail('회의록이 변경됐습니다. 최신 내용을 확인해 주세요.');
+  const candidates=meetingCandidates(note);
+  for(const item of action.items){
+   const source=candidates.find(c=>c.line===item.line)??fail('원문에서 해당 행동을 확인할 수 없습니다.');
+   if(data.tasks.some(t=>t.noteId===note.id&&t.noteCitation&&(t.noteCitation.quote===source.quote||(t.noteCitation.revision===action.expectedNoteRevision&&t.noteCitation.line===item.line))))continue;
+   if(data.tasks.some(t=>t.id===item.id))fail('이미 사용 중인 할 일 번호입니다.');
+   data.tasks.push({id:item.id,title:item.title,projectId:note.projectId,status:'todo',duration:item.duration,due:item.due,impact:3,focus:false,definition:item.definition,noteId:note.id,noteCitation:{revision:action.expectedNoteRevision,line:item.line,quote:source.quote}});
+  }break;
+ }
  case 'note.delete':if(data.tasks.some(t=>t.noteId===action.id))fail('이 기록을 참조하는 할 일이 있습니다. 연결을 먼저 해제해 주세요.');data.notes=data.notes.filter(n=>n.id!==action.id);break;
  case 'event.upsert':{const e=action.event;if(e.id.startsWith('approved:'))fail('승인한 집중 시간은 제안 화면에서 조정해 주세요.');if(data.events.some(x=>x.id!==e.id&&x.date===e.date&&overlaps(x,e)))fail('같은 시간에 다른 일정이 있습니다.');data.events=replace(data.events,e);break;}
  case 'event.delete':{if(action.id.startsWith('approved:'))fail('집중 시간은 제안 화면에서 승인을 취소해 주세요.');data.events=data.events.filter(e=>e.id!==action.id);break;}
@@ -38,6 +51,6 @@ export function applyAction(current:WorkspaceData,action:WorkspaceAction,now=new
  case 'preferences.update':data.preferences={...action.preferences,workDays:[...new Set(action.preferences.workDays)]};break;
  }
  validateLinks(data);
- if(new TextEncoder().encode(JSON.stringify(data)).byteLength>950000)fail('현재 저장 용량에 가까워졌습니다. 기록을 내보내고 오래된 내용을 정리해 주세요.');
+ if(new TextEncoder().encode(JSON.stringify({...data,notes:data.notes.map(n=>({...n,body:''}))})).byteLength>950000)fail('현재 저장 용량에 가까워졌습니다. 기록을 내보내고 오래된 내용을 정리해 주세요.');
  return data;
 }

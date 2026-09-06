@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-09-06
+
+- Immutable document versions, on-demand bodies, paged current-body search and history.
+- Atomic, lossless v2 document migration with preserved IDs and task links.
+- Explicit meeting action candidates, editable acceptance and immutable source citations.
+- Same-source duplicate prevention, including after unrelated meeting edits.
+- Previous/current document comparison and restore as a new version.
+- Streaming current-record export includes complete document bodies.
+- Eleven note/migration/search tests and six built-Worker route tests, alongside eighteen existing planner/storage tests.
+- GitHub creation/push script and a prefilled private-repository link prepared; actual creation remains blocked by missing callable creation/authentication.
+- Limits: catalog metadata remains bounded; no LLM inference, external sync, automatic nightly scheduler, bulk imports or browser/device QA.
+
 ## 0.2.0 — 2026-09-06
 
 - Account-scoped D1 persistence, atomic revision checks and replay-safe commands.

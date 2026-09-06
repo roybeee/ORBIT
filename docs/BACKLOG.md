@@ -42,3 +42,12 @@ No prototype can be relabeled as a daily-use release until persistence, ownershi
 - ORB-002: blocked on user GitHub repository access; no repository was fabricated or silently substituted.
 
 Prioritize per-record note/revision storage and paged retrieval before large knowledge imports. Current aggregate persistence is bounded and designed for the first personal-use iteration.
+
+## v0.3 progress
+
+- ORB-104: individual body/version storage, on-demand retrieval and paged body search implemented. Metadata catalog normalization and bulk ingestion remain.
+- ORB-201: explicit action-marker extraction, source citations and human acceptance implemented. LLM decisions/action inference remains.
+- ORB-202: immutable manual edit history, before/current comparison and restore as a new version implemented. AI wiki update proposals remain.
+- ORB-002: private repo creation link and authenticated CLI creation/push script prepared. GitHub account `roybeee` still exposes zero installations/repositories; no callable create-repository action or authenticated CLI is available. Actual GitHub creation/push is incomplete.
+
+Next: complete GitHub account-side creation/access, validate on the user's device, then add grounded AI meeting/wiki proposals with provider configuration and recoverable failures. Bulk imports must wait for metadata catalog normalization and storage limits review.

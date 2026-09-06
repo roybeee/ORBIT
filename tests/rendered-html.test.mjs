@@ -22,3 +22,18 @@ test('API rejects foreign origins and stores owner-scoped commands',async()=>{
  const owner=await request('/api/workspace',{headers:identity()});assert.match(owner.headers.get('cache-control'),/no-store/);assert.equal((await owner.json()).data.projects[0].name,'HTTP persisted');
  const other=await request('/api/workspace',{headers:identity('owner-b')});assert.equal((await other.json()).data.projects.length,0);
 });
+
+test('document and export HTTP routes enforce ownership and return complete saved bodies',async()=>{
+ assert.equal((await request('/api/notes?id=n')).status,401);
+ assert.equal((await request('/api/export')).status,401);
+ const owner='notes-http';
+ const send=async(expectedRevision,action)=>{const r=await request('/api/workspace',{method:'POST',headers:{...identity(owner),'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify({operationId:randomUUID(),expectedRevision,action})});assert.equal(r.status,200);return r.json()};
+ let state=await send(0,{type:'project.upsert',project:{id:'p',name:'Note project',color:'#5558e8',symbol:'N',goal:'Keep notes',due:'2026-09-30',priority:3}});
+ state=await send(state.revision,{type:'note.upsert',note:{id:'n',title:'실제 저장 문서',kind:'meeting',projectId:'p',summary:'요약',body:'할 일: 원문 확인',tags:[],updated:'2026-09-06'}});
+ assert.equal(state.data.notes[0].body,'');
+ const saved=await request('/api/notes?id=n',{headers:identity(owner)});assert.equal(saved.status,200);assert.match(saved.headers.get('cache-control'),/no-store/);assert.equal((await saved.json()).body,'할 일: 원문 확인');
+ assert.equal((await request('/api/notes?id=n',{headers:identity('other-owner')})).status,404);
+ assert.equal((await request('/api/notes?id=n&revision=-1',{headers:identity(owner)})).status,400);
+ const history=await request('/api/notes?id=n&history=1',{headers:identity(owner)});assert.equal((await history.json()).items[0].revision,1);
+ const exported=await request('/api/export',{headers:identity(owner)});assert.equal(exported.status,200);assert.match(exported.headers.get('cache-control'),/no-store/);assert.equal((await exported.json()).data.notes[0].body,'할 일: 원문 확인');
+});
