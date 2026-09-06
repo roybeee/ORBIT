@@ -1,12 +1,12 @@
 'use client';
 
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
+import {detectInstallEnvironment,type InstallPlatform,type InstallBrowser} from '@/lib/orbit/installation';
 
 interface InstallPrompt extends Event {
   prompt:()=>Promise<void>;
   userChoice:Promise<{outcome:'accepted'|'dismissed'}>;
 }
-export type PhonePlatform='android'|'ios'|'other';
 type InstallResult='accepted'|'dismissed'|'unavailable'|'failed';
 interface PwaState {
   ready:boolean;
@@ -14,7 +14,8 @@ interface PwaState {
   installed:boolean;
   canInstall:boolean;
   installing:boolean;
-  platform:PhonePlatform;
+  platform:InstallPlatform;
+  browser:InstallBrowser;
   install:()=>Promise<InstallResult>;
 }
 const PwaContext=createContext<PwaState|null>(null);
@@ -22,7 +23,7 @@ const PwaContext=createContext<PwaState|null>(null);
 export function PwaProvider({children}:{children:ReactNode}){
   const [ready,setReady]=useState(false),[standalone,setStandalone]=useState(false);
   const [installed,setInstalled]=useState(false),[canInstall,setCanInstall]=useState(false),[installing,setInstalling]=useState(false);
-  const [platform,setPlatform]=useState<PhonePlatform>('other');
+  const [platform,setPlatform]=useState<InstallPlatform>('other'),[browser,setBrowser]=useState<InstallBrowser>('other');
   const promptRef=useRef<InstallPrompt|null>(null),promptBusy=useRef(false);
 
   useEffect(()=>{
@@ -30,8 +31,8 @@ export function PwaProvider({children}:{children:ReactNode}){
     const updateDisplay=()=>setStandalone(display.matches||Boolean((navigator as Navigator&{standalone?:boolean}).standalone));
     const capture=(event:Event)=>{event.preventDefault();promptRef.current=event as InstallPrompt;setCanInstall(true)};
     const complete=()=>{promptRef.current=null;setCanInstall(false);setInstalled(true)};
-    const ua=navigator.userAgent;
-    setPlatform(/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)?'ios':/Android/.test(ua)?'android':'other');
+    const detected=detectInstallEnvironment(navigator);
+    setPlatform(detected.platform);setBrowser(detected.browser);
     updateDisplay();setReady(true);
     window.addEventListener('beforeinstallprompt',capture);
     window.addEventListener('appinstalled',complete);
@@ -64,6 +65,6 @@ export function PwaProvider({children}:{children:ReactNode}){
     }catch{return 'failed'}
     finally{promptBusy.current=false;setInstalling(false)}
   },[]);
-  return <PwaContext.Provider value={{ready,standalone,installed,canInstall,installing,platform,install}}>{children}</PwaContext.Provider>;
+  return <PwaContext.Provider value={{ready,standalone,installed,canInstall,installing,platform,browser,install}}>{children}</PwaContext.Provider>;
 }
 export function usePwa(){const value=useContext(PwaContext);if(!value)throw new Error('PwaProvider is required');return value}
