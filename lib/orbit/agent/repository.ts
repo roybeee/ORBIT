@@ -1,19 +1,39 @@
 import type {Database} from '../../../db/repository.ts';
 import {AgentError} from './errors.ts';
+import {ensureLegacyConversation,getConversation,parseCursor} from './conversations.ts';
 import type {AgentAction,AgentTurn} from './types.ts';
-interface TurnRow {id:string;input:string;status:AgentTurn['status'];response_json:string;created_at:string;updated_at:string}
-interface ActionRow {id:string;turn_id:string;title:string;reason:string;action_json:string;expected_revision:number;state:AgentAction['state'];note:string;revisit_date:string|null;result_json:string;created_at:string;updated_at:string}
+interface TurnRow {conversation_id:string;id:string;input:string;status:AgentTurn['status'];response_json:string;created_at:string;updated_at:string}
+interface ActionRow {conversation_id?:string;id:string;turn_id:string;title:string;reason:string;action_json:string;expected_revision:number;state:AgentAction['state'];note:string;revisit_date:string|null;result_json:string;created_at:string;updated_at:string}
 function publicResponse(json:string){const r=JSON.parse(json);return {text:r.text??'',sources:r.sources??[],...(r.error?{error:r.error}:{}),...(r.progress?{progress:r.progress}:{})}}
-export const toAction=(r:ActionRow):AgentAction=>({id:r.id,turnId:r.turn_id,title:r.title,reason:r.reason,action:JSON.parse(r.action_json),expectedRevision:r.expected_revision,state:r.state,note:r.note,revisitDate:r.revisit_date,result:JSON.parse(r.result_json),createdAt:r.created_at});
-export async function listAgent(db:Database,owner:string,before?:string){
- const {results}=await db.prepare('SELECT * FROM orbit_agent_turns WHERE owner_id=? AND created_at<? ORDER BY created_at DESC,rowid DESC LIMIT 31').bind(owner,before??'9999').all<TurnRow>();
- const actionRows=await db.prepare(`SELECT * FROM orbit_agent_actions WHERE owner_id=? AND (state IN ('pending','deferred','applying') OR turn_id IN (SELECT id FROM orbit_agent_turns WHERE owner_id=? AND created_at<? ORDER BY created_at DESC,rowid DESC LIMIT 30)) ORDER BY created_at DESC,rowid DESC`).bind(owner,owner,before??'9999').all<ActionRow>();
- return {turns:results.slice(0,30).reverse().map(r=>({id:r.id,input:r.input,status:r.status,...publicResponse(r.response_json),createdAt:r.created_at} as AgentTurn)),actions:actionRows.results.reverse().map(toAction),hasMore:results.length>30,nextBefore:results.length>30?results[29].created_at:null};
+export const toAction=(r:ActionRow):AgentAction=>({conversationId:r.conversation_id,id:r.id,turnId:r.turn_id,title:r.title,reason:r.reason,action:JSON.parse(r.action_json),expectedRevision:r.expected_revision,state:r.state,note:r.note,revisitDate:r.revisit_date,result:JSON.parse(r.result_json),createdAt:r.created_at});
+export async function pendingActions(db:Database,owner:string){
+ const {results}=await db.prepare("SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id WHERE a.owner_id=? AND a.state IN ('pending','deferred','applying') ORDER BY a.created_at,a.rowid").bind(owner).all<ActionRow>();return results.map(toAction);
 }
-export async function beginTurn(db:Database,owner:string,id:string,input:string){
- const old=await db.prepare('SELECT * FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,id).first<TurnRow>();if(old&&old.input!==input)throw new AgentError('같은 대화 번호에 다른 내용이 있습니다. 새 메시지로 보내 주세요.','CONFLICT',409);if(old?.status==='completed')return {replayed:true,lease:''};
- const now=new Date().toISOString();await db.prepare("UPDATE orbit_agent_turns SET status='failed',response_json=? WHERE owner_id=? AND status='running' AND updated_at<? AND NOT EXISTS(SELECT 1 FROM orbit_hermes_jobs j WHERE j.owner_id=orbit_agent_turns.owner_id AND j.turn_id=orbit_agent_turns.id)").bind(JSON.stringify({text:'',sources:[],error:'연결이 끝나지 않았습니다. 같은 메시지를 다시 시도해 주세요.'}),owner,new Date(Date.now()-300000).toISOString()).run();
- try{const r=await db.prepare("INSERT INTO orbit_agent_turns(owner_id,id,input,status,response_json,created_at,updated_at) VALUES(?,?,?,'running','{}',?,?) ON CONFLICT(owner_id,id) DO UPDATE SET status='running',response_json='{}',updated_at=excluded.updated_at WHERE orbit_agent_turns.status='failed'").bind(owner,id,input,now,now).run();if(r.meta?.changes!==1)throw new Error('Busy')}catch{throw new AgentError('앞선 대화를 처리 중입니다. 잠시 후 다시 시도해 주세요.','BUSY',409)}
+export async function listAgent(db:Database,owner:string,before?:string,conversationId='legacy'){
+ const cursor=parseCursor(before);
+ const conversation=conversationId==='new'?null:await getConversation(db,owner,conversationId).catch(error=>{if(conversationId==='legacy'&&error.code==='NOT_FOUND')return null;throw error});
+ const {results}=await db.prepare('SELECT * FROM orbit_agent_turns WHERE owner_id=? AND conversation_id=? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 31').bind(owner,conversationId,cursor.at,cursor.at,cursor.id).all<TurnRow>();
+ const page=results.slice(0,30),ids=page.map(t=>t.id);
+ const actions=ids.length?(await db.prepare(`SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id WHERE a.owner_id=? AND a.turn_id IN (${ids.map(()=>'?').join(',')}) ORDER BY a.created_at,a.rowid`).bind(owner,...ids).all<ActionRow>()).results.map(toAction):[];
+ const active=await db.prepare("SELECT id,conversation_id FROM orbit_agent_turns WHERE owner_id=? AND status='running'").bind(owner).first<{id:string;conversation_id:string}>();
+ return {conversation,turns:page.reverse().map(r=>({conversationId:r.conversation_id,id:r.id,input:r.input,status:r.status,...publicResponse(r.response_json),createdAt:r.created_at} as AgentTurn)),actions,pendingActions:await pendingActions(db,owner),activeRun:active?{id:active.id,conversationId:active.conversation_id}:null,hasMore:results.length>30,nextBefore:results.length>30?results[29].created_at+'|'+results[29].id:null};
+}
+export async function beginTurn(db:Database,owner:string,id:string,input:string,conversationId='legacy'){
+ const old=await db.prepare('SELECT * FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,id).first<TurnRow>();
+ if(old&&(old.input!==input||old.conversation_id!==conversationId))throw new AgentError('같은 메시지 번호에 다른 내용이나 대화가 있습니다. 새 메시지로 보내 주세요.','CONFLICT',409);
+ if(old?.status==='completed')return {replayed:true,lease:''};
+ const now=new Date().toISOString();
+ if(conversationId==='legacy'){
+  await ensureLegacyConversation(db,owner);
+  await db.prepare("INSERT OR IGNORE INTO orbit_conversations(owner_id,id,title,project_id,revision,created_at,updated_at) VALUES(?,'legacy','이전 대화',NULL,0,?,?)").bind(owner,now,now).run();
+ }else await getConversation(db,owner,conversationId);
+ await db.prepare("UPDATE orbit_agent_turns SET status='failed',response_json=? WHERE owner_id=? AND status='running' AND updated_at<? AND NOT EXISTS(SELECT 1 FROM orbit_hermes_jobs j WHERE j.owner_id=orbit_agent_turns.owner_id AND j.turn_id=orbit_agent_turns.id)").bind(JSON.stringify({text:'',sources:[],error:'연결이 끝나지 않았습니다. 같은 메시지를 다시 시도해 주세요.'}),owner,new Date(Date.now()-300000).toISOString()).run();
+ try{
+  const results=await db.batch([
+   db.prepare("INSERT INTO orbit_agent_turns(owner_id,id,conversation_id,input,status,response_json,created_at,updated_at) VALUES(?,?,?,?,'running','{}',?,?) ON CONFLICT(owner_id,id) DO UPDATE SET status='running',response_json='{}',updated_at=excluded.updated_at WHERE orbit_agent_turns.status='failed'").bind(owner,id,conversationId,input,now,now),
+   db.prepare("UPDATE orbit_conversations SET title=CASE WHEN title='새 대화' THEN ? ELSE title END,revision=revision+1,updated_at=? WHERE owner_id=? AND id=? AND changes()=1 AND EXISTS(SELECT 1 FROM orbit_agent_turns WHERE owner_id=? AND id=? AND status='running' AND updated_at=?)").bind(input.replace(/\s+/g,' ').slice(0,60),now,owner,conversationId,owner,id,now)
+  ]);if(results[0].meta?.changes!==1)throw new Error('Busy');
+ }catch{throw new AgentError('다른 대화의 응답을 처리 중입니다. 응답이 끝나면 보내 주세요.','BUSY',409)}
  return {replayed:false,lease:now};
 }
 export async function finishTurn(db:Database,owner:string,id:string,lease:string,response:Pick<AgentTurn,'text'|'sources'>,actions:AgentAction[]){

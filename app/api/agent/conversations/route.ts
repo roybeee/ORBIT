@@ -1,0 +1,7 @@
+import {getDatabase} from '@/db/storage';
+import {owner,body,json,failure,AgentError} from '@/lib/orbit/agent/http';
+import {createConversation,createConversationSchema,listConversations,updateConversation,updateConversationSchema} from '@/lib/orbit/agent/conversations';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){try{const user=await owner(),query=new URL(request.url).searchParams,project=query.get('projectId');if(project!==null&&(!project||project.length>100))throw new AgentError('프로젝트를 확인해 주세요.');return json(await listConversations(getDatabase(),user.id,{before:query.get('before')??undefined,...(query.get('general')==='1'?{projectId:null}:project!==null?{projectId:project}:{})}))}catch(error){return failure(error)}}
+export async function POST(request:Request){try{const user=await owner(request),input=createConversationSchema.safeParse(await body(request,2000));if(!input.success)throw new AgentError('대화 제목과 프로젝트를 확인해 주세요.');return json(await createConversation(getDatabase(),user.id,input.data))}catch(error){return failure(error)}}
+export async function PATCH(request:Request){try{const user=await owner(request),input=updateConversationSchema.safeParse(await body(request,2000));if(!input.success)throw new AgentError('대화 제목과 프로젝트를 확인해 주세요.');return json(await updateConversation(getDatabase(),user.id,input.data))}catch(error){return failure(error)}}

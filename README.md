@@ -77,3 +77,14 @@ See [GitHub development instructions](docs/GitHub_Connect.ko.md) and [contributi
 ## Privacy
 
 Do not commit real meetings, calendars, tokens, local databases, account credentials or exports. Use synthetic fixtures. Keep the Site private; owner identity and reference checks belong on the server.
+
+
+### 여러 AI 대화와 프로젝트별 보관
+
+- AI 에이전트의 **새 대화**로 주제별 대화를 만듭니다. 첫 메시지로 제목이 자동 지정되고, 제목 옆 연필 버튼에서 제목과 보관할 프로젝트를 바꿀 수 있습니다.
+- **대화 보관함**에서 모든 대화, 일반 대화, 특정 프로젝트를 골라 다시 이어갈 수 있습니다. 작은 화면에서는 **대화 목록**을 엽니다.
+- 프로젝트 카드의 **대화 보기**는 해당 프로젝트의 대화 목록을 엽니다. 이 목록에서 만든 새 대화는 그 프로젝트에 연결됩니다.
+- 이전 버전의 단일 대화는 **이전 대화**로 보존합니다. 기존 메시지·승인 카드·진행 중인 Hermes 실행 ID는 바꾸지 않습니다. 프로젝트를 삭제하면 연결 대화는 일반 대화로 남습니다.
+- Hermes의 대화 이력과 세션 키는 대화별로 분리합니다. 같은 소유자의 일정·할 일·위키 등 워크스페이스 정보는 공통 참고 자료입니다. 검토함은 모든 대화의 미결 제안을 모읍니다.
+- 한 번에 하나의 Hermes 응답을 진행합니다. 응답 중에도 다른 대화를 열거나 새 대화를 만들 수 있고, 응답이 끝나면 다음 메시지를 보낼 수 있습니다.
+- 대화와 프로젝트 연결은 로그인한 계정의 서버에 자동 저장됩니다. 기존 워크스페이스 JSON 내보내기의 범위는 변경하지 않습니다.
