@@ -50,7 +50,9 @@ The app includes a web manifest, 192/512px icons and a static offline fallback. 
 
 ## GitHub status
 
-The user's GitHub account still returned no accessible repositories or installations. CI and Issue/PR templates are prepared; remote GitHub CI has not run. The connector exposes no repository creation capability, and this environment has no authenticated GitHub CLI. A prefilled private-repository creation link and an authenticated-environment creation/push script are prepared in `docs/GitHub_Connect.ko.md`. Repository creation and access authorization still need to be completed. The separate Sites Git repository is not GitHub.
+Target repository: [roybeee/ORBIT](https://github.com/roybeee/ORBIT), selected by the user. The repository exists and is public. The local `github` remote points to it. On 2026-09-06, the actual file upload was rejected with HTTP 403, `Resource not accessible by integration`. Source upload and remote CI are therefore **not complete**. Grant the ChatGPT/Codex GitHub connection access to this repository, then retry the upload.
+
+The code, CI and Issue/PR templates are prepared. `docs/GitHub_Connect.ko.md` documents the exact target and recovery steps. `scripts/connect-github.sh` pushes to this existing repository from an authenticated GitHub CLI environment; it does not create or substitute a repository. The separate Sites source remote remains the durable copy of the application.
 
 ## Privacy
 

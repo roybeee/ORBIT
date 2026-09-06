@@ -2,7 +2,7 @@
 # Run inside an authenticated GitHub CLI environment. Never embeds credentials.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
-ORBIT_REPOSITORY='roybeee/orbit-personal-os'
+ORBIT_REPOSITORY='roybeee/ORBIT'
 ORBIT_REMOTE_URL="https://github.com/${ORBIT_REPOSITORY}.git"
 if ! command -v gh >/dev/null 2>&1; then
   printf '%s\n' 'GitHub CLI is required. Install it and sign in with gh auth login, then rerun this script.' >&2
@@ -24,15 +24,8 @@ if git remote get-url github >/dev/null 2>&1; then
     exit 1
   fi
 fi
-if gh repo view "$ORBIT_REPOSITORY" --json nameWithOwner >/dev/null 2>&1; then
-  ORBIT_PRIVATE="$(gh repo view "$ORBIT_REPOSITORY" --json isPrivate --jq .isPrivate)"
-  if [[ "$ORBIT_PRIVATE" != 'true' ]]; then
-    printf '%s\n' 'The repository must be private. No source was pushed.' >&2
-    exit 1
-  fi
-else
-  gh repo create "$ORBIT_REPOSITORY" --private --description 'Orbit personal management workspace: projects, tasks, wiki, reviews and daily proposals'
-fi
+# Use the exact repository selected by the user. Its public visibility is intentional here.
+gh repo view "$ORBIT_REPOSITORY" --json nameWithOwner >/dev/null
 if ! git remote get-url github >/dev/null 2>&1; then
   git remote add github "$ORBIT_REMOTE_URL"
 fi

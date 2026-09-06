@@ -51,3 +51,9 @@ Prioritize per-record note/revision storage and paged retrieval before large kno
 - ORB-002: private repo creation link and authenticated CLI creation/push script prepared. GitHub account `roybeee` still exposes zero installations/repositories; no callable create-repository action or authenticated CLI is available. Actual GitHub creation/push is incomplete.
 
 Next: complete GitHub account-side creation/access, validate on the user's device, then add grounded AI meeting/wiki proposals with provider configuration and recoverable failures. Bulk imports must wait for metadata catalog normalization and storage limits review.
+
+## GitHub target selected
+
+- User selected `https://github.com/roybeee/ORBIT.git`. Repository exists, is public, and was empty when inspected.
+- Local `github` remote configured for the exact target. Actual README initialization failed with GitHub HTTP 403 (`Resource not accessible by integration`); no file or commit was created remotely.
+- ORB-002 now requires granting the ChatGPT/Codex GitHub connection repository write access, then uploading the prepared source and checking CI. Do not create the earlier proposed repository.

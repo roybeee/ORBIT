@@ -1,30 +1,41 @@
 # Orbit GitHub 연결
 
-요청된 저장소: `roybeee/orbit-personal-os` · 비공개 · 기본 브랜치 `main`
+지정 저장소: [roybeee/ORBIT](https://github.com/roybeee/ORBIT) · 기본 브랜치 `main`
 
-2026-09-06 확인: GitHub 계정 `roybeee`는 연결되어 있으나 접근 가능한 설치/저장소가 0개다. 현재 연결 도구에는 저장소 생성 기능이 없으며 작업 환경에 인증된 GitHub CLI 또는 GitHub 토큰도 없다. **GitHub 저장소 생성과 소스 업로드는 아직 완료되지 않았다.** Sites의 소스 보관 원격 저장소는 GitHub와 별개다.
+## 확인된 현재 상태
 
-## 계정에서 준비할 설정
+- 저장소가 존재하며 공개 상태입니다. 확인 시점에는 비어 있었습니다.
+- 로컬 소스의 `github` 원격 주소를 `https://github.com/roybeee/ORBIT.git`으로 설정했습니다.
+- 실제 파일 생성 요청이 GitHub의 **HTTP 403: Resource not accessible by integration** 응답으로 거절됐습니다. 계정 권한 메타데이터와 연결 앱의 실제 쓰기 권한은 다릅니다.
+- **GitHub 코드 업로드와 CI 실행은 아직 완료하지 못했습니다.** 기존 앱은 별도의 비공개 Sites에서 동작합니다.
 
-[비공개 저장소 생성 화면](https://github.com/new?owner=roybeee&name=orbit-personal-os&visibility=private&description=Orbit+personal+management+workspace)을 열고 생성한다. 기존 코드를 올릴 예정이므로 README·라이선스·gitignore 초기화는 선택하지 않는다. ChatGPT의 GitHub 연결 설정에서 이 저장소 접근을 허용한다. 이름/비공개 설정은 GitHub가 지원하는 [URL 매개변수](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-new-repository#creating-a-new-repository-from-a-url-query)로 미리 채웠다.
+## 필요한 연결 설정
 
-## 인증된 개발 환경에서 생성과 연결을 한 번에 실행
+ChatGPT의 GitHub 연결 설정에서 `roybeee/ORBIT` 저장소를 사용할 수 있도록 GitHub 앱 설치/접근 범위를 확인해야 합니다. GitHub의 설치된 앱 설정에서 해당 ChatGPT/Codex 연결을 찾아 저장소 접근 대상에 `ORBIT`를 포함하고, 요청된 코드 쓰기 권한을 승인합니다. 설치 항목이 없다면 ChatGPT의 GitHub 연결을 다시 설정합니다.
 
-저장소를 별도로 만들지 않았어도, `roybeee`로 로그인한 GitHub CLI 환경에서 이 소스 체크아웃의 다음 스크립트를 실행하면 비공개 저장소 생성부터 코드 업로드까지 진행한다.
+저장소를 다시 생성할 필요는 없습니다. 토큰이나 비밀번호를 대화에 붙여 넣지 않아도 됩니다. 저장소 접근이 반영되면 준비된 소스를 업로드하고 결과를 확인할 수 있습니다.
+
+## 인증된 개발 환경에서 직접 업로드
+
+GitHub CLI가 설치되어 있고 `roybeee`로 로그인된 개발 환경에서는 다음 명령으로 전체 소스를 지정한 저장소에 업로드할 수 있습니다.
 
 ```bash
 bash scripts/connect-github.sh
 ```
 
-스크립트는 계정, 비공개 여부, 깨끗한 main 브랜치, 기존 remote를 확인한다. GitHub 저장소가 이미 있으면 재사용하고 기존 Sites remote를 유지한다. 강제 push를 사용하지 않고, 인증 정보를 파일이나 Git 설정에 기록하지 않는다. 마지막에는 로컬과 GitHub main의 전체 커밋 값이 같은지 확인한다. GitHub CLI가 없거나 인증되지 않았다면 변경 없이 종료한다.
+스크립트는 `main` 브랜치와 저장 상태, 기존 원격 주소를 확인하고, `roybeee/ORBIT`를 재사용합니다. 기존 이력을 덮어쓰는 강제 push를 사용하지 않습니다. 업로드 후 로컬과 GitHub의 전체 커밋 값이 같은지 확인합니다. GitHub 인증이 필요한 작업이며 이 환경에서는 실제 실행을 완료하지 않았습니다.
 
-실행 전제: [GitHub CLI 설치](https://cli.github.com/) 및 `gh auth login` 완료. [gh repo create 공식 문서](https://cli.github.com/manual/gh_repo_create).
+## 전달받은 소스 ZIP으로 시작하기
 
-## 업로드 후 확인
+ZIP을 압축 해제하면 앱 소스, 문서, 데이터베이스 변경 이력, CI와 Issue/PR 양식이 들어 있습니다. 실제 업무 데이터와 인증 정보, 의존성 설치 폴더, 빌드 결과물은 들어 있지 않습니다.
 
-- GitHub의 main이 최신 소스와 일치하는지 확인
-- Actions의 Validate Orbit 결과 확인
-- `docs/BACKLOG.md`의 미완료 항목을 GitHub Issues로 등록
-- 이후 feature 브랜치와 Pull Request로 변경 검토
+압축을 해제한 폴더에 `.git`이 없다면 로컬 Git 이력을 먼저 만듭니다. Git 작성자 이름과 이메일이 설정되어 있어야 합니다.
 
-CI, Issue 양식, Pull Request 양식은 소스에 포함되어 있다. 아직 GitHub에서 실행한 CI 결과나 생성한 Issue/PR은 없다.
+```bash
+git init -b main
+git add .
+git commit -m "feat: import Orbit personal management app"
+bash scripts/connect-github.sh
+```
+
+현재 준비한 코드는 기존 로컬 검증 35개를 통과한 앱입니다. 이번 연결 준비에서는 앱 동작을 변경하지 않았습니다. 업로드가 성공하면 GitHub Actions의 Validate Orbit 결과를 확인하고 이후 기능 업데이트는 Issue → feature 브랜치 → Pull Request로 관리합니다. GitHub에 소스를 올리는 것만으로 운영 중인 앱이 자동 재배포되지는 않습니다.
