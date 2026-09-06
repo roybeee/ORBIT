@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.1 · 2026-09-06
+
+- Aligned the Hermes run client with the native API server lifecycle: `waiting_for_approval` and `interrupted` are recognized, unknown non-terminal states keep polling under the existing time limit, and terminal failures carry the gateway's error summary.
+- Native tool approval requests raised during an Orbit conversation are declined through `/v1/runs/{run_id}/approval` so the run continues on the read-request protocol; the conversation shows the declined tool name only.
+- Rejected submissions (400), idempotency-key conflicts and forgotten runs (404) now fail the turn once instead of being retried on every poll; concurrency limits (429) still keep the run ID and retry.
+- A stop request for a run the gateway no longer holds (409) no longer blocks cancellation; the turn finishes through the durable run status.
+- Connection check also rejects a gateway that reports `auth.required: false`. Setup guide documents the per-state behavior.
+
 ## v0.5 · 2026-09-06
 
 - Replaced direct OpenAI model calls and API-key setup with authenticated native Hermes Agent runs; model/provider remain managed by the existing Hermes instance.

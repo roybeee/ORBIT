@@ -3,7 +3,7 @@ import {readWorkspace,readNote,searchNotes,type Database} from '../../../db/repo
 import {applyAction} from '../reducer.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {connections,type Runtime} from './integrations.ts';
-import {hermesConfig,hermesRequest,validRunId} from './hermes.ts';
+import {hermesCall,hermesConfig,hermesReason,hermesRequest,hermesTerminal,hermesWaiting,validRunId} from './hermes.ts';
 import {plaudRead,plaudTools} from './plaud.ts';
 import {syncCalendar} from './calendar.ts';
 import {beginTurn,failTurn,finishTurn,listAgent} from './repository.ts';
@@ -99,14 +99,24 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    job.runId=result.run_id;job.phase='poll';await save('헤르메스가 기록을 검토하고 있습니다. 화면을 다시 열면 이어서 확인합니다.');return;
   }
   if(job.phase==='poll'){
-   const result=await hermesRequest(config,'/v1/runs/'+job.runId);
-   if(result.run_id!==job.runId||result.object!=='hermes.run')throw new AgentError('헤르메스 실행 결과가 일치하지 않습니다.','HERMES_FORMAT',502);
-   if(['failed','cancelled'].includes(result.status)){await discard(db,owner,id,row.turn_lease,job.cancel?'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.':'헤르메스가 응답을 완료하지 못했습니다. Mac의 실행 상태를 확인하고 다시 요청해 주세요.');return}
-   if(result.status!=='completed'){
-    if(!['started','queued','running','stopping','waiting','waiting_approval','pending'].includes(result.status))throw new AgentError('헤르메스 실행 상태를 확인하지 못했습니다.','HERMES_FORMAT',502);
+   // The gateway forgets a run after a restart without a durable store or after its retention window.
+   const {status:http,data:result}=await hermesCall(config,'/v1/runs/'+job.runId,{},[404]);
+   if(http===404){await discard(db,owner,id,row.turn_lease,job.cancel?'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.':'헤르메스가 이 실행 기록을 더 이상 갖고 있지 않습니다. Mac의 gateway 상태를 확인하고 다시 요청해 주세요.');return}
+   if(result.run_id!==job.runId||result.object!=='hermes.run'||typeof result.status!=='string')throw new AgentError('헤르메스 실행 결과가 일치하지 않습니다.','HERMES_FORMAT',502);
+   const status:string=result.status,reason=hermesReason(result);
+   if(hermesTerminal.includes(status)&&status!=='completed'){await discard(db,owner,id,row.turn_lease,job.cancel?'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.':status==='interrupted'?'Mac의 Hermes gateway가 다시 시작되어 실행이 중단됐습니다. 다시 요청해 주세요.':'헤르메스가 응답을 완료하지 못했습니다'+(reason?` (${reason})`:'')+'. Mac의 실행 상태를 확인하고 다시 요청해 주세요.');return}
+   if(status!=='completed'){
+    // Unknown non-terminal states keep polling under the same overall time limit.
     if(Date.now()-job.started>1200000)job.cancel=true;
-    if(job.cancel){await save('헤르메스 작업 중지를 확인하고 있습니다.');await hermesRequest(config,'/v1/runs/'+job.runId+'/stop',{method:'POST',body:'{}'});return}
-    await save(result.status==='waiting_approval'?'헤르메스가 별도 실행 승인을 기다립니다. Mac에서 실행 상태를 확인하거나 여기서 중지해 주세요.':'헤르메스가 기록을 확인하고 다음 단계를 정리하고 있습니다.');return;
+    if(job.cancel){await save('헤르메스 작업 중지를 확인하고 있습니다.');await hermesCall(config,'/v1/runs/'+job.runId+'/stop',{method:'POST',body:'{}'},[409]);return}
+    if(hermesWaiting(status)){
+     // Orbit conversations use only the read-request protocol; a native tool approval
+     // cannot be reviewed from the phone, so it is declined and the run continues.
+     const approval=result.approval&&typeof result.approval==='object'?result.approval:{},tool=typeof approval.tool_name==='string'?approval.tool_name:typeof approval.tool==='string'?approval.tool:'',requestId=typeof approval.request_id==='string'&&approval.request_id.length<=256?approval.request_id:undefined;
+     await save('헤르메스가 Mac에서 도구 실행'+(tool?` (${tool.slice(0,60)})`:'')+' 승인을 요청해 Orbit이 거절했습니다. 대화는 조회 결과만으로 이어집니다.');
+     await hermesCall(config,'/v1/runs/'+job.runId+'/approval',{method:'POST',body:JSON.stringify({choice:'deny',...(requestId?{request_id:requestId}:{})})},[409]);return;
+    }
+    await save('헤르메스가 기록을 확인하고 다음 단계를 정리하고 있습니다.');return;
    }
    if(job.cancel||(await getJob(db,owner,id))?.cancel_requested){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.');return}
    if(typeof result.output!=='string'||result.output.length>300000)throw new AgentError('헤르메스 응답이 너무 크거나 올바르지 않습니다.','HERMES_FORMAT',422);
