@@ -43,6 +43,13 @@
       "when": 1788692774924,
       "tag": "0005_wise_ozymandias",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788708629384,
+      "tag": "0006_hot_brood",
+      "breakpoints": true
     }
   ]
 }

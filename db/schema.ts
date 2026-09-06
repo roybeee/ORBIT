@@ -1,5 +1,12 @@
 import {sql} from 'drizzle-orm';
 import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+// Bind legacy SIWC email claims only after observing the same verified stable ID.
+// A conflicting stable identity permanently disables email-only recovery.
+export const identityLinks=sqliteTable('orbit_identity_links',{
+ emailHash:text('email_hash').primaryKey(),
+ ownerId:text('owner_id').notNull(),
+ conflicted:integer('conflicted').notNull().default(0),
+});
 // One owner-scoped aggregate keeps task/proposal/calendar transitions atomic.
 // Schema-only migrations; no user records or demo data are seeded here.
 export const workspaces=sqliteTable('orbit_workspaces',{
