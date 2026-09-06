@@ -48,11 +48,15 @@ D1 stores atomic workspace metadata and request receipts, with immutable documen
 
 The app includes a web manifest, 192/512px icons and a static offline fallback. Private user content is not cached by the service worker. Real device installation and browser interaction have not been verified. Offline data editing is not supported.
 
-## GitHub status
+## GitHub source and workflow
 
-Target repository: [roybeee/ORBIT](https://github.com/roybeee/ORBIT), selected by the user. The repository exists and is public. The local `github` remote points to it. On 2026-09-06, the actual file upload was rejected with HTTP 403, `Resource not accessible by integration`. Source upload and remote CI are therefore **not complete**. Grant the ChatGPT/Codex GitHub connection access to this repository, then retry the upload.
+Source repository: [roybeee/ORBIT](https://github.com/roybeee/ORBIT). The repository is public; the running personal workspace remains protected by Sites sign-in and owner access. Real workspace records are held separately in D1.
 
-The code, CI and Issue/PR templates are prepared. `docs/GitHub_Connect.ko.md` documents the exact target and recovery steps. `scripts/connect-github.sh` pushes to this existing repository from an authenticated GitHub CLI environment; it does not create or substitute a repository. The separate Sites source remote remains the durable copy of the application.
+The repository contains the complete v0.3 application, locked dependencies, schema migrations, design/release documents, tests, and CI/Issue/PR templates. The initial import preserves the source snapshot; earlier development commits are retained in the separate Sites source repository.
+
+For each update, create a feature branch, open a pull request and check **Validate Orbit**. GitHub CI installs dependencies, checks types, runs planner/storage/document tests, builds the Worker and checks its HTTP routes. Deployment is a separate verified Sites release; pushing code does not automatically change the running app.
+
+See [GitHub development instructions](docs/GitHub_Connect.ko.md) and [contribution workflow](CONTRIBUTING.md).
 
 ## Privacy
 

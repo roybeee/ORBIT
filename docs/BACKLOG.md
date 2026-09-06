@@ -57,3 +57,8 @@ Next: complete GitHub account-side creation/access, validate on the user's devic
 - User selected `https://github.com/roybeee/ORBIT.git`. Repository exists, is public, and was empty when inspected.
 - Local `github` remote configured for the exact target. Actual README initialization failed with GitHub HTTP 403 (`Resource not accessible by integration`); no file or commit was created remotely.
 - ORB-002 now requires granting the ChatGPT/Codex GitHub connection repository write access, then uploading the prepared source and checking CI. Do not create the earlier proposed repository.
+
+## GitHub installation completed
+
+- ChatGPT Codex Connector is installed for `roybeee`, and repository writes now succeed.
+- ORB-002: importing the full v0.3 source snapshot to `roybeee/ORBIT`; repository includes Validate Orbit CI and Issue/PR templates. Earlier access-blocked entries above describe the previous setup state.
