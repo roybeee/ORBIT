@@ -1,6 +1,6 @@
 # Development backlog
 
-Status: planned unless explicitly marked complete. These are repository documents, not remotely created GitHub Issues.
+Status: planned unless explicitly marked complete. v0.2 progress is recorded below. These are repository documents, not remotely created GitHub Issues.
 
 | ID | Release | Work item | Acceptance criteria |
 |---|---|---|---|
@@ -27,3 +27,18 @@ Status: planned unless explicitly marked complete. These are repository document
 ## Release gate
 
 No prototype can be relabeled as a daily-use release until persistence, ownership, date handling, approval idempotency and actual phone flows pass. External account setup and store/browser behavior may affect delivery dates.
+
+## v0.2 progress
+
+- ORB-101: implemented — private sign-in, stable owner ID, persisted state and owner/reference checks.
+- ORB-102: implemented — create/edit/status/complete with version conflicts; observable completion criteria retained.
+- ORB-103: basic internal calendar and timezone dates implemented; external recurring calendars remain future work.
+- ORB-104: manual records and links implemented; original-document revisions and large/paged knowledge storage remain.
+- ORB-105: date-based current review records implemented; review revision history remains.
+- ORB-106: implemented — server domain transition plus atomic CAS/idempotency receipt.
+- ORB-107: task follow-up dates and proposal revisit dates implemented; automatic notifications remain.
+- ORB-108: manifest/icons/offline explanation implemented; actual-device installation and browser QA remain.
+- ORB-109: save-error input preservation and JSON export implemented; import/restore remains.
+- ORB-002: blocked on user GitHub repository access; no repository was fabricated or silently substituted.
+
+Prioritize per-record note/revision storage and paged retrieval before large knowledge imports. Current aggregate persistence is bounded and designed for the first personal-use iteration.

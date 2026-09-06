@@ -1,38 +1,24 @@
-import assert from "node:assert/strict";
-import test from "node:test";
-
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-
-test("renders the Korean Orbit workspace and its prototype boundary", async () => {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  const response = await worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-
-  assert.equal(response.status, 200);
-  assert.match(
-    response.headers.get("content-type") ?? "",
-    /^text\/html\b/i,
-  );
-  const html = await response.text();
-  assert.match(html, /오늘, 중요한 일부터/);
-  assert.match(html, /설계 시안/);
-  assert.match(html, /새로고침하면 초기화/);
-  assert.match(html, /lang="ko"/);
-  assert.doesNotMatch(html, developmentPreviewMeta);
+import assert from 'node:assert/strict';
+import test,{after} from 'node:test';
+import {register} from 'node:module';
+import {randomUUID} from 'node:crypto';
+import {createDatabase} from './sqlite-d1.mjs';
+register('./cloudflare-loader.mjs',import.meta.url);
+const db=createDatabase();
+globalThis.__orbitCloudflareEnv={DB:db};
+const {default:worker}=await import('../dist/server/index.js');
+after(()=>db.close());
+const identity=(id='owner-a')=>({'oai-authenticated-user-id':id,'oai-authenticated-user-email':id+'@example.test','oai-authenticated-user-full-name':'Test%20Owner','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
+const request=(path,init={})=>worker.fetch(new Request('https://orbit.test'+path,init),{DB:db,ASSETS:{fetch:async()=>new Response('Not found',{status:404})}},{waitUntil(){},passThroughOnException(){}});
+test('anonymous browser access redirects to the platform sign-in flow',async()=>{const r=await request('/');assert.ok([302,303,307,308].includes(r.status));assert.match(r.headers.get('location')??'',/signin-with-chatgpt/)});
+test('authenticated shell uses Korean, personal workspace and install manifest metadata',async()=>{const r=await request('/',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assert.match(html,/오늘, 중요한 일부터/);assert.match(html,/lang="ko"/);assert.match(html,/manifest.webmanifest/);assert.doesNotMatch(html,/새로고침하면 초기화/);assert.doesNotMatch(html,/화덕피자 파일럿 운영안 확정/)});
+test('demo is clearly separated and does not create stored user records',async()=>{const before=await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first();const r=await request('/demo',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assert.match(html,/예시 체험/);assert.match(html,/변경은 저장되지 않습니다/);assert.match(html,/화덕피자 파일럿 운영안 확정/);assert.deepEqual(await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first(),before)});
+test('workspace API rejects anonymous reads and writes',async()=>{assert.equal((await request('/api/workspace')).status,401);assert.equal((await request('/api/workspace',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401)});
+test('API rejects foreign origins and stores owner-scoped commands',async()=>{
+ const action={type:'project.upsert',project:{id:'http-project',name:'HTTP persisted',color:'#5558e8',symbol:'H',goal:'Persist',due:'2026-09-30',priority:3}};
+ const body=JSON.stringify({expectedRevision:0,operationId:randomUUID(),action});
+ const denied=await request('/api/workspace',{method:'POST',headers:{...identity(),'content-type':'application/json',origin:'https://foreign.test'},body});assert.equal(denied.status,403);
+ const saved=await request('/api/workspace',{method:'POST',headers:{...identity(),'content-type':'application/json',origin:'https://orbit.test'},body});assert.equal(saved.status,200);assert.equal((await saved.json()).revision,1);
+ const owner=await request('/api/workspace',{headers:identity()});assert.match(owner.headers.get('cache-control'),/no-store/);assert.equal((await owner.json()).data.projects[0].name,'HTTP persisted');
+ const other=await request('/api/workspace',{headers:identity('owner-b')});assert.equal((await other.json()).data.projects.length,0);
 });

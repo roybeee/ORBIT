@@ -1,4 +1,17 @@
-// Intentionally empty by default.
-// Add Drizzle tables here when the site actually needs a database.
-// See examples/d1/db/schema.ts for an opt-in example.
-export {};
+import {sqliteTable,text,integer,primaryKey} from 'drizzle-orm/sqlite-core';
+// One owner-scoped aggregate keeps task/proposal/calendar transitions atomic.
+// Schema-only migrations; no user records or demo data are seeded here.
+export const workspaces=sqliteTable('orbit_workspaces',{
+ ownerId:text('owner_id').primaryKey(),
+ revision:integer('revision').notNull(),
+ stateJson:text('state_json').notNull(),
+ mutationId:text('mutation_id').notNull(),
+ updatedAt:text('updated_at').notNull(),
+});
+export const mutations=sqliteTable('orbit_mutations',{
+ ownerId:text('owner_id').notNull(),
+ operationId:text('operation_id').notNull(),
+ actionHash:text('action_hash').notNull(),
+ revision:integer('revision').notNull(),
+ createdAt:text('created_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.operationId]})]);

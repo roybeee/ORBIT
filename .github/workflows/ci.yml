@@ -21,5 +21,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run test:planner
+      - run: npm run test:storage
       - run: npm run build
       - run: npm run test:smoke

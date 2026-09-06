@@ -5,7 +5,7 @@
 ## 검증
 
 - [ ] Typecheck
-- [ ] Scheduling and approval tests
+- [ ] Scheduling, approval and storage tests
 - [ ] Build and SSR smoke test
 - [ ] Necessary mobile/keyboard checks for this change
 
