@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test,{after} from 'node:test';
 import {register} from 'node:module';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,randomBytes} from 'node:crypto';
 import {createDatabase} from './sqlite-d1.mjs';
 register('./cloudflare-loader.mjs',import.meta.url);
 const db=createDatabase();
@@ -45,11 +45,18 @@ test('phone installation guide is authenticated, actionable and isolated from st
 
 test('agent and integration routes require owner identity and same-origin writes',async()=>{
  for(const path of ['/api/agent','/api/integrations'])assert.equal((await request(path)).status,401);
- for(const path of ['/api/agent','/api/integrations','/api/integrations/connect','/api/integrations/sync']){
+ for(const path of ['/api/agent','/api/agent/run','/api/integrations','/api/integrations/connect','/api/integrations/sync']){
   assert.equal((await request(path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
   assert.equal((await request(path,{method:'POST',headers:{...identity(),'content-type':'application/json',origin:'https://foreign.test'},body:'{}'})).status,403);
  }
  const state=await request('/api/agent',{headers:identity('agent-http')});assert.equal(state.status,200);assert.match(state.headers.get('cache-control'),/no-store/);assert.deepEqual((await state.json()).turns,[]);
- const missing=await request('/api/agent',{method:'POST',headers:{...identity('agent-http'),'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify({id:randomUUID(),message:'안녕하세요'})});assert.equal(missing.status,409);assert.equal((await missing.json()).code,'AI_SETUP');
+ const missing=await request('/api/agent',{method:'POST',headers:{...identity('agent-http'),'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify({id:randomUUID(),message:'안녕하세요'})});assert.equal(missing.status,409);assert.equal((await missing.json()).code,'HERMES_SETUP');
  const callback=await request('/api/integrations/callback?state=untrusted&code=private-code',{headers:identity()});assert.equal(callback.status,303);assert.equal(callback.headers.get('location'),'/?connection_error=1#agent');assert.ok(!callback.headers.get('location').includes('private-code'));assert.match(callback.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax/);
+});
+
+test('Plaud connect HTTP returns a usable PKCE authorization URL and secure callback cookie without registration',async()=>{
+ globalThis.__orbitCloudflareEnv.ORBIT_ENCRYPTION_KEY=randomBytes(32).toString('base64');
+ globalThis.__orbitCloudflareEnv.PLAUD_OAUTH_CLIENT_ID='orbit-public-client';
+ const r=await request('/api/integrations/connect',{method:'POST',headers:{...identity('plaud-http'),'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify({provider:'plaud'})});
+ assert.equal(r.status,200);const data=await r.json(),url=new URL(data.url);assert.equal(url.origin,'https://mcp.plaud.ai');assert.equal(url.searchParams.get('client_id'),'orbit-public-client');assert.equal(url.searchParams.get('code_challenge_method'),'S256');assert.match(r.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax; Max-Age=600/);assert.match(r.headers.get('cache-control'),/no-store/);assert.ok(!JSON.stringify(data).includes('code_verifier'));assert.ok(!JSON.stringify(data).includes(globalThis.__orbitCloudflareEnv.ORBIT_ENCRYPTION_KEY));
 });

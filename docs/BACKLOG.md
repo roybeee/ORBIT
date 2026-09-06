@@ -72,7 +72,7 @@ Next: complete GitHub account-side creation/access, validate on the user's devic
 
 ## v0.4 progress
 
-- Conversation-first AI management, owner-scoped history and approval/defer/review-date cards implemented. Actual inference requires an OpenAI API key in app settings.
+- Conversation-first AI management, owner-scoped history and approval/defer/review-date cards implemented. Actual inference uses the existing Hermes gateway; its HTTPS address and connection key must be configured in app settings.
 - ORB-201/202/203: AI meeting/wiki/task proposals and grounded note reads implemented, with immutable edit revision checks and deterministic timing. Time-estimate learning remains.
 - Plaud: official remote MCP integration with dedicated OAuth/PKCE implemented; app-side account consent required.
 - ORB-302: primary Google Calendar full-window sync implemented with paging, recurring instances, local-date normalization and live conflict checks. Multi-calendar selection and incremental sync remain.

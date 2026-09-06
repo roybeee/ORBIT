@@ -4,20 +4,22 @@ import {AgentError} from './errors.ts';
 import {decrypt,encrypt,readConnection,saveConnection} from './secrets.ts';
 export const PLAUD={server:'https://mcp.plaud.ai/mcp',authorize:'https://mcp.plaud.ai/authorize',token:'https://mcp.plaud.ai/token',register:'https://mcp.plaud.ai/register'};
 export const GOOGLE={authorize:'https://accounts.google.com/o/oauth2/v2/auth',token:'https://oauth2.googleapis.com/token',scope:'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly'};
-export interface Runtime {ORBIT_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;OPENAI_MODEL?:string}
+export interface Runtime {ORBIT_ENCRYPTION_KEY?:string;PLAUD_OAUTH_CLIENT_ID?:string}
 export interface AuthConfig {clientId:string;clientSecret?:string;accessToken?:string;refreshToken?:string;expiresAt?:number;scope?:string}
-export interface AiConfig {key:string;model:string}
 export const keyOf=(env:Runtime)=>env.ORBIT_ENCRYPTION_KEY??'';
 export async function fetchJson(url:string,init:RequestInit={},timeout=20000):Promise<{response:Response;data:Record<string,any>}>{
- const response=await fetch(url,{...init,signal:AbortSignal.timeout(timeout),redirect:'error'});
- const text=await response.text();if(text.length>2000000)throw new AgentError('연결 응답이 너무 큽니다. 범위를 줄여 주세요.','UPSTREAM',502);
- let data;try{data=JSON.parse(text)}catch{throw new AgentError('연결 서비스가 올바르게 응답하지 않았습니다.','UPSTREAM',502)}return{response,data};
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
+ try{
+  const response=await fetch(url,{...init,cache:'no-store',signal:controller.signal,redirect:'manual'});
+  if(response.status>=300&&response.status<400)throw new AgentError('연결 서비스가 다른 주소로 이동했습니다. 연결 주소를 확인해 주세요.','UPSTREAM_REDIRECT',502);
+  const text=await response.text();if(text.length>2000000)throw new AgentError('연결 응답이 너무 큽니다. 범위를 줄여 주세요.','UPSTREAM',502);
+  let data;try{data=JSON.parse(text)}catch{throw new AgentError('연결 서비스가 올바르게 응답하지 않았습니다.','UPSTREAM',502)}if(!data||typeof data!=='object')throw new AgentError('연결 서비스의 응답 형식을 확인할 수 없습니다.','UPSTREAM',502);return{response,data};
+ }catch(error){if(error instanceof AgentError)throw error;console.error('Orbit upstream request failed',{host:new URL(url).hostname,kind:error instanceof Error?error.name:'unknown'});throw new AgentError(controller.signal.aborted?'연결 시간이 초과됐습니다. 잠시 후 다시 연결해 주세요.':'연결 서비스에 도달하지 못했습니다. 잠시 후 다시 시도해 주세요.','UPSTREAM_NETWORK',502)}finally{clearTimeout(timer)}
 }
 export async function connections(db:Database,owner:string,env:Runtime):Promise<Connection[]>{
  const {results}=await db.prepare('SELECT provider,public_json,updated_at FROM orbit_integrations WHERE owner_id=?').bind(owner).all<{provider:Provider;public_json:string;updated_at:string}>();
- return (['openai','plaud','google_calendar'] as Provider[]).map(provider=>{const row=results.find(r=>r.provider===provider),data=row?JSON.parse(row.public_json):{};return {provider,configured:provider==='plaud'||!!row||(provider==='openai'&&!!env.OPENAI_API_KEY),connected:!!data.connected||(provider==='openai'&&!!env.OPENAI_API_KEY),label:provider==='openai'?'AI 에이전트':provider==='plaud'?'Plaud 회의 기록':'Google Calendar',updatedAt:row?.updated_at,...(provider==='openai'?{model:data.model??env.OPENAI_MODEL??'gpt-5.6-terra'}:{})}});
+ return (['hermes','plaud','google_calendar'] as Provider[]).map(provider=>{const row=results.find(r=>r.provider===provider),data=row?JSON.parse(row.public_json):{};return {provider,configured:provider==='plaud'||!!row,connected:!!data.connected,label:provider==='hermes'?'헤르메스 에이전트':provider==='plaud'?'Plaud 회의 기록':'Google Calendar',updatedAt:row?.updated_at,...(provider==='hermes'?{endpoint:data.endpoint,model:data.model??'Hermes'}:{})}});
 }
-export async function aiConfig(db:Database,owner:string,env:Runtime):Promise<AiConfig>{const value=await readConnection<AiConfig>(db,owner,'openai',keyOf(env));if(value)return value;if(env.OPENAI_API_KEY)return {key:env.OPENAI_API_KEY,model:env.OPENAI_MODEL??'gpt-5.6-terra'};throw new AgentError('AI 연결 설정에서 OpenAI API 키를 등록해 주세요. 대화 입력은 그대로 보관됩니다.','AI_SETUP',409)}
 export async function accessToken(db:Database,owner:string,provider:'plaud'|'google_calendar',env:Runtime){
  const config=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));if(!config?.accessToken)throw new AgentError(`${provider==='plaud'?'Plaud':'Google Calendar'}에 먼저 연결해 주세요.`,'CONNECT',409);
  if(config.expiresAt&&config.expiresAt>Date.now()+60000)return config.accessToken;
@@ -36,6 +38,10 @@ export async function accessToken(db:Database,owner:string,provider:'plaud'|'goo
 }
 export async function startOAuth(db:Database,owner:string,provider:'plaud'|'google_calendar',origin:string,env:Runtime){
  const redirectUri=origin+'/api/integrations/callback';let config=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));
+ // Validate storage before making a remote registration, and support the app's
+ // pre-registered public client so login does not depend on a registration POST.
+ await encrypt({check:true},keyOf(env),`${owner}:connection-check`);
+ if(provider==='plaud'&&!config?.clientId&&env.PLAUD_OAUTH_CLIENT_ID)config={clientId:env.PLAUD_OAUTH_CLIENT_ID};
  if(provider==='google_calendar'&&!config?.clientId)throw new AgentError('Google 연결 설정에 Orbit용 OAuth 클라이언트 정보를 먼저 등록해 주세요.','GOOGLE_SETUP',409);
  if(provider==='plaud'&&!config?.clientId){
   const {response,data}=await fetchJson(PLAUD.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_name:'Orbit · Personal Manager',redirect_uris:[redirectUri],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'})});
@@ -59,9 +65,4 @@ export async function finishOAuth(db:Database,owner:string,state:string,code:str
  if(!response.ok||typeof data.access_token!=='string')throw new AgentError('계정 연결을 확인하지 못했습니다. 다시 연결해 주세요.','OAUTH',502);
  if(row.provider==='google_calendar'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/calendar.events'))throw new AgentError('일정 권한을 승인해야 Calendar를 연결할 수 있습니다.','SCOPE',403);
  await saveConnection(db,owner,row.provider,{...saved.config,accessToken:data.access_token,refreshToken:data.refresh_token??saved.config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000,scope:data.scope},{connected:true},keyOf(env));return row.provider;
-}
-export async function mcpTools(db:Database,owner:string,env:Runtime){
- const state=await connections(db,owner,env),tools:Record<string,unknown>[]=[];
- for(const provider of ['plaud','google_calendar'] as const){if(!state.find(c=>c.provider===provider)?.connected)continue;const token=await accessToken(db,owner,provider,env);tools.push({type:'mcp',server_label:provider,...(provider==='plaud'?{server_url:PLAUD.server}:{connector_id:'connector_googlecalendar'}),authorization:token,allowed_tools:{read_only:true},require_approval:'never'});}
- return tools;
 }

@@ -5,11 +5,13 @@ import {createDatabase} from './sqlite-d1.mjs';
 import {readWorkspace,writeCommand} from '../db/repository.ts';
 import {addDays,todayInZone} from '../lib/orbit/dates.ts';
 import {encrypt,decrypt,readConnection,saveConnection} from '../lib/orbit/agent/secrets.ts';
-import {accessToken,connections,startOAuth,finishOAuth,mcpTools} from '../lib/orbit/agent/integrations.ts';
+import {accessToken,connections,startOAuth,finishOAuth,fetchJson} from '../lib/orbit/agent/integrations.ts';
 import {beginTurn,finishTurn,listAgent,findAction,claimAction,resetAction} from '../lib/orbit/agent/repository.ts';
 import {decide} from '../lib/orbit/agent/decisions.ts';
-import {parseAction,runAgent} from '../lib/orbit/agent/runner.ts';
+import {parseAction,runAgent,advanceAgent} from '../lib/orbit/agent/runner.ts';
 import {normalizeEvents,zonedInstant,syncCalendar,createGoogleEvent} from '../lib/orbit/agent/calendar.ts';
+import {hermesEndpoint,verifyHermes} from '../lib/orbit/agent/hermes.ts';
+import {plaudRead,plaudTools} from '../lib/orbit/agent/plaud.ts';
 import {disconnect} from '../lib/orbit/agent/settings.ts';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
 const today=todayInZone('Asia/Seoul'),tomorrow=addDays(today,1);
@@ -40,19 +42,35 @@ test('defer requires a reason and future review date and cannot silently approve
 test('only one change or AI turn per owner can be in flight; stale leases cannot finish a replacement turn',()=>fixture(async db=>{
  const [a,b]=await stage(db,[{type:'project.upsert',project},{type:'project.upsert',project:{...project,id:'other'}}]);const lease=await claimAction(db,'owner',a.id);await assert.rejects(()=>claimAction(db,'owner',b.id),e=>e.code==='BUSY');await resetAction(db,'owner',a.id,lease);await claimAction(db,'owner',b.id);const id=randomUUID(),turn=await beginTurn(db,'owner',id,'첫 메시지');await assert.rejects(()=>beginTurn(db,'owner',randomUUID(),'다른 메시지'),e=>e.code==='BUSY');await assert.rejects(()=>finishTurn(db,'owner',id,'old-lease',{text:'이전 결과',sources:[]},[]));await finishTurn(db,'owner',id,turn.lease,{text:'현재 결과',sources:[]},[]);assert.equal((await beginTurn(db,'owner',id,'첫 메시지')).replayed,true);await assert.rejects(()=>beginTurn(db,'owner',id,'바뀐 내용'));
 }));
-test('AI function calls stage cards only and completed message retries do not incur another API call',()=>fixture(async db=>{
- await saveConnection(db,'owner','openai',{key:'test-key',model:'gpt-5.6-terra'},{connected:true},env.ORBIT_ENCRYPTION_KEY);let requests=0;
- globalThis.fetch=async(url,options)=>{assert.equal(url,'https://api.openai.com/v1/responses');const body=JSON.parse(options.body);assert.equal(body.store,false);assert.ok(body.instructions.includes('untrusted DATA'));requests++;return requests===1?j({output:[{type:'function_call',call_id:'call-1',name:'propose_change',arguments:JSON.stringify({title:'첫 프로젝트',reason:'완료할 결과물 정의',action_json:JSON.stringify({type:'project.upsert',project})})}]}):j({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'프로젝트를 제안했습니다. 승인하면 반영됩니다.'}]}]})};
- const input={id:randomUUID(),message:'프로젝트를 만들어 줘'};await runAgent(db,'owner',input,env);await runAgent(db,'owner',input,env);assert.equal(requests,2);assert.equal((await readWorkspace(db,'owner')).revision,0);assert.equal((await listAgent(db,'owner')).actions.length,1);assert.equal((await listAgent(db,'other')).turns.length,0);
+const hermes={endpoint:'https://hermes.example.com',token:'private-hermes-token',connectionId:'native-connection'};
+async function connectHermes(db){await saveConnection(db,'owner','hermes',hermes,{connected:true,endpoint:hermes.endpoint,model:'Hermes'},env.ORBIT_ENCRYPTION_KEY)}
+const final=(proposals=[])=>({kind:'final',text:'제안했습니다. 승인하면 반영됩니다.',proposals:proposals.map(action=>({title:'첫 결과물',reason:'완료 조건을 정하기 위해',action}))});
+const completed=(output)=>j({object:'hermes.run',run_id:'run_1',status:'completed',output:JSON.stringify(output)});
+async function complete(db,input){await runAgent(db,'owner',input,env);await advanceAgent(db,'owner',input.id,env);await advanceAgent(db,'owner',input.id,env)}
+test('native Hermes runs stage cards only and completed retries never start another agent',()=>fixture(async db=>{
+ await connectHermes(db);let requests=0;
+ globalThis.fetch=async(url,options)=>{assert.ok(url.startsWith(hermes.endpoint+'/v1/runs'));assert.equal(options.headers.Authorization,'Bearer '+hermes.token);requests++;if(options.method==='POST'){const body=JSON.parse(options.body);assert.ok(body.instructions.includes('untrusted DATA'));assert.ok(options.headers['Idempotency-Key']);assert.ok(options.headers['X-Hermes-Session-Key'].startsWith('orbit:'));assert.ok(!('model' in body));assert.ok(!('provider' in body));assert.ok(!('tools' in body));return j({run_id:'run_1',status:'started'},202)}return completed(final([{type:'project.upsert',project}]))};
+ const input={id:randomUUID(),message:'프로젝트를 만들어 줘'};await complete(db,input);await runAgent(db,'owner',input,env);assert.equal(requests,2);assert.equal((await readWorkspace(db,'owner')).revision,0);assert.equal((await listAgent(db,'owner')).actions.length,1);assert.equal((await listAgent(db,'other')).turns.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
 }));
-test('missing API credentials fail honestly without simulated answers; upstream failure publishes no draft cards',()=>fixture(async db=>{
- await assert.rejects(()=>runAgent(db,'owner',{id:randomUUID(),message:'안녕'},env),e=>e.code==='AI_SETUP');assert.equal((await listAgent(db,'owner')).turns.length,0);await saveConnection(db,'owner','openai',{key:'test',model:'gpt-5.6-terra'},{connected:true},env.ORBIT_ENCRYPTION_KEY);let calls=0;globalThis.fetch=async()=>++calls===1?j({output:[{type:'function_call',call_id:'1',name:'propose_change',arguments:JSON.stringify({title:'초안',reason:'설계',action_json:JSON.stringify({type:'project.upsert',project})})}]}):j({error:{message:'secret upstream debug'}},500);await assert.rejects(()=>runAgent(db,'owner',{id:randomUUID(),message:'프로젝트'},env));const state=await listAgent(db,'owner');assert.equal(state.actions.length,0);assert.equal(state.turns[0].status,'failed');assert.ok(!JSON.stringify(state).includes('secret upstream'));
+test('missing Hermes fails honestly and an invalid card publishes no partial proposals',()=>fixture(async db=>{
+ await assert.rejects(()=>runAgent(db,'owner',{id:randomUUID(),message:'안녕'},env),e=>e.code==='HERMES_SETUP');assert.equal((await listAgent(db,'owner')).turns.length,0);await connectHermes(db);
+ globalThis.fetch=async(url,options)=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):completed(final([{type:'project.upsert',project},{type:'task.delete',id:'task'}]));
+ await assert.rejects(()=>complete(db,{id:randomUUID(),message:'프로젝트'}));const state=await listAgent(db,'owner');assert.equal(state.actions.length,0);assert.equal(state.turns[0].status,'failed');assert.equal((await readWorkspace(db,'owner')).revision,0);
 }));
 test('agent change validation excludes deletion, arbitrary network requests and unreviewed attendee invitations',()=>{
  assert.throws(()=>parseAction({type:'task.delete',id:'task'}));assert.throws(()=>parseAction({type:'fetch',url:'https://untrusted.test'}));assert.throws(()=>parseAction({...googleAction,event:{...googleAction.event,attendees:[{email:'someone@example.test'}]}}));assert.throws(()=>parseAction({...googleAction,event:{...googleAction.event,end:500}}));
 });
-test('remote MCP tools use pinned official endpoints, read-only tool filtering and owner tokens',()=>fixture(async db=>{
- await connect(db);await connect(db,'plaud');const tools=await mcpTools(db,'owner',env);assert.equal(tools.length,2);for(const t of tools){assert.deepEqual(t.allowed_tools,{read_only:true});assert.equal(t.authorization,'private-access');assert.equal(t.require_approval,'never')}assert.equal(tools.find(t=>t.server_label==='plaud').server_url,'https://mcp.plaud.ai/mcp');assert.equal(tools.find(t=>t.server_label==='google_calendar').connector_id,'connector_googlecalendar');assert.deepEqual(await mcpTools(db,'other',env),[]);
+test('Plaud MCP negotiates sessions, parses SSE, pins tokens and blocks write tools',()=>fixture(async db=>{
+ await connect(db,'plaud');let invoked=0;
+ globalThis.fetch=async(url,options)=>{assert.equal(url,'https://mcp.plaud.ai/mcp');assert.equal(options.redirect,'manual');assert.equal(options.headers.Authorization,'Bearer private-access');const req=JSON.parse(options.body);let result;
+  if(req.method==='initialize')return j({jsonrpc:'2.0',id:req.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}}}});
+  if(req.method==='notifications/initialized')return new Response(null,{status:202});
+  assert.equal(options.headers['MCP-Protocol-Version'],'2025-03-26');
+  if(req.method==='tools/list')result={tools:[{name:'list_files',inputSchema:{type:'object'}},{name:'delete_file',inputSchema:{type:'object'},annotations:{readOnlyHint:false}},{name:'logout',inputSchema:{type:'object'}}]};
+  else {assert.equal(req.method,'tools/call');assert.equal(req.params.name,'list_files');invoked++;result={content:[{type:'text',text:'회의 원문'}]};}
+  return new Response('event: message\ndata: '+JSON.stringify({jsonrpc:'2.0',id:req.id,result})+'\n\n',{headers:{'Content-Type':'text/event-stream','Mcp-Session-Id':'session-1'}});
+ };
+ assert.deepEqual((await plaudTools(db,'owner',env)).map(t=>t.name),['list_files']);assert.equal((await plaudRead(db,'owner',env,'list_files',{})).content[0].text,'회의 원문');await assert.rejects(()=>plaudRead(db,'owner',env,'delete_file',{}),e=>e.code==='PLAUD_READ_ONLY');await assert.rejects(()=>plaudTools(db,'other',env),e=>e.code==='CONNECT');assert.equal(invoked,1);
 }));
 test('Plaud OAuth uses its own registration, PKCE, matching cookie and one-use owner state',()=>fixture(async db=>{
  let exchanges=0;globalThis.fetch=async(url,options)=>{if(url.endsWith('/register')){const body=JSON.parse(options.body);assert.equal(body.token_endpoint_auth_method,'none');assert.deepEqual(body.redirect_uris,['https://orbit.test/api/integrations/callback']);return j({client_id:'orbit-own-client'})}assert.ok(url.endsWith('/token'));const form=new URLSearchParams(options.body);assert.ok(form.get('code_verifier').length>=43);assert.equal(form.get('resource'),'https://mcp.plaud.ai/mcp');exchanges++;return j({access_token:'new-access',refresh_token:'new-refresh',expires_in:3600})};
@@ -75,4 +93,38 @@ test('approved Google creation is repeat-safe after a lost acknowledgement and n
 }));
 test('live Google conflicts prevent an approved event creation and cache changes invalidate stale plans',()=>fixture(async db=>{
  await connect(db);let posts=0;globalThis.fetch=async(url,options={})=>{if(options.method==='POST'){posts++;throw new Error('must not create')}return url.includes('/events/')?j({},404):j({items:[{id:'busy',start:{dateTime:tomorrow+'T09:00:00+09:00'},end:{dateTime:tomorrow+'T10:00:00+09:00'}}]})};await assert.rejects(()=>createGoogleEvent(db,'owner',env,randomUUID(),googleAction),e=>e.code==='CONFLICT');assert.equal(posts,0);const [card]=await stage(db,[{type:'proposal.generate',date:tomorrow,energy:'normal'}]);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env),e=>e.code==='CONFLICT');assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);
+}));
+
+test('pre-registered Plaud login starts even when outbound registration is unavailable',()=>fixture(async db=>{
+ globalThis.fetch=async()=>{throw new Error('registration network unavailable')};
+ const start=await startOAuth(db,'owner','plaud','https://orbit.test',{...env,PLAUD_OAUTH_CLIENT_ID:'orbit-production-client'}),url=new URL(start.url);
+ assert.equal(url.origin,'https://mcp.plaud.ai');assert.equal(url.pathname,'/authorize');assert.equal(url.searchParams.get('client_id'),'orbit-production-client');assert.equal(url.searchParams.get('redirect_uri'),'https://orbit.test/api/integrations/callback');assert.equal(url.searchParams.get('code_challenge_method'),'S256');assert.ok(await db.prepare('SELECT state FROM orbit_oauth_states WHERE owner_id=?').bind('owner').first());
+}));
+test('unreachable OAuth providers and redirects return bounded actionable errors without leaking credentials',()=>fixture(async db=>{
+ globalThis.fetch=async()=>{throw new Error('raw secret debug')};await assert.rejects(()=>startOAuth(db,'owner','plaud','https://orbit.test',env),e=>e.status===502&&e.code==='UPSTREAM_NETWORK'&&!e.message.includes('secret'));
+ globalThis.fetch=async()=>new Response(null,{status:302,headers:{Location:'https://other.example.com'}});await assert.rejects(()=>fetchJson('https://hermes.example.com/v1/capabilities'),e=>e.code==='UPSTREAM_REDIRECT');
+}));
+test('Hermes setup requires authenticated native capabilities and rejects model API and local URLs',()=>fixture(async()=>{
+ for(const url of ['http://hermes.example.com','https://localhost','https://127.0.0.1','https://[::1]','https://user:secret@hermes.example.com','https://hermes.example.com?token=secret'])assert.throws(()=>hermesEndpoint(url));assert.equal(hermesEndpoint('https://hermes.example.com/p/orbit/v1/'),'https://hermes.example.com/p/orbit');
+ globalThis.fetch=async(url,options)=>!options.headers?.Authorization?j({error:'unauthorized'},401):url.endsWith('/models')?j({data:[{id:'my-hermes'}]}):j({object:'hermes.api_server.capabilities',platform:'hermes-agent',features:{run_submission:true,run_status:true,run_stop:true,runs_idempotency:{enabled:true}}});assert.equal(await verifyHermes(hermes),'my-hermes');
+ globalThis.fetch=async()=>j({object:'list',data:[{id:'model'}]});await assert.rejects(()=>verifyHermes(hermes),e=>e.code==='HERMES_VERSION');
+}));
+test('a lost Hermes submission acknowledgement resumes with the exact native idempotency key and body',()=>fixture(async db=>{
+ await connectHermes(db);const input={id:randomUUID(),message:'결과물을 설계해 줘'};await runAgent(db,'owner',input,env);let first,posts=0;
+ globalThis.fetch=async(url,options)=>{if(options.method==='POST'){posts++;const current={key:options.headers['Idempotency-Key'],body:options.body};if(posts===1){first=current;throw new Error('lost acknowledgement')}assert.deepEqual(current,first);return j({run_id:'run_1',status:'started'},202)}return completed(final())};
+ await assert.rejects(()=>advanceAgent(db,'owner',input.id,env),e=>e.code==='UPSTREAM_NETWORK');assert.equal((await listAgent(db,'owner')).turns[0].status,'running');await runAgent(db,'owner',input,env);await advanceAgent(db,'owner',input.id,env);assert.equal(posts,2);assert.equal((await listAgent(db,'owner')).turns[0].status,'completed');assert.ok(!JSON.stringify(await listAgent(db,'owner')).includes(hermes.token));
+}));
+test('cancel during a pending status request is durable and discards the completed proposals',()=>fixture(async db=>{
+ await connectHermes(db);const input={id:randomUUID(),message:'결과물'};await runAgent(db,'owner',input,env);globalThis.fetch=async()=>j({run_id:'run_1',status:'started'},202);await advanceAgent(db,'owner',input.id,env);
+ let release,started;const ready=new Promise(r=>started=r),wait=new Promise(r=>release=r);globalThis.fetch=async()=>{started();await wait;return completed(final([{type:'project.upsert',project}]))};
+ const poll=advanceAgent(db,'owner',input.id,env);await ready;await assert.rejects(()=>advanceAgent(db,'other',input.id,env,true),e=>e.status===404);await advanceAgent(db,'owner',input.id,env,true);release();await poll;
+ const state=await listAgent(db,'owner');assert.equal(state.turns[0].status,'failed');assert.ok(state.turns[0].error.includes('중지'));assert.equal(state.actions.length,0);assert.equal((await readWorkspace(db,'owner')).revision,0);
+}));
+test('Hermes native read rounds receive only the owner workspace and use a new round key',()=>fixture(async db=>{
+ await connectHermes(db);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project}});await writeCommand(db,'other',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project:{...project,name:'OTHER_OWNER_PRIVATE'}}});let posts=0;const keys=[];
+ globalThis.fetch=async(url,options)=>{if(options.method==='POST'){posts++;keys.push(options.headers['Idempotency-Key']);assert.ok(!options.body.includes('OTHER_OWNER_PRIVATE'));if(posts===2){assert.ok(options.body.includes(project.name));assert.ok(options.body.includes('Read results'));}return j({run_id:'run_1',status:'started'},202)}return completed(posts===1?{kind:'read',requests:[{tool:'workspace_search',arguments:{query:'',kind:'projects'}}]}:final())};
+ const input={id:randomUUID(),message:'프로젝트를 찾아 줘'};await complete(db,input);for(let n=0;n<3;n++)await advanceAgent(db,'owner',input.id,env);assert.equal(posts,2);assert.notEqual(keys[0],keys[1]);assert.equal((await listAgent(db,'owner')).turns[0].status,'completed');
+}));
+test('workspace changes during a native run invalidate all proposed changes',()=>fixture(async db=>{
+ await connectHermes(db);const input={id:randomUUID(),message:'프로젝트'};await runAgent(db,'owner',input,env);globalThis.fetch=async(url,options)=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):completed(final([{type:'project.upsert',project}]));await advanceAgent(db,'owner',input.id,env);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project:{...project,name:'새로운 결과물'}}});await assert.rejects(()=>advanceAgent(db,'owner',input.id,env),e=>e.code==='CONFLICT');assert.equal((await listAgent(db,'owner')).actions.length,0);assert.equal((await readWorkspace(db,'owner')).data.projects[0].name,'새로운 결과물');
 }));

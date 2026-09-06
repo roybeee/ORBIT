@@ -45,3 +45,8 @@ export const oauthStates=sqliteTable('orbit_oauth_states',{
 export const calendarCache=sqliteTable('orbit_calendar_cache',{
  ownerId:text('owner_id').primaryKey(),eventsJson:text('events_json').notNull(),timeZone:text('time_zone').notNull(),rangeStart:text('range_start').notNull(),rangeEnd:text('range_end').notNull(),updatedAt:text('updated_at').notNull(),
 });
+// Durable native Hermes runs: reconnecting a phone resumes the same run.
+export const hermesJobs=sqliteTable('orbit_hermes_jobs',{
+ ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),turnLease:text('turn_lease').notNull(),
+ jobJson:text('job_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),cancelRequested:integer('cancel_requested').notNull().default(0),
+},table=>[primaryKey({columns:[table.ownerId,table.turnId]})]);

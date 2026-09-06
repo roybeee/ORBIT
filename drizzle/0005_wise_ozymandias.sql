@@ -1,0 +1,1 @@
+ALTER TABLE `orbit_hermes_jobs` ADD `cancel_requested` integer DEFAULT 0 NOT NULL;
