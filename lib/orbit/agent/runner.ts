@@ -3,7 +3,7 @@ import {readWorkspace,readNote,searchNotes,type Database} from '../../../db/repo
 import {applyAction} from '../reducer.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {connections,type Runtime} from './integrations.ts';
-import {hermesCall,hermesConfig,hermesReason,hermesRequest,hermesTerminal,hermesWaiting,validRunId} from './hermes.ts';
+import {hermesCall,hermesConfig,hermesEffort,hermesReason,hermesRequest,hermesTerminal,hermesWaiting,validRunId,type HermesEffort} from './hermes.ts';
 import {plaudRead,plaudTools} from './plaud.ts';
 import {syncCalendar} from './calendar.ts';
 import {beginTurn,failTurn,finishTurn,listAgent} from './repository.ts';
@@ -16,7 +16,7 @@ type Message={role:'user'|'assistant';content:string};
 type ReadRequest={tool:string;arguments:Record<string,unknown>};
 interface Job {
  phase:'prepare'|'submit'|'poll'|'read'; connectionId:string; sessionId:string; sessionKey:string;
- started:number; round:number; revision:number; request?:{input:string;instructions:string;conversation_history:Message[];session_id:string};
+ started:number; round:number; revision:number; effort?:HermesEffort; request?:{input:string;instructions:string;conversation_history:Message[];session_id:string;model_options:{reasoning_effort:HermesEffort}};
  history:Message[]; runId?:string; attempted?:boolean; cancel?:boolean; invalid:number;
  reads:ReadRequest[]; results:unknown[]; notes:Record<string,number>; sources:{title:string;label:string}[];
 }
@@ -41,7 +41,7 @@ Use an empty proposals array for a normal answer or question. Never put tool cal
 
 async function getJob(db:Database,owner:string,id:string){return db.prepare('SELECT * FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,id).first<JobRow>()}
 function packed(job:Job){const value=JSON.stringify(job);if(new TextEncoder().encode(value).length>1500000)throw new AgentError('참고 기록이 너무 많습니다. 회의나 프로젝트를 하나씩 요청해 주세요.','CONTEXT_SIZE',422);return value}
-function setRequest(job:Job,input:string){job.request={input,instructions,conversation_history:job.history,session_id:job.sessionId};job.runId=undefined;job.attempted=false;job.phase='submit'}
+function setRequest(job:Job,input:string){job.request={input,instructions,conversation_history:job.history,session_id:job.sessionId,model_options:{reasoning_effort:job.effort??'medium'}};job.runId=undefined;job.attempted=false;job.phase='submit'}
 async function scope(owner:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('orbit-personal-os:'+owner));return 'orbit:'+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')}
 async function discard(db:Database,owner:string,id:string,lease:string,message:string){await failTurn(db,owner,id,lease,message);await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=? AND turn_lease=?').bind(owner,id,lease).run()}
 
@@ -53,7 +53,7 @@ export async function runAgent(db:Database,owner:string,input:{id:string;message
  if(old?.status==='failed')await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,input.id).run();
  if(!await getJob(db,owner,input.id)){
   const lease=old?.status==='running'?old.updated_at:(await beginTurn(db,owner,input.id,input.message)).lease;
-  const job:Job={phase:'prepare',connectionId:config.connectionId,sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner),started:Date.now(),round:0,revision:0,history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
+  const job:Job={phase:'prepare',connectionId:config.connectionId,sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner),started:Date.now(),round:0,revision:0,effort:hermesEffort(input.message),history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
   await db.prepare('INSERT OR IGNORE INTO orbit_hermes_jobs(owner_id,turn_id,turn_lease,job_json,lease_until) VALUES(?,?,?,?,0)').bind(owner,input.id,lease,packed(job)).run();
  }
  await advanceAgent(db,owner,input.id,env);

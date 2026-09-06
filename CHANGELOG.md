@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.2 · 2026-09-06
+
+- Orbit conversations now send an explicit reasoning effort with every Hermes run: `medium` by default, `high` for the whole turn when the request asks to think deeply (깊게·깊이·심층·꼼꼼 등, deeply/thorough). Regression test covers both paths across read rounds.
+- Setup guide documents the effort rule and that the profile's `reasoning_effort` only governs non-Orbit channels.
+
 ## v0.5.1 · 2026-09-06
 
 - Aligned the Hermes run client with the native API server lifecycle: `waiting_for_approval` and `interrupted` are recognized, unknown non-terminal states keep polling under the existing time limit, and terminal failures carry the gateway's error summary.

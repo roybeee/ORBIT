@@ -10,7 +10,7 @@ import {beginTurn,finishTurn,listAgent,findAction,claimAction,resetAction} from 
 import {decide} from '../lib/orbit/agent/decisions.ts';
 import {parseAction,runAgent,advanceAgent} from '../lib/orbit/agent/runner.ts';
 import {normalizeEvents,zonedInstant,syncCalendar,createGoogleEvent} from '../lib/orbit/agent/calendar.ts';
-import {hermesEndpoint,verifyHermes} from '../lib/orbit/agent/hermes.ts';
+import {hermesEffort,hermesEndpoint,verifyHermes} from '../lib/orbit/agent/hermes.ts';
 import {plaudRead,plaudTools} from '../lib/orbit/agent/plaud.ts';
 import {disconnect} from '../lib/orbit/agent/settings.ts';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
@@ -49,7 +49,7 @@ const completed=(output)=>j({object:'hermes.run',run_id:'run_1',status:'complete
 async function complete(db,input){await runAgent(db,'owner',input,env);await advanceAgent(db,'owner',input.id,env);await advanceAgent(db,'owner',input.id,env)}
 test('native Hermes runs stage cards only and completed retries never start another agent',()=>fixture(async db=>{
  await connectHermes(db);let requests=0;
- globalThis.fetch=async(url,options)=>{assert.ok(url.startsWith(hermes.endpoint+'/v1/runs'));assert.equal(options.headers.Authorization,'Bearer '+hermes.token);requests++;if(options.method==='POST'){const body=JSON.parse(options.body);assert.ok(body.instructions.includes('untrusted DATA'));assert.ok(options.headers['Idempotency-Key']);assert.ok(options.headers['X-Hermes-Session-Key'].startsWith('orbit:'));assert.ok(!('model' in body));assert.ok(!('provider' in body));assert.ok(!('tools' in body));return j({run_id:'run_1',status:'started'},202)}return completed(final([{type:'project.upsert',project}]))};
+ globalThis.fetch=async(url,options)=>{assert.ok(url.startsWith(hermes.endpoint+'/v1/runs'));assert.equal(options.headers.Authorization,'Bearer '+hermes.token);requests++;if(options.method==='POST'){const body=JSON.parse(options.body);assert.ok(body.instructions.includes('untrusted DATA'));assert.ok(options.headers['Idempotency-Key']);assert.ok(options.headers['X-Hermes-Session-Key'].startsWith('orbit:'));assert.ok(!('model' in body));assert.ok(!('provider' in body));assert.ok(!('tools' in body));assert.equal(body.model_options.reasoning_effort,'medium');return j({run_id:'run_1',status:'started'},202)}return completed(final([{type:'project.upsert',project}]))};
  const input={id:randomUUID(),message:'프로젝트를 만들어 줘'};await complete(db,input);await runAgent(db,'owner',input,env);assert.equal(requests,2);assert.equal((await readWorkspace(db,'owner')).revision,0);assert.equal((await listAgent(db,'owner')).actions.length,1);assert.equal((await listAgent(db,'other')).turns.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
 }));
 test('missing Hermes fails honestly and an invalid card publishes no partial proposals',()=>fixture(async db=>{
@@ -146,6 +146,13 @@ test('a busy gateway keeps the run and a stop for a run it no longer holds finis
  let stops=0;globalThis.fetch=async(url,options={})=>{if(url.endsWith('/stop')){stops++;assert.equal(options.method,'POST');return j({error:{message:'Run is not active in this gateway process: run_1',type:'invalid_request_error',code:'run_not_active'}},409)}return j({object:'hermes.run',run_id:'run_1',status:stops?'interrupted':'running'})};
  await advanceAgent(db,'owner',input.id,env,true);assert.equal(stops,1);assert.equal((await listAgent(db,'owner')).turns[0].status,'running');
  await advanceAgent(db,'owner',input.id,env);const state=await listAgent(db,'owner');assert.equal(state.turns[0].status,'failed');assert.ok(state.turns[0].error.includes('중지'));assert.equal(state.actions.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
+}));
+test('deep-thinking requests raise Hermes reasoning effort to high for every round of that turn only',()=>fixture(async db=>{
+ assert.equal(hermesEffort('내일 브리핑해줘'),'medium');assert.equal(hermesEffort('이 계약을 깊게 검토해 줘'),'high');assert.equal(hermesEffort('깊이 있는 분석'),'high');assert.equal(hermesEffort('Think deeply about this'),'high');assert.equal(hermesEffort('deepfake 관련 뉴스'),'medium');
+ await connectHermes(db);const efforts=[];
+ globalThis.fetch=async(url,options)=>{if(options.method==='POST'){efforts.push(JSON.parse(options.body).model_options.reasoning_effort);return j({run_id:'run_1',status:'started'},202)}return completed(efforts.length===1?{kind:'read',requests:[{tool:'workspace_search',arguments:{query:'',kind:'projects'}}]}:final())};
+ const deep={id:randomUUID(),message:'프로젝트 상황을 깊게 분석해 줘'};await complete(db,deep);for(let n=0;n<3;n++)await advanceAgent(db,'owner',deep.id,env);assert.deepEqual(efforts,['high','high']);assert.equal((await listAgent(db,'owner')).turns[0].status,'completed');
+ efforts.length=0;const plain={id:randomUUID(),message:'프로젝트 상황 알려 줘'};await complete(db,plain);for(let n=0;n<3;n++)await advanceAgent(db,'owner',plain.id,env);assert.deepEqual(efforts,['medium','medium']);
 }));
 test('Hermes native read rounds receive only the owner workspace and use a new round key',()=>fixture(async db=>{
  await connectHermes(db);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project}});await writeCommand(db,'other',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project:{...project,name:'OTHER_OWNER_PRIVATE'}}});let posts=0;const keys=[];

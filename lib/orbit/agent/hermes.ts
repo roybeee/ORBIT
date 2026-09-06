@@ -46,4 +46,8 @@ export async function verifyHermes(config:HermesConfig){
  const models=await hermesRequest(config,'/v1/models');
  return typeof models.data?.[0]?.id==='string'?models.data[0].id.slice(0,100):'Hermes';
 }
+export type HermesEffort='medium'|'high';
+// Plain requests run at medium effort. Asking to think deeply raises it to high for that turn only.
+const deepWords=/깊게|깊이|깊은|깊숙|심층|꼼꼼|신중|철저|곰곰|deep(?:ly|er)?\b|thorough/i;
+export const hermesEffort=(message:string):HermesEffort=>deepWords.test(message)?'high':'medium';
 export const validRunId=(value:unknown):value is string=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(value);
