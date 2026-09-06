@@ -24,6 +24,7 @@ npm run typecheck
 npm run test:planner
 npm run test:storage
 npm run test:notes
+npm run test:pwa
 npm run build
 npm run test:smoke
 ```

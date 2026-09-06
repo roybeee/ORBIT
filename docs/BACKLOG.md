@@ -61,4 +61,11 @@ Next: complete GitHub account-side creation/access, validate on the user's devic
 ## GitHub installation completed
 
 - ChatGPT Codex Connector is installed for `roybeee`, and repository writes now succeed.
-- ORB-002: importing the full v0.3 source snapshot to `roybeee/ORBIT`; repository includes Validate Orbit CI and Issue/PR templates. Earlier access-blocked entries above describe the previous setup state.
+- ORB-002: completed — uploaded the full v0.3 source snapshot to `roybeee/ORBIT`; repository includes Validate Orbit CI and Issue/PR templates. Earlier access-blocked entries above describe the previous setup state.
+
+## v0.3.1 mobile progress
+
+- ORB-108: install guide/CTA, authenticated manifest, maskable/Apple icons, app shortcuts, standalone detection and mobile keyboard/safe-area handling implemented. Physical-phone installation remains to be checked by opening the published app on the device.
+- Reconnection and foreground refresh preserve paused edits and unresolved command receipts. Phone Back navigates between visited workspace screens.
+- Automated validation now includes seven PWA asset/cache-policy checks and the authenticated installation page.
+- Next personal-use milestone: verify installation on the user's Galaxy, then grounded AI proposals and deliberate notification scheduling. Offline editing and automatic push are not part of this release.

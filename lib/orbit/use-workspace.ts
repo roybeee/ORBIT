@@ -11,11 +11,13 @@ interface Failure {message:string;code:string}
 export function useWorkspace(demo:boolean){
  const [snapshot,setSnapshot]=useState(()=>initial(demo));const snapshotRef=useRef(snapshot);
  const [loaded,setLoaded]=useState(demo),[busy,setBusy]=useState(false),[failure,setFailure]=useState<Failure|null>(null);
+ const [online,setOnline]=useState(true);
  const busyRef=useRef(false);const pauseRef=useRef(false);const mounted=useRef(true);const pending=useRef<{operationId:string;expectedRevision:number;action:WorkspaceAction}|null>(null);
  const publish=useCallback((value:WorkspaceSnapshot)=>{snapshotRef.current=value;if(mounted.current)setSnapshot(value)},[]);
- const load=useCallback(async(automatic=false)=>{if(demo||busyRef.current||(automatic&&pauseRef.current))return;busyRef.current=true;setBusy(true);try{const r=await fetch('/api/workspace',{cache:'no-store'});const body=await r.json();if(!r.ok)throw {message:body.error,code:body.code};if(automatic&&pauseRef.current)return;publish(body);setLoaded(true);setFailure(null)}catch(e){const err=e as Failure;setFailure({message:err.message||'연결 상태를 확인하고 다시 시도해 주세요.',code:err.code||'NETWORK'})}finally{busyRef.current=false;if(mounted.current)setBusy(false)}},[demo,publish]);
+ const load=useCallback(async(automatic=false)=>{if(demo||busyRef.current||(automatic&&pauseRef.current))return;if(!navigator.onLine){setOnline(false);return}busyRef.current=true;setBusy(true);const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);try{const r=await fetch('/api/workspace',{cache:'no-store',signal:controller.signal});const body=await r.json();if(!r.ok)throw {message:body.error,code:body.code};if(automatic&&pauseRef.current)return;publish(body);setLoaded(true);setFailure(null)}catch(e){const err=e as Failure;setFailure({message:err.message||'연결 상태를 확인하고 다시 시도해 주세요.',code:err.code||'NETWORK'})}finally{clearTimeout(timeout);busyRef.current=false;if(mounted.current)setBusy(false)}},[demo,publish]);
  useEffect(()=>{mounted.current=true;void load();return()=>{mounted.current=false}},[load]);
  const send=useCallback(async(command:NonNullable<typeof pending.current>):Promise<boolean>=>{
+  if(!demo&&!navigator.onLine){setOnline(false);toast.error('인터넷 연결 후 다시 저장해 주세요. 입력 내용은 이 화면에 남아 있습니다.');return false}
   if(busyRef.current){toast('저장 중입니다. 잠시 기다려 주세요.');return false}busyRef.current=true;setBusy(true);pending.current=command;
   try{
    if(demo){const data=applyAction(snapshotRef.current.data,command.action,new Date('2026-09-06T09:00:00Z'));publish({data,revision:snapshotRef.current.revision+1,updatedAt:new Date().toISOString()})}
@@ -27,7 +29,7 @@ export function useWorkspace(demo:boolean){
  const mutate=useCallback(async(action:WorkspaceAction)=>{if(!loaded){toast.error('먼저 저장된 내용을 불러와 주세요.');return false}if(pending.current&&!busyRef.current){toast.error('이전 저장 결과를 먼저 확인해 주세요.');return false}return send({operationId:crypto.randomUUID(),expectedRevision:snapshotRef.current.revision,action})},[loaded,send]);
  const retry=useCallback(async()=>{if(pending.current)return send(pending.current);await load();return false},[send,load]);
  const discardRequestAndRefresh=useCallback(async()=>{pending.current=null;await load()},[load]);
- useEffect(()=>{if(demo)return;const timer=setInterval(()=>{if(document.visibilityState==='visible'&&!pending.current&&!busyRef.current&&!pauseRef.current)void load(true)},60000);const focus=()=>{if(!pending.current&&!busyRef.current&&!pauseRef.current)void load(true)};window.addEventListener('focus',focus);return()=>{clearInterval(timer);window.removeEventListener('focus',focus)}},[demo,load]);
+ useEffect(()=>{if(demo)return;setOnline(navigator.onLine);const resume=()=>{if(document.visibilityState==='visible'&&navigator.onLine&&!pending.current&&!busyRef.current&&!pauseRef.current)void load(true)};const connection=()=>{setOnline(navigator.onLine);if(navigator.onLine)resume()};const timer=setInterval(resume,60000);window.addEventListener('focus',resume);window.addEventListener('online',connection);window.addEventListener('offline',connection);document.addEventListener('visibilitychange',resume);return()=>{clearInterval(timer);window.removeEventListener('focus',resume);window.removeEventListener('online',connection);window.removeEventListener('offline',connection);document.removeEventListener('visibilitychange',resume)}},[demo,load]);
  const pauseRefresh=useCallback((value:boolean)=>{pauseRef.current=value},[]);
- return {snapshot,loaded,busy,failure,mutate,retry,pauseRefresh,refresh:discardRequestAndRefresh,hasPending:!!pending.current};
+ return {snapshot,loaded,busy,failure,online,mutate,retry,pauseRefresh,refresh:discardRequestAndRefresh,hasPending:!!pending.current};
 }

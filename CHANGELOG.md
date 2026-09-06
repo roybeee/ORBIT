@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1 — 2026-09-06
+
+- Private `/install` guide for Galaxy/Android and iPhone, deferred install prompt, cancellation fallback and actual standalone/install event detection.
+- Credentialed manifest link for authenticated hosting, maskable/Apple icons and app shortcuts.
+- Mobile keyboard-aware forms, safe areas, larger touch targets and screen history for the phone Back action.
+- Foreground/reconnection refresh respects open edits and unresolved saves; offline status does not claim a successful save.
+- Static-only offline caching validates response types and excludes sign-in redirects, private records and APIs.
+- Seven PWA policy/asset checks plus a protected installation-route check added to CI.
+- GitHub connection completed; source updates are maintained in roybeee/ORBIT.
+- Scope: installable web app (PWA); no store package, offline record editing, scheduled push notifications or physical-device QA.
+
 ## 0.3.0 — 2026-09-06
 
 - Immutable document versions, on-demand bodies, paged current-body search and history.
