@@ -86,3 +86,5 @@
  .install-page{padding:calc(env(safe-area-inset-top) + 14px) 20px max(28px,env(safe-area-inset-bottom))}.install-hero{padding-top:24px}.install-hero h1{font-size:35px}.install-card{padding:22px 19px}.install-header>span{font-size:11px;letter-spacing:.06em}
 }
 @media(max-width:370px){.install-page{padding-left:14px;padding-right:14px}.install-header>span{display:none}.page-heading{flex-wrap:wrap}.capacity-card{flex-wrap:wrap}.capacity-detail{max-width:none;width:100%}.mini-projects{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}}
+
+.account-recovery{max-width:560px;margin:8vh auto;padding:28px 24px}.account-recovery h1{font-size:28px;font-weight:700;line-height:1.4;letter-spacing:-1px}.account-recovery>p{font-size:16px;line-height:1.8;color:#68758d;margin:18px 0}.account-recovery ol{padding-left:24px;margin:26px 0;color:#454f69;font-size:16px;line-height:1.9}.account-recovery li+li{margin-top:14px}.account-recovery .primary-button{min-height:50px;justify-content:center}.account-recovery .text-button{min-height:48px;justify-content:center;margin-top:10px}.account-recovery .form-hint{font-size:14px}

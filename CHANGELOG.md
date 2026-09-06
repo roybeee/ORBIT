@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.2 · 2026-09-06
+
+- Fix standalone sessions that receive verified Sites email claims without the stable user ID: resolve only an email-to-ID link previously observed together in a verified request.
+- Preserve existing owner IDs and encrypted integration credentials. Conflicting identities disable email-only recovery; unknown identities receive a recovery page instead of a redirect into a missing reserved sign-in route.
+- Add a schema-only identity-link migration and regressions for standalone access, existing records, conflicting accounts and safe recovery redirects.
+
 ## v0.5.1 · 2026-09-06
 
 - Extend installation to Mac (Safari, Chrome, Edge) and Windows (Edge, Chrome), retaining Android and iPhone/iPad support.
