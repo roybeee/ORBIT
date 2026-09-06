@@ -69,3 +69,13 @@ Next: complete GitHub account-side creation/access, validate on the user's devic
 - Reconnection and foreground refresh preserve paused edits and unresolved command receipts. Phone Back navigates between visited workspace screens.
 - Automated validation now includes seven PWA asset/cache-policy checks and the authenticated installation page.
 - Next personal-use milestone: verify installation on the user's Galaxy, then grounded AI proposals and deliberate notification scheduling. Offline editing and automatic push are not part of this release.
+
+## v0.4 progress
+
+- Conversation-first AI management, owner-scoped history and approval/defer/review-date cards implemented. Actual inference requires an OpenAI API key in app settings.
+- ORB-201/202/203: AI meeting/wiki/task proposals and grounded note reads implemented, with immutable edit revision checks and deterministic timing. Time-estimate learning remains.
+- Plaud: official remote MCP integration with dedicated OAuth/PKCE implemented; app-side account consent required.
+- ORB-302: primary Google Calendar full-window sync implemented with paging, recurring instances, local-date normalization and live conflict checks. Multi-calendar selection and incremental sync remain.
+- ORB-303: explicit approved creation with deterministic IDs, owner marker verification and recovery implemented. Durable background outbox and external edit/delete remain.
+- ORB-304: daily review can be started through conversation or the existing review screen. Automatic nightly scheduler and push notifications remain.
+- Agent conversation/decision export, search pagination beyond the bounded catalogs, bulk ingestion and actual phone/OAuth end-to-end verification remain follow-up work.

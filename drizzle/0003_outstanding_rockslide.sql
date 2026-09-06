@@ -1,0 +1,2 @@
+ALTER TABLE `orbit_integrations` ADD `refresh_until` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_orbit_one_applying_action` ON `orbit_agent_actions` (`owner_id`) WHERE "orbit_agent_actions"."state" = 'applying';

@@ -2,7 +2,7 @@
 
 일정, 프로젝트, 개인 위키, 지식창고, 저녁 회고와 다음 날 제안을 연결하는 개인 매니지먼트 앱.
 
-**현재: v0.3.1 휴대폰 설치와 일상 사용.** 로그인한 사용자별 서버 저장을 지원합니다. 실제 업무 화면과 저장되지 않는 예시 체험을 분리했습니다. 제안은 규칙 기반이며, AI·외부 캘린더·예약 알림은 아직 연결하지 않았습니다.
+**현재: v0.4 대화 중심 AI 에이전트와 연결 설정.** 첫 화면에서 업무·회의록·회고를 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. Plaud 공식 MCP와 Google Calendar MCP/OAuth를 지원합니다. 실제 사용 전 앱의 연결 화면에서 OpenAI API 키와 각 서비스의 실행 권한을 설정해야 합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
 
 ## Phone installation
 
@@ -10,7 +10,7 @@
 
 ## Use
 
-1. `/`에서 첫 프로젝트와 할 일을 추가합니다.
+1. `/` 대화 화면의 **연결**에서 AI와 필요한 계정을 설정합니다. 첫 프로젝트의 목표를 이야기하거나 직접 추가합니다.
 2. 회의록·지식을 프로젝트에 연결하고, 명시한 할 일을 검토해 등록합니다.
 3. 저녁 회고를 저장하고 다음 날 제안을 생성합니다.
 4. 개별 승인 또는 다음 검토일을 지정한 보류를 선택합니다.
@@ -19,6 +19,8 @@
 `/demo`는 저장되지 않는 예시입니다. 설정에서 시간대·업무 시간·요일·핵심 결과물 개수·여유 시간 비율을 바꾸거나 저장한 데이터를 JSON으로 내보낼 수 있습니다.
 
 ## Documents
+
+- [AI 에이전트·Plaud·Google 연결과 사용 안내](docs/Orbit_Agent.ko.md)
 
 - [휴대폰 설치와 사용 안내](docs/Orbit_Mobile.ko.md)
 - [v0.3 사용 안내와 현재 범위](docs/Orbit_Release_v0.3.ko.md)
@@ -40,6 +42,7 @@ npm run test:planner
 npm run test:storage
 npm run test:notes
 npm run test:pwa
+npm run test:agent
 npm run build
 npm run test:smoke
 ```
@@ -50,7 +53,7 @@ The authenticated app deliberately does not fall back to a public dev identity o
 
 ## Storage and mobile scope
 
-D1 stores atomic workspace metadata and request receipts, with immutable document versions in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. The metadata aggregate remains bounded to 950,000 UTF-8 bytes; each document to 100,000 characters, subject to the 400,000-byte request limit. Large collections still need a normalized/paged metadata catalog before bulk ingestion. JSON export streams current document versions; it excludes historical revisions and unsaved forms.
+D1 stores atomic workspace metadata and request receipts, with immutable document versions in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. The metadata aggregate remains bounded to 950,000 UTF-8 bytes; each document to 100,000 characters, subject to the 400,000-byte request limit. Large collections still need a normalized/paged metadata catalog before bulk ingestion. JSON export streams current document versions; it excludes historical revisions, agent conversations/decisions, connection secrets and unsaved forms.
 
 The app includes an authenticated install guide, supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual installation and touch interaction on a physical phone still require device verification.
 
@@ -60,7 +63,7 @@ Source repository: [roybeee/ORBIT](https://github.com/roybeee/ORBIT). The reposi
 
 The repository contains the complete application, locked dependencies, schema migrations, design/release documents, tests, and CI/Issue/PR templates. The initial import preserves the source snapshot; earlier development commits are retained in the separate Sites source repository.
 
-For each update, create a feature branch, open a pull request and check **Validate Orbit**. GitHub CI installs dependencies, checks types, runs planner/storage/document tests, builds the Worker and checks its HTTP routes. Deployment is a separate verified Sites release; pushing code does not automatically change the running app.
+For each update, create a feature branch, open a pull request and check **Validate Orbit**. GitHub CI installs dependencies, checks types, runs planner/storage/document/agent/calendar/OAuth tests, builds the Worker and checks its HTTP routes. Deployment is a separate verified Sites release; pushing code does not automatically change the running app.
 
 See [GitHub development instructions](docs/GitHub_Connect.ko.md) and [contribution workflow](CONTRIBUTING.md).
 

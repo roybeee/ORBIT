@@ -11,10 +11,11 @@ export class RevisionConflict extends Error{}
 export class NoteNotFound extends Error{}
 export async function readWorkspace(db:Database,ownerId:string):Promise<WorkspaceSnapshot>{
  const row=await db.prepare('SELECT revision, state_json, updated_at FROM orbit_workspaces WHERE owner_id = ?').bind(ownerId).first<Row>();
- if(!row)return {data:emptyWorkspace(),revision:0,updatedAt:null};
- const data=JSON.parse(row.state_json) as WorkspaceData;
+ const data=row?JSON.parse(row.state_json) as WorkspaceData:emptyWorkspace();
+ const external=await db.prepare('SELECT events_json,time_zone FROM orbit_calendar_cache WHERE owner_id=?').bind(ownerId).first<{events_json:string;time_zone:string}>();
+ if(external?.time_zone===data.preferences.timeZone)data.events=[...data.events.filter(e=>!e.id.startsWith('google:')),...JSON.parse(external.events_json)];
  if(data.schemaVersion!==2&&data.schemaVersion!==3)throw new Error('Unsupported workspace schema');
- return {data,revision:row.revision,updatedAt:row.updated_at};
+ return {data,revision:row?.revision??0,updatedAt:row?.updated_at??null};
 }
 async function readVersion(db:Database,ownerId:string,id:string,revision:number):Promise<Note>{
  const row=await db.prepare('SELECT note_json FROM orbit_note_revisions WHERE owner_id = ? AND note_id = ? AND revision = ?').bind(ownerId,id,revision).first<{note_json:string}>();
@@ -83,6 +84,7 @@ export async function writeCommand(db:Database,ownerId:string,command:{operation
  }
  if(action.type==='note.upsert'&&action.expectedNoteRevision!==undefined){const editing=action;const meta=current.data.notes.find(n=>n.id===editing.note.id);if(!meta||(meta.revision??1)!==action.expectedNoteRevision)throw new RevisionConflict('기록이 변경됐습니다. 작성 중인 내용을 보관하고 최신 내용을 확인해 주세요.')}
  const next=applyAction(working,action,now);
+ next.events=next.events.filter(e=>!e.id.startsWith('google:'));
  const timestamp=now.toISOString(),revision=current.revision+1;
  const changedNote=action.type==='note.upsert'?next.notes.find(n=>n.id===action.note.id):undefined;
  const legacy=current.data.notes.filter(n=>!n.bodyStored).map(n=>({...n,revision:n.revision??1,bodyStored:false}));
