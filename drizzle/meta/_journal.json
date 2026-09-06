@@ -57,6 +57,20 @@
       "when": 1788710237543,
       "tag": "0007_awesome_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788735322433,
+      "tag": "0008_clean_ogun",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788735922368,
+      "tag": "0009_heavy_blackheart",
+      "breakpoints": true
     }
   ]
 }

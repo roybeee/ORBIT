@@ -19,7 +19,7 @@
     "test:storage": "node --experimental-strip-types --test tests/storage.test.mjs",
     "test:notes": "node --experimental-strip-types --test tests/notes.test.mjs",
     "test:pwa": "node --experimental-strip-types --test tests/pwa.test.mjs",
-    "test:agent": "node --experimental-strip-types --test tests/agent.test.mjs tests/hermes-setup.test.mjs tests/conversations.test.mjs"
+    "test:agent": "node --experimental-strip-types --test tests/agent.test.mjs tests/hermes-setup.test.mjs tests/conversations.test.mjs tests/attachments.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -31,10 +31,12 @@
     "date-fns": "^4.4.0",
     "drizzle-orm": "0.45.2",
     "embla-carousel-react": "^8.6.0",
+    "fflate": "0.8.3",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "6.3.289",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
     "react-day-picker": "^10.0.1",
@@ -58,6 +60,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "fake-indexeddb": "6.2.5",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "tw-animate-css": "^1.4.0",

@@ -89,6 +89,7 @@ export default function InstallApp(){
    </section>
   </div>
   <section className="install-card install-routine-card" aria-labelledby="start-heading"><div className="install-section-title"><span>02</span><h2 id="start-heading">설치 후에도 같은 Orbit</h2></div><div className="install-routine"><a href="/#agent"><span>대화</span><div><strong>헤르메스와 다음 행동 정리</strong><p>연결 설정과 저장된 대화를 이어갑니다.</p></div><ArrowRight size={17}/></a><a href="/#review"><span>저녁</span><div><strong>오늘을 돌아보는 5분</strong><p>해낸 일, 막힌 일과 에너지를 기록합니다.</p></div><ArrowRight size={17}/></a><a href="/#proposal"><span>내일</span><div><strong>제안을 승인하거나 보류</strong><p>승인한 집중 시간이 일정에 반영됩니다.</p></div><ArrowRight size={17}/></a></div></section>
+  <section className="install-card" aria-labelledby="share-heading"><h2 id="share-heading">캡처한 화면을 Orbit으로 보내기</h2><p>갤럭시의 Chrome에서 Orbit을 설치한 뒤, 갤러리 → 이미지 선택 → 공유 → Orbit을 누르세요. 새 대화·기존 대화·일정 중 보관할 곳을 선택할 수 있습니다.</p><p>이미 설치했다면 Orbit을 열었다가 완전히 닫고 다시 열어 주세요. 공유 목록 갱신에는 하루 이상 걸릴 수 있습니다. 그동안 대화와 일정의 파일 첨부 버튼으로 바로 올릴 수 있습니다.</p><p>iPhone·iPad에서는 앱 안의 파일 첨부를 사용하세요. Mac·Windows에서는 파일을 끌어다 놓거나 첨부 버튼으로 선택할 수 있습니다.</p><a className="text-button" href="/share">받은 파일 열기 <ArrowRight size={15}/></a></section>
   <footer className="install-foot"><p><ShieldCheck size={16}/>내 계정으로 로그인해 사용하는 개인 공간</p><p><Wifi size={16}/>업무 불러오기·저장은 인터넷 연결이 필요합니다.</p><p>업데이트는 앱을 완전히 닫고 다시 열면 반영됩니다.</p></footer>
  </main>;
 }

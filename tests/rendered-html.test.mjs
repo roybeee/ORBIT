@@ -103,3 +103,18 @@ test('conversation HTTP routes persist metadata and reject cross-owner reads and
  assert.equal((await request('/api/agent/conversations',{method:'PATCH',headers:{...headers,origin:'https://foreign.test'},body})).status,403);
  const renamed=await request('/api/agent/conversations',{method:'PATCH',headers,body});assert.equal(renamed.status,200);assert.equal((await renamed.json()).title,'정리한 대화');
 });
+
+test('file endpoints require owner identity and same-origin writes, and stream the saved original',async()=>{
+ const values=new Map();globalThis.__orbitCloudflareEnv.BUCKET={async put(key,body){const bytes=new Uint8Array(await new Response(body).arrayBuffer());values.set(key,bytes);return {size:bytes.length}},async get(key,options){const bytes=values.get(key);if(!bytes)return null;const data=options?.range?bytes.slice(options.range.offset,options.range.offset+options.range.length):bytes;return {size:bytes.length,body:new Blob([data]).stream(),arrayBuffer:async()=>data.slice().buffer}},async delete(key){values.delete(key)}};
+ const owner='file-http',headers={...identity(owner),origin:'https://orbit.test','content-type':'application/json'},id=randomUUID();
+ for(const path of ['/api/attachments','/api/attachments/content?id='+id,'/api/attachments/preview?id='+id])assert.equal((await request(path)).status,401);
+ assert.equal((await request('/api/attachments',{method:'POST',headers:{...headers,origin:'https://foreign.test'},body:'{}'})).status,403);
+ let r=await request('/api/attachments',{method:'POST',headers,body:JSON.stringify({id,name:'자료.txt',size:5})});assert.equal(r.status,200);
+ r=await request('/api/attachments/content?id='+id,{method:'PUT',headers:{...headers,'content-type':'text/plain','content-length':'5'},body:'hello'});assert.equal(r.status,200);
+ r=await request('/api/attachments/context',{method:'POST',headers,body:JSON.stringify({id,text:'hello',label:'텍스트'})});assert.equal(r.status,200);
+ r=await request('/api/attachments/content?id='+id,{headers:identity(owner)});assert.equal(r.status,200);assert.equal(await r.text(),'hello');assert.match(r.headers.get('cache-control'),/no-store/);assert.match(r.headers.get('content-disposition'),/attachment/);
+ assert.equal((await request('/api/attachments/content?id='+id,{headers:identity('file-other')})).status,404);assert.equal((await(await request('/api/attachments',{headers:identity(owner)})).json()).items[0].id,id);
+});
+test('share intake preserves its draft through login and unhandled POST reports failure',async()=>{
+ const id=randomUUID();const r=await request('/share?draft='+id);assert.equal(r.status,307);assert.ok(decodeURIComponent(r.headers.get('location')).includes('/share?draft='+id));const page=await request('/share?draft='+id,{headers:identity()});assert.equal(page.status,200);const html=await page.text();assert.match(html,/Orbit 에이전트/);assert.ok(html.includes(id));const fallback=await request('/share-target',{method:'POST',body:'not processed'});assert.equal(fallback.status,503);assert.match(await fallback.text(),/공유/);
+});

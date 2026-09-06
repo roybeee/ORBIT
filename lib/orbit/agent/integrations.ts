@@ -4,7 +4,7 @@ import {AgentError} from './errors.ts';
 import {decrypt,encrypt,readConnection,saveConnection} from './secrets.ts';
 export const PLAUD={server:'https://mcp.plaud.ai/mcp',authorize:'https://mcp.plaud.ai/authorize',token:'https://mcp.plaud.ai/token',register:'https://mcp.plaud.ai/register'};
 export const GOOGLE={authorize:'https://accounts.google.com/o/oauth2/v2/auth',token:'https://oauth2.googleapis.com/token',scope:'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly'};
-export interface Runtime {ORBIT_ENCRYPTION_KEY?:string;PLAUD_OAUTH_CLIENT_ID?:string}
+export interface Runtime {BUCKET?:import('../attachments/storage.ts').Bucket;ORBIT_ENCRYPTION_KEY?:string;PLAUD_OAUTH_CLIENT_ID?:string}
 export interface AuthConfig {clientId:string;clientSecret?:string;accessToken?:string;refreshToken?:string;expiresAt?:number;scope?:string}
 export const keyOf=(env:Runtime)=>env.ORBIT_ENCRYPTION_KEY??'';
 export async function fetchJson(url:string,init:RequestInit={},timeout=20000):Promise<{response:Response;data:Record<string,any>}>{
