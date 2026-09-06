@@ -2,7 +2,11 @@
 
 일정, 프로젝트, 개인 위키, 지식창고, 저녁 회고와 다음 날 제안을 연결하는 개인 매니지먼트 앱.
 
-**현재: v0.3 개인 위키와 회의록 후속 행동.** 로그인한 사용자별 서버 저장을 지원합니다. 실제 업무 화면과 저장되지 않는 예시 체험을 분리했습니다. 제안은 규칙 기반이며, AI·외부 캘린더·예약 알림은 아직 연결하지 않았습니다.
+**현재: v0.3.1 휴대폰 설치와 일상 사용.** 로그인한 사용자별 서버 저장을 지원합니다. 실제 업무 화면과 저장되지 않는 예시 체험을 분리했습니다. 제안은 규칙 기반이며, AI·외부 캘린더·예약 알림은 아직 연결하지 않았습니다.
+
+## Phone installation
+
+[Orbit 설치 안내](https://orbit-personal-os.hflameb.chatgpt.site/install)를 폰의 Chrome에서 열고 같은 ChatGPT 계정으로 로그인하세요. 설치 버튼 또는 브라우저 메뉴로 설치한 뒤 홈 화면의 Orbit 아이콘으로 실행합니다. iPhone은 Safari의 공유 → 홈 화면에 추가를 사용합니다. [자세한 모바일 안내](docs/Orbit_Mobile.ko.md).
 
 ## Use
 
@@ -16,6 +20,7 @@
 
 ## Documents
 
+- [휴대폰 설치와 사용 안내](docs/Orbit_Mobile.ko.md)
 - [v0.3 사용 안내와 현재 범위](docs/Orbit_Release_v0.3.ko.md)
 - [GitHub 생성·연결 준비](docs/GitHub_Connect.ko.md)
 - [원본 제품 설계 v0.1](docs/Orbit_Design_v0.1.ko.md)
@@ -34,6 +39,7 @@ npm run typecheck
 npm run test:planner
 npm run test:storage
 npm run test:notes
+npm run test:pwa
 npm run build
 npm run test:smoke
 ```
@@ -46,13 +52,13 @@ The authenticated app deliberately does not fall back to a public dev identity o
 
 D1 stores atomic workspace metadata and request receipts, with immutable document versions in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. The metadata aggregate remains bounded to 950,000 UTF-8 bytes; each document to 100,000 characters, subject to the 400,000-byte request limit. Large collections still need a normalized/paged metadata catalog before bulk ingestion. JSON export streams current document versions; it excludes historical revisions and unsaved forms.
 
-The app includes a web manifest, 192/512px icons and a static offline fallback. Private user content is not cached by the service worker. Real device installation and browser interaction have not been verified. Offline data editing is not supported.
+The app includes an authenticated install guide, supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual installation and touch interaction on a physical phone still require device verification.
 
 ## GitHub source and workflow
 
 Source repository: [roybeee/ORBIT](https://github.com/roybeee/ORBIT). The repository is public; the running personal workspace remains protected by Sites sign-in and owner access. Real workspace records are held separately in D1.
 
-The repository contains the complete v0.3 application, locked dependencies, schema migrations, design/release documents, tests, and CI/Issue/PR templates. The initial import preserves the source snapshot; earlier development commits are retained in the separate Sites source repository.
+The repository contains the complete application, locked dependencies, schema migrations, design/release documents, tests, and CI/Issue/PR templates. The initial import preserves the source snapshot; earlier development commits are retained in the separate Sites source repository.
 
 For each update, create a feature branch, open a pull request and check **Validate Orbit**. GitHub CI installs dependencies, checks types, runs planner/storage/document tests, builds the Worker and checks its HTTP routes. Deployment is a separate verified Sites release; pushing code does not automatically change the running app.
 

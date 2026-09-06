@@ -23,5 +23,6 @@ jobs:
       - run: npm run test:planner
       - run: npm run test:storage
       - run: npm run test:notes
+      - run: npm run test:pwa
       - run: npm run build
       - run: npm run test:smoke
