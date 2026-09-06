@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
+import {IDBFactory} from 'fake-indexeddb';
+import {ShareHandoffs} from '../lib/orbit/share-handoffs.ts';
 import {detectInstallEnvironment,guideBrowser,installRootUrl} from '../lib/orbit/installation.ts';
 const source=await readFile(new URL('../public/sw.js',import.meta.url),'utf8');
-function harness(fetcher){
+function harness(fetcher,idb=new IDBFactory()){
  const listeners=new Map(),stores=new Map(),deleted=[];
- const caches={open:async name=>{if(!stores.has(name))stores.set(name,new Map());const data=stores.get(name);return{put:async(key,value)=>data.set(key,value.clone()),match:async key=>data.get(key)?.clone()}},keys:async()=>[...stores.keys()],delete:async key=>{deleted.push(key);return stores.delete(key)}};
+ const caches={open:async name=>{if(!stores.has(name))stores.set(name,new Map());const data=stores.get(name);return{put:async(key,value)=>data.set(key,value.clone()),match:async key=>data.get(key)?.clone(),keys:async()=>[...data.keys()],delete:async key=>data.delete(key)}},keys:async()=>[...stores.keys()],delete:async key=>{deleted.push(key);return stores.delete(key)}};
  const self={location:{origin:'https://orbit.test'},addEventListener:(name,fn)=>listeners.set(name,fn),skipWaiting:async()=>{},clients:{claim:async()=>{}}};
- vm.runInNewContext(source,{self,caches,fetch:fetcher,Request,Response,URL,Map,Promise});
- return{stores,deleted,caches,lifecycle:async name=>{let work;listeners.get(name)({waitUntil:p=>work=p});await work},request:(path,options={})=>{let result;listeners.get('fetch')({request:{url:new URL(path,self.location.origin).href,method:'GET',mode:'cors',...options},respondWith:p=>result=p});return result}};
+ vm.runInNewContext(source,{self,caches,fetch:fetcher,Request,Response,URL,Map,Promise,indexedDB:idb,crypto,Date});
+ return{idb,stores,deleted,caches,lifecycle:async name=>{let work;listeners.get(name)({waitUntil:p=>work=p});await work},request:(path,options={})=>{let result;listeners.get('fetch')({request:{url:new URL(path,self.location.origin).href,method:'GET',mode:'cors',...options},respondWith:p=>result=p});return result}};
 }
 test('manifest launches the standalone agent on desktop and phone with real icons and in-scope shortcuts',async()=>{
  const manifest=JSON.parse(await readFile(new URL('../public/manifest.webmanifest',import.meta.url),'utf8'));
@@ -76,4 +78,22 @@ test('offline navigation returns only the static fallback, including a cold-cach
 });
 test('activation removes old Orbit asset caches and preserves unrelated caches',async()=>{
  const h=harness(async()=>new Response());await h.caches.open('orbit-offline-v2');await h.caches.open('orbit-offline-v3');await h.caches.open('unrelated');await h.lifecycle('activate');assert.deepEqual(h.deleted,['orbit-offline-v2']);assert.ok(h.stores.has('unrelated'));
+});
+async function shareRows(idb){const db=await new Promise((resolve,reject)=>{const r=idb.open('orbit-share-drafts',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});try{return await new Promise((resolve,reject)=>{const r=db.transaction('shares').objectStore('shares').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}finally{db.close()}}
+function shareRequest(files){const form=new FormData();for(const file of files)form.append('files',file);return {method:'POST',headers:new Headers(),formData:async()=>form}}
+test('Android manifest accepts files through a same-origin POST share target',async()=>{
+ const {share_target:target}=JSON.parse(await readFile(new URL('../public/manifest.webmanifest',import.meta.url),'utf8'));assert.equal(target.action,'/share-target');assert.equal(target.method,'POST');assert.equal(target.enctype,'multipart/form-data');assert.equal(target.params.files[0].name,'files');assert.ok(target.params.files[0].accept.includes('application/pdf'));assert.equal(target.params.text,undefined);
+});
+test('shared files are durably staged before auth redirect and never put in CacheStorage',async()=>{
+ const h=harness(()=>{throw new Error('No upstream upload before selection')});const r=await h.request('/share-target',shareRequest([new File(['photo'],'capture.jpg',{type:'image/jpeg'}),new File(['paper'],'document.pdf',{type:'application/pdf'})]));assert.equal(r.status,303);const target=new URL(r.headers.get('location'));assert.equal(target.pathname,'/share');const rows=await shareRows(h.idb);assert.equal(rows.length,1);assert.equal(rows[0].id,target.searchParams.get('draft'));assert.equal(rows[0].files.length,2);assert.equal(await rows[0].files[0].file.text(),'photo');assert.notEqual(rows[0].files[0].id,rows[0].files[1].id);assert.equal(h.stores.size,0);
+});
+test('invalid shares and a full staging queue never report successful intake',async()=>{
+ const h=harness(()=>{});for(const files of [[],Array.from({length:9},()=>new File(['x'],'photo.jpg'))]){const r=await h.request('/share-target',shareRequest(files));assert.equal(r.status,503);assert.match(await r.text(),/보관하지 못했습니다/)}for(let i=0;i<10;i++)assert.equal((await h.request('/share-target',shareRequest([new File(['x'],'photo.jpg')]))).status,303);assert.equal((await h.request('/share-target',shareRequest([new File(['x'],'extra.jpg')]))).status,503);assert.equal((await shareRows(h.idb)).length,10);
+});
+test('hash-named static code is cached while private responses and unversioned bundles remain uncached',async()=>{
+ let calls=0;const h=harness(async()=>{calls++;return new Response('code',{headers:{'Content-Type':'text/javascript'}})});await h.request('/assets/app-abcdefgh.js');await h.request('/assets/app-abcdefgh.js');assert.equal(calls,1);assert.equal(h.request('/assets/app.js'),undefined);assert.equal(h.request('/api/attachments/content?id=secret'),undefined);
+ const denied=harness(async()=>new Response('private sign in',{headers:{'Content-Type':'text/html'}}));await denied.request('/assets/app-abcdefgh.js');assert.equal(denied.stores.get('orbit-static-v1').size,0);
+});
+test('share handoffs survive unrelated retries, in-flight additions, partial commits and cleanup failures',async()=>{
+ const registry=new ShareHandoffs(),removed=[];const remove=async id=>removed.push(id);registry.register('chat:new','share-A',['a','b']);registry.transfer('chat:new','chat:c');registry.register('chat:c','share-B',['new']);await registry.complete('chat:c',['older'],remove);assert.deepEqual(removed,[]);await registry.complete('chat:c',['a'],remove);assert.deepEqual(removed,[]);await registry.complete('chat:c',['a','b'],remove);assert.deepEqual(removed,['share-A']);await registry.complete('chat:c',['new'],async()=>{throw new Error('transaction failed')});await registry.complete('chat:c',['new'],remove);assert.deepEqual(removed,['share-A','share-B']);await registry.complete('chat:c',['a','b','new'],remove);assert.equal(removed.length,2);
 });

@@ -36,6 +36,7 @@ export const noteRevisions=sqliteTable('orbit_note_revisions',{
 export const agentTurns=sqliteTable('orbit_agent_turns',{
  conversationId:text('conversation_id').notNull().default('legacy'),
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),input:text('input').notNull(),
+ attachmentIds:text('attachment_ids').notNull().default('[]'),
  status:text('status').notNull(),responseJson:text('response_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),index('idx_orbit_turn_conversation_created').on(table.ownerId,table.conversationId,table.createdAt,table.id),uniqueIndex('idx_orbit_one_running_turn').on(table.ownerId).where(sql`${table.status} = 'running'`)]);
 export const agentActions=sqliteTable('orbit_agent_actions',{
@@ -64,3 +65,11 @@ export const conversations=sqliteTable('orbit_conversations',{
  projectId:text('project_id'),revision:integer('revision').notNull().default(0),
  createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_conversation_recent').on(table.ownerId,table.updatedAt,table.id),index('idx_orbit_conversation_project').on(table.ownerId,table.projectId,table.updatedAt,table.id)]);
+
+
+export const attachments=sqliteTable('orbit_attachments',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),name:text('name').notNull(),mime:text('mime').notNull(),size:integer('size').notNull(),
+ prepared:integer('prepared').notNull().default(0),state:text('state').notNull().default('pending'),objectKey:text('object_key'),lease:text('lease'),leaseUntil:integer('lease_until').notNull().default(0),
+ previewKey:text('preview_key'),contextText:text('context_text').notNull().default(''),contextLabel:text('context_label').notNull().default('원본 파일'),
+ targetType:text('target_type'),targetId:text('target_id'),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_attachment_target').on(table.ownerId,table.targetType,table.targetId),index('idx_orbit_attachment_recent').on(table.ownerId,table.createdAt,table.id)]);

@@ -1,3 +1,4 @@
+import {attachmentGate,attachmentGateValues,bindFiles,filesByIds} from '../lib/orbit/attachments/storage.ts';
 import {emptyWorkspace,type Note,type NoteRevision,type WorkspaceData,type WorkspaceSnapshot} from '../lib/orbit/model.ts';
 import {applyAction,DomainError} from '../lib/orbit/reducer.ts';
 import type {WorkspaceAction} from '../lib/orbit/validation.ts';
@@ -83,6 +84,9 @@ export async function writeCommand(db:Database,ownerId:string,command:{operation
   working={...current.data,notes:current.data.notes.map(n=>n.id===note.id?note:n)};
  }
  if(action.type==='note.upsert'&&action.expectedNoteRevision!==undefined){const editing=action;const meta=current.data.notes.find(n=>n.id===editing.note.id);if(!meta||(meta.revision??1)!==action.expectedNoteRevision)throw new RevisionConflict('기록이 변경됐습니다. 작성 중인 내용을 보관하고 최신 내용을 확인해 주세요.')}
+ const attachmentIds=(action.type==='event.upsert'||action.type==='event.attach')?action.attachmentIds:undefined;
+ const attachmentTarget=action.type==='event.upsert'?action.event.id:action.type==='event.attach'?action.id:'';
+ if(attachmentIds)await filesByIds(db,ownerId,attachmentIds);
  const next=applyAction(working,action,now);
  next.events=next.events.filter(e=>!e.id.startsWith('google:'));
  const timestamp=now.toISOString(),revision=current.revision+1;
@@ -92,12 +96,17 @@ export async function writeCommand(db:Database,ownerId:string,command:{operation
  next.notes=next.notes.map(n=>({...n,body:'',bodyStored:true,revision:n.revision??1}));
  if(new TextEncoder().encode(JSON.stringify(next)).byteLength>950000)throw new DomainError('기록 목록의 저장 한도에 도달했습니다. 내보낸 뒤 오래된 기록을 정리해 주세요.');
  const update=db.prepare(`INSERT INTO orbit_workspaces (owner_id, revision, state_json, mutation_id, updated_at)
- VALUES (?, ?, ?, ?, ?)
+ SELECT ?, ?, ?, ?, ? WHERE ${attachmentGate(attachmentIds??[])}
  ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision, state_json=excluded.state_json, mutation_id=excluded.mutation_id, updated_at=excluded.updated_at
- WHERE orbit_workspaces.revision = ?`).bind(ownerId,revision,JSON.stringify(next),command.operationId,timestamp,command.expectedRevision);
+ WHERE orbit_workspaces.revision = ? AND ${attachmentGate(attachmentIds??[])}`).bind(ownerId,revision,JSON.stringify(next),command.operationId,timestamp,...attachmentGateValues(ownerId,attachmentIds??[],'event',attachmentTarget),command.expectedRevision,...attachmentGateValues(ownerId,attachmentIds??[],'event',attachmentTarget));
  const gate='EXISTS (SELECT 1 FROM orbit_workspaces WHERE owner_id = ? AND mutation_id = ? AND revision = ?)';
  const gateValues:SqlValue[]=[ownerId,command.operationId,revision];
  const statements:Statement[]=[update];
+ if(attachmentIds){
+  statements.push(db.prepare(`UPDATE orbit_attachments SET target_type=NULL,target_id=NULL WHERE owner_id=? AND target_type='event' AND target_id=? AND id NOT IN (SELECT value FROM json_each(?)) AND ${gate}`).bind(ownerId,attachmentTarget,JSON.stringify(attachmentIds),...gateValues));
+  statements.push(...bindFiles(db,ownerId,attachmentIds,'event',attachmentTarget,gate,gateValues));
+ }
+ if(action.type==='event.delete')statements.push(db.prepare(`UPDATE orbit_attachments SET target_type=NULL,target_id=NULL WHERE owner_id=? AND target_type='event' AND target_id=? AND ${gate}`).bind(ownerId,action.id,...gateValues));
  if(action.type==='project.delete')statements.push(db.prepare(`UPDATE orbit_conversations SET project_id=NULL,revision=revision+1,updated_at=? WHERE owner_id=? AND project_id=? AND ${gate}`).bind(timestamp,ownerId,action.id,...gateValues));
  // Lazy v2 migration and the first v3 edit share the winning transaction. No data in SQL migrations.
  if(legacy.length)statements.push(db.prepare(`INSERT INTO orbit_note_revisions (owner_id, note_id, revision, title, note_json, updated_at)

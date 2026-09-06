@@ -56,3 +56,11 @@ Scheduler, push subscription, Notion adapter, attachments, semantic search, back
 Migrations `0002` and `0003` add conversations, decisions, encrypted connection records, one-use OAuth states, an external calendar cache and in-flight uniqueness/refresh leases. External calendar records are overlaid for reads and stripped from the aggregate on writes; changes to cached busy time advance the workspace revision. Google event creation uses a deterministic action-derived event ID and verifies its ownership marker on retries. Provider credentials are never persisted in client storage, source control or API status responses.
 
 See [agent operations and setup](Orbit_Agent.ko.md) for the exact credentials, scopes, data window and known limits. Existing explicit-marker extraction remains available independently of AI.
+
+## Attachment flow
+
+`POST /share-target` is intercepted by the installed service worker before generic fetch filtering. It awaits an IndexedDB transaction containing File objects and stable IDs before redirecting to authenticated `/share?draft=...`. The Worker fallback reports a failed intake. Intake hands prepared IDs to a chat composer or event form; only actual destination commit removes the matching local handoff. A separate upload list recovers unbound prepared server files.
+
+`orbit_attachments` owns metadata, upload lease, immutable object/preview keys, preparation state, and a single turn/event binding. Raw PUT streams directly to R2. Preview PUT is bounded to 600 KB; context finalization makes derivatives immutable. The workspace/turn write checks ownership/readiness and binds in the same D1 batch. Losing acknowledgement reconciles stored pointers before cleanup. No original binaries or base64 are stored in D1 or serialized Hermes jobs. Native request retries reconstruct identical preview bytes and retain the durable key on storage/transport failures.
+
+Only content-hashed public code/styles and safe offline assets are cached. Private HTML, API responses, exports and file bytes always require network/owner authentication. Temporary received files are device-local drafts, not offline workspace replicas.
