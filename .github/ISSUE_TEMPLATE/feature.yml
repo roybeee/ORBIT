@@ -1,0 +1,23 @@
+name: 기능 요청
+description: 사용자 문제와 완료 기준을 정리합니다.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 문제를 해결하나요?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 기대하는 사용자 흐름
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 기준
+      placeholder: "사용자가 ... 하면 ... 를 확인할 수 있다."
+    validations:
+      required: true
