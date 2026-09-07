@@ -124,3 +124,7 @@
 - Approval, defer reason, re-review, revoke and decision-preserving regeneration.
 - Scheduling tests, server render smoke test and GitHub CI/Issue/PR templates.
 - Boundary: no persistent user records, live integrations, LLM, scheduler, PWA or remote GitHub connection yet.
+## 2026-09-08 · 설치 앱의 새 버전 안내
+
+- 서버와 화면의 빌드 식별자를 비교해 앱 복귀 시와 사용 중 새 버전을 알립니다. 저장 후 업데이트를 눌러 현재 화면을 다시 열 수 있으며 입력 중 강제 재시작하지 않습니다.
+- 로그인된 버전 조회와 첫 화면 HTML/RSC는 캐시하지 않아 이전 화면의 재사용을 방지합니다. 기존 공유 파일과 저장된 워크스페이스는 지우지 않습니다.

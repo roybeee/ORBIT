@@ -60,5 +60,6 @@ export default defineConfig(async () => {
         config: localBindingConfig,
       }),
     ],
+    define: { __ORBIT_BUILD_ID__: JSON.stringify(new Date().toISOString()) },
   };
 });

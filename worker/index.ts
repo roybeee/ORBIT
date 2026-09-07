@@ -39,7 +39,15 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    // HTML/RSC selects the current hashed client bundle. Never reuse an old app shell.
+    const type = response.headers.get('content-type') ?? '';
+    if (type.includes('text/html') || type.includes('text/x-component')) {
+      const headers = new Headers(response.headers);
+      headers.set('Cache-Control', 'private, no-store');
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
+    return response;
   },
 };
 
