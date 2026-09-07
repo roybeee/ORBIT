@@ -7,7 +7,7 @@ import {claimAction,findAction,markApproved,resetAction} from './repository.ts';
 import {createGoogleEvent,syncCalendar} from './calendar.ts';
 import {parseAction} from './runner.ts';
 import type {Runtime} from './integrations.ts';
-export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional()}).strict();
+export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional()}).strict();
 export async function decide(db:Database,owner:string,input:z.infer<typeof decisionSchema>,env:Runtime){
  const action=await findAction(db,owner,input.id);
  if(input.decision!=='approve'){
@@ -20,7 +20,7 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
  const lease=await claimAction(db,owner,input.id);
  try{
   const parsed=parseAction(action.action);let revision=action.expectedRevision,result:unknown={};
-  if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed);}
+  if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
   else{
    if(['proposal.generate','proposal.approve','review.saveGenerate','event.upsert'].includes(parsed.type))await syncCalendar(db,owner,env,'date' in parsed?parsed.date:parsed.type==='event.upsert'?parsed.event.date:parsed.type==='review.saveGenerate'?addDays(parsed.review.date,1):undefined);
    revision=(await writeCommand(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed})).revision;
