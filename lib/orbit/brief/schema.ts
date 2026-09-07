@@ -4,7 +4,7 @@ const evidence=z.array(text(180)).min(1).max(6);
 export const briefContentSchema=z.object({
  headline:text(180),assessment:text(700),
  progress:z.array(z.object({text:text(260),evidence}).strict()).max(4),
- priorities:z.array(z.object({projectId:text(100),taskId:text(100).optional(),title:text(160),outcome:text(400),whyNow:text(400),approach:z.array(text(240)).min(1).max(3),minutes:z.number().int().min(5).max(480),evidence}).strict()).max(3),
+ priorities:z.array(z.object({projectId:text(100),taskId:text(100).optional(),title:text(160),outcome:text(400),whyNow:text(400),approach:z.array(text(240)).min(1).max(3),minutes:z.number().int().min(5).max(480),cognition:z.enum(['high','mid','low','external']).optional(),quadrant:z.enum(['A','B','C','D']).optional(),evidence}).strict()).max(3),
  tradeoffs:z.array(z.object({title:text(160),reason:text(300),evidence}).strict()).max(3),
  risks:z.array(z.object({risk:text(240),response:text(300),evidence}).strict()).max(3),
  success:text(400),questions:z.array(text(200)).max(3),
