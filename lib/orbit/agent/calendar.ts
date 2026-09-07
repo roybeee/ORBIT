@@ -38,14 +38,23 @@ export async function syncCalendar(db:Database,owner:string,env:Runtime,date?:st
   db.prepare('INSERT INTO orbit_calendar_cache(owner_id,events_json,time_zone,range_start,range_end,updated_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=? AND mutation_id=?) ON CONFLICT(owner_id) DO UPDATE SET events_json=excluded.events_json,time_zone=excluded.time_zone,range_start=excluded.range_start,range_end=excluded.range_end,updated_at=excluded.updated_at').bind(owner,serialized,timeZone,from,to,now,owner,revision,id),
  ]);if(result[0].meta?.changes!==1)throw new RevisionConflict('일정을 확인하는 동안 업무가 변경됐습니다. 다시 동기화해 주세요.');return {connected:true,count:events.length,updatedAt:now};
 }
-export async function createGoogleEvent(db:Database,owner:string,env:Runtime,id:string,action:GoogleEventAction){
+export async function createGoogleEvent(db:Database,owner:string,env:Runtime,id:string,action:GoogleEventAction,overlapConfirmation?:string){
  const token=await accessToken(db,owner,'google_calendar',env),eventId='orbit'+id.replaceAll('-',''),base='https://www.googleapis.com/calendar/v3/calendars/primary/events';
  const existing=await fetchJson(base+'/'+eventId,{headers:{Authorization:`Bearer ${token}`}});
  if(existing.response.ok){if(existing.data.extendedProperties?.private?.orbitAction!==id)throw new AgentError('일정 번호가 충돌했습니다. 새 제안을 생성해 주세요.','CONFLICT',409);return {url:existing.data.htmlLink as string|undefined}}
  if(existing.response.status!==404)throw new AgentError('이전 일정 생성 결과를 확인하지 못했습니다. 다시 시도해 주세요.','CALENDAR',502);
  const event=action.event;
- const current=await readWorkspace(db,owner);if(event.timeZone!==current.data.preferences.timeZone)throw new AgentError('워크스페이스 시간대가 달라졌습니다. 새 일정 제안을 요청해 주세요.','CONFLICT',409);if(event.date<todayInZone(event.timeZone))throw new AgentError('지난 일정은 생성할 수 없습니다.');if(current.data.events.some(e=>e.date===event.date&&overlaps(e,event)))throw new AgentError('같은 시간에 Orbit 일정이 있습니다. 시간을 조정해 주세요.','CONFLICT',409);
- const live=normalizeEvents(await googleEvents(db,owner,env,event.date,addDays(event.date,1),event.timeZone),event.timeZone,event.date,addDays(event.date,1));if(live.some(e=>overlaps(e,event)))throw new AgentError('Google Calendar에 같은 시간의 일정이 있습니다. 다시 계획해 주세요.','CONFLICT',409);
+ const current=await readWorkspace(db,owner);if(event.timeZone!==current.data.preferences.timeZone)throw new AgentError('워크스페이스 시간대가 달라졌습니다. 새 일정 제안을 요청해 주세요.','CONFLICT',409);if(event.date<todayInZone(event.timeZone))throw new AgentError('지난 일정은 생성할 수 없습니다.');
+ const live=normalizeEvents(await googleEvents(db,owner,env,event.date,addDays(event.date,1),event.timeZone),event.timeZone,event.date,addDays(event.date,1));
+ // Cached Google rows may be stale or duplicate live events; only live Google data
+ // and locally managed Orbit events participate in this explicit acknowledgement.
+ const conflicts=[...current.data.events.filter(e=>!e.id.startsWith('google:')&&e.date===event.date),...live].filter(e=>overlaps(e,event)).map(({id,title,date,start,end})=>({id,title,date,start,end})).sort((a,b)=>a.id.localeCompare(b.id));
+ if(conflicts.length){
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({owner,id,event,conflicts})));
+  const confirmation=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+  if(overlapConfirmation!==confirmation)throw new AgentError('같은 시간에 일정이 있습니다. 아래 내용을 확인한 뒤 겹치는 시간에 등록하거나 다른 시간을 요청해 주세요.','CALENDAR_OVERLAP',409,{overlapConfirmation:confirmation,conflicts:conflicts.slice(0,20).map(({title,date,start,end})=>({title,date,start,end})),total:conflicts.length});
+ }
+
  const payload={id:eventId,summary:event.title,description:event.description,start:{dateTime:zonedInstant(event.date,event.start,event.timeZone),timeZone:event.timeZone},end:{dateTime:zonedInstant(event.date,event.end,event.timeZone),timeZone:event.timeZone},extendedProperties:{private:{orbitAction:id}},reminders:{useDefault:false}};
  const {response,data}=await fetchJson(base+'?sendUpdates=none',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});
  if(!response.ok)throw new AgentError('일정 생성 결과를 확인하지 못했습니다. 같은 제안에서 다시 시도해 주세요.','CALENDAR',502);return {url:data.htmlLink as string|undefined};
