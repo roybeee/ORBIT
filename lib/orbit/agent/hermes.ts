@@ -19,7 +19,7 @@ export async function hermesConfig(db:Database,owner:string,env:Runtime){
 }
 export async function hermesRequest(config:HermesConfig,path:string,init:RequestInit={}){
  const {response,data}=await fetchJson(config.endpoint+path,{...init,headers:{...init.headers,Authorization:`Bearer ${config.token}`,'Content-Type':'application/json'}},12000);
- if(!response.ok)throw new AgentError(response.status===401||response.status===403?'헤르메스 연결 암호를 확인해 주세요.':response.status===404?'헤르메스 실행 기능을 찾지 못했습니다. 최신 gateway와 연결 주소를 확인해 주세요.':response.status===429||response.status===409?'헤르메스가 다른 작업을 처리 중입니다. 잠시 후 다시 확인합니다.':'헤르메스가 요청을 완료하지 못했습니다. Mac의 gateway 상태를 확인해 주세요.',response.status===401||response.status===403?'HERMES_AUTH':'HERMES_UPSTREAM',502);
+ if(!response.ok)throw new AgentError(response.status===401||response.status===403?'헤르메스 연결 암호를 확인해 주세요.':response.status===404?'헤르메스 실행 기능을 찾지 못했습니다. 최신 gateway와 연결 주소를 확인해 주세요.':response.status===429||response.status===409?'헤르메스가 다른 작업을 처리 중입니다. 잠시 후 다시 확인합니다.':'헤르메스가 요청을 완료하지 못했습니다. Mac의 gateway 상태를 확인해 주세요.',response.status===401||response.status===403?'HERMES_AUTH':response.status===404?'HERMES_MISSING':'HERMES_UPSTREAM',502);
  return data;
 }
 export async function verifyHermes(config:HermesConfig){

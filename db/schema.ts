@@ -73,3 +73,7 @@ export const attachments=sqliteTable('orbit_attachments',{
  previewKey:text('preview_key'),contextText:text('context_text').notNull().default(''),contextLabel:text('context_label').notNull().default('원본 파일'),
  targetType:text('target_type'),targetId:text('target_id'),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_attachment_target').on(table.ownerId,table.targetType,table.targetId),index('idx_orbit_attachment_recent').on(table.ownerId,table.createdAt,table.id)]);
+// Evening PAFI review details (items, feedback, energy, small wins) live outside the aggregate.
+export const reviews=sqliteTable('orbit_reviews',{
+ ownerId:text('owner_id').notNull(),date:text('date').notNull(),reviewJson:text('review_json').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.date]})]);

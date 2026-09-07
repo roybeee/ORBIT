@@ -23,6 +23,15 @@ Status: planned unless explicitly marked complete. v0.2 progress is recorded bel
 | ORB-303 | v0.4 | Approved calendar write/outbox | Replay-safe writes, external conflict and sync failure reporting |
 | ORB-304 | v0.4 | Daily scheduler and optional notifications | User timezone, quiet hours, one job per user/date, retries deduplicated |
 | ORB-305 | v0.4 | Private file ingestion | MIME/size checks, parsing state, citation offsets, retry support |
+| ORB-401 | v0.6 | BRAINY task coach while writing | Complete: handoff definition, quadrant, cognition, calibrated estimate, size, due, Laser and rule checks with one-tap fixes; never blocks a save |
+| ORB-402 | v0.6 | Focus sessions and completion records | Complete: one running session, accumulated actual minutes, ✓△✗ outcome with reason and optional rule |
+| ORB-403 | v0.6 | PAFI evening wizard and review detail storage | Complete: four steps, outcomes required before feedback, atomic `orbit_reviews` row, `/api/reviews`, export |
+| ORB-404 | v0.6 | Goal Laser planner and calibration | Complete: lunch/travel first, one contiguous Laser block, must → B → A → C, D delegated, median-ratio calibration |
+| ORB-405 | v0.6 | Goal ladder, habits, risks, rules, weekly stats | Complete: bounded collections, D+ streaks, 85% execution line, top reasons |
+| ORB-409 | v0.6 | Keyword project auto-assignment and connection graph | Complete: name/keyword/learned-vocabulary matching, auto-select while writing, reviewed bulk moves, project–keyword–task graph |
+| ORB-406 | v0.7 | Morning/evening reminders | Scheduled push at the user's local review time; one job per user/date; quiet hours |
+| ORB-407 | v0.7 | 100-day habit and 30-day rule retrospectives | Monthly PAFI summary, habit completion milestones, retiring stale rules with evidence |
+| ORB-408 | v0.7 | Wearable energy sources | Optional sleep/steps import with explicit consent; never inferred health data |
 
 ## Release gate
 
