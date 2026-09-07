@@ -1,3 +1,4 @@
+import { automaticProject, projectDraft, suggestProject, normalize } from '../classify.ts';
 import {z} from 'zod';
 import {briefContentSchema,type PlanningRequest} from '../brief/schema.ts';
 import {publishBrief} from '../brief/publish.ts';
@@ -208,6 +209,17 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    let projected=structuredClone(snapshot.data);const cards:AgentAction[]=[];
    for(const proposal of parsed.proposals){
     const action=parseAction(proposal.action);
+    // Resolve a new task's project before staging, so approval executes exactly what the card shows.
+    if(action.type==='task.upsert'&&!projected.tasks.some(t=>t.id===action.task.id)&&!action.project&&action.autoAssign!==false){
+     const text=`${action.task.title} ${action.task.definition}`;
+     const match=automaticProject(text,projected.projects,projected.tasks,projected.notes);
+     if(match)action.task.projectId=match.projectId;
+     else if(!suggestProject(text,projected.projects,projected.tasks,projected.notes).some(p=>p.confidence==='high')){
+      const draft=projectDraft(action.task.title,action.task.due);
+      if(draft){const existing=projected.projects.find(p=>normalize(p.name)===normalize(draft.name));action.task.projectId=existing?.id??draft.id;if(!existing)action.project=draft;}
+     }
+     action.autoAssign=false;
+    }
     if(action.type==='note.upsert'&&snapshot.data.notes.some(n=>n.id===action.note.id)){const revision=job.notes[action.note.id];if(!revision)throw new AgentError('수정할 문서의 원문을 먼저 읽도록 요청해 주세요.','NOTE_UNREAD',422);action.expectedNoteRevision=revision;}
     if(action.type==='google.event.create'){
      if(!connected.some(c=>c.provider==='google_calendar'&&c.connected))throw new AgentError('Google Calendar를 연결한 뒤 일정을 제안받아 주세요.','CONNECT',409);

@@ -210,7 +210,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),
   z.object({ type: z.literal('goal.upsert'), goal: goalSchema }).strict(),
   z.object({ type: z.literal('goal.delete'), id }).strict(),
-  z.object({ type: z.literal('task.upsert'), task: taskSchema }).strict(),
+  z.object({ type: z.literal('task.upsert'), task: taskSchema, project: projectSchema.optional(), autoAssign: z.boolean().optional() }).strict(),
   z
     .object({ type: z.literal('task.status'), id, status: z.enum(['todo', 'doing', 'waiting', 'done']) })
     .strict(),
@@ -219,6 +219,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('task.assign'),
+      projects: z.array(projectSchema).max(200).refine((list) => new Set(list.map((p) => p.id)).size === list.length).optional(),
       assignments: z
         .array(z.object({ id, projectId: id }).strict())
         .min(1)

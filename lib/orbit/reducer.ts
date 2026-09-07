@@ -1,5 +1,6 @@
+import { automaticProject, normalize } from './classify.ts';
 import { planFromBrief } from './brief/planning.ts';
-import type { WorkspaceData, Task, Proposal, Improvement } from './model.ts';
+import type { WorkspaceData, Task, Proposal, Improvement, Project } from './model.ts';
 import type { WorkspaceAction } from './validation.ts';
 import { todayInZone, addDays } from './dates.ts';
 import { meetingCandidates } from './meeting.ts';
@@ -79,6 +80,14 @@ export function applyAction(
 ): WorkspaceData {
   const data = structuredClone(current);
   const today = todayInZone(data.preferences.timeZone, now);
+  const createProject = (draft: Project) => {
+    const byId = data.projects.find((p) => p.id === draft.id);
+    if (byId && normalize(byId.name) !== normalize(draft.name)) fail('프로젝트 ID가 다른 프로젝트에서 사용 중입니다.');
+    const existing = byId ?? data.projects.find((p) => normalize(p.name) === normalize(draft.name));
+    if (existing) return existing.id;
+    data.projects.push(structuredClone(draft));
+    return draft.id;
+  };
   const task = (id: string) => data.tasks.find((t) => t.id === id) ?? fail('할 일을 찾을 수 없습니다.');
   const proposal = (date: string) =>
     data.proposals.find((p) => p.date === date) ?? fail('제안을 먼저 생성해 주세요.');
@@ -139,6 +148,13 @@ export function applyAction(
     case 'task.upsert': {
       const t = { ...action.task };
       const old = data.tasks.find((x) => x.id === t.id);
+      if (action.project) {
+        if (action.project.id !== t.projectId) fail('새 프로젝트와 할 일의 연결을 확인해 주세요.');
+        t.projectId = createProject(action.project);
+      }
+      if (!old && action.autoAssign && !action.project) {
+        t.projectId = automaticProject(`${t.title} ${t.definition}`, data.projects, data.tasks, data.notes)?.projectId ?? t.projectId;
+      }
       t.noteCitation = old?.noteId === t.noteId ? old?.noteCitation : undefined;
       // Execution history survives edits that omit it (agent proposals send full records).
       for (const key of [
@@ -200,7 +216,13 @@ export function applyAction(
       break;
     }
     case 'task.assign': {
-      for (const { id, projectId } of action.assignments) {
+      const targets = new Map<string, string>();
+      for (const draft of action.projects ?? []) {
+        if (!action.assignments.some((a) => a.projectId === draft.id)) fail('연결할 할 일이 없는 새 프로젝트입니다.');
+        targets.set(draft.id, createProject(draft));
+      }
+      for (const { id, projectId: proposedId } of action.assignments) {
+        const projectId = targets.get(proposedId) ?? proposedId;
         const t = task(id);
         if (!data.projects.some((p) => p.id === projectId)) fail('옮길 프로젝트를 찾을 수 없습니다.');
         t.projectId = projectId;

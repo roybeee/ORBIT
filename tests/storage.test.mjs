@@ -101,3 +101,17 @@ test('an evening review detail is written atomically with the workspace, replays
     db.close();
   }
 });
+
+test('creating a project while regrouping tasks persists atomically and remains idempotent after reload',async()=>{
+ const db=createDatabase();try{
+  let state=await writeCommand(db,'alice',command(0,{type:'project.upsert',project}),now);
+  state=await writeCommand(db,'alice',command(state.revision,{type:'task.upsert',task}),now);
+  const draft={...project,id:'new-project',name:'올드페리도넛',keywords:['올드페리도넛']};
+  const action={type:'task.assign',projects:[draft],assignments:[{id:task.id,projectId:draft.id}]};
+  await assert.rejects(()=>writeCommand(db,'alice',command(state.revision,{...action,assignments:[...action.assignments,{id:'missing',projectId:draft.id}]}),now),DomainError);
+  assert.equal((await readWorkspace(db,'alice')).data.projects.length,1);
+  const request=command(state.revision,action);await writeCommand(db,'alice',request,now);await writeCommand(db,'alice',request,now);
+  const reloaded=await readWorkspace(db,'alice');assert.equal(reloaded.revision,3);assert.equal(reloaded.data.projects.length,2);assert.equal(reloaded.data.tasks[0].projectId,draft.id);
+  assert.equal((await readWorkspace(db,'bob')).data.projects.length,0);
+ }finally{db.close()}
+});
