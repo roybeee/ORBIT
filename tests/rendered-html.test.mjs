@@ -142,3 +142,20 @@ test('daily brief routes require ownership, validate the date and fall back to t
  const missing=await request('/api/brief',{method:'POST',headers,body});assert.equal(missing.status,200);const started=await missing.json();assert.equal(started.local,true);
  const workspace=await (await request('/api/workspace',{headers})).json();assert.equal(workspace.data.proposals.find(p=>p.date==='2026-10-01').laser.status,'none');
 });
+
+test('the packaged workspace atomically creates a keyword project and moves its task with a replay-safe response',async()=>{
+ const headers={...identity('classified-owner'),'content-type':'application/json',origin:'https://orbit.test'};
+ const post=async(expectedRevision,action,operationId=randomUUID())=>request('/api/workspace',{method:'POST',headers,body:JSON.stringify({expectedRevision,operationId,action})});
+ const project={id:'bucket',name:'오늘 실행',color:'#5558e8',symbol:'O',goal:'',due:'2026-09-30',priority:3};
+ assert.equal((await post(0,{type:'project.upsert',project})).status,200);
+ const task={id:'task',title:'올드페리도넛 영업자료 완성',projectId:'bucket',status:'todo',duration:75,due:'2026-09-10',impact:3,focus:false,definition:'자료 전달'};
+ assert.equal((await post(1,{type:'task.upsert',task})).status,200);
+ const action={type:'task.assign',projects:[{...project,id:'ofd',name:'올드페리도넛',keywords:['올드페리도넛']}],assignments:[{id:'task',projectId:'ofd'}]},operationId=randomUUID();
+ assert.equal((await post(2,action,operationId)).status,200);
+ assert.equal((await post(2,action,operationId)).status,200);
+ const data=(await (await request('/api/workspace',{headers})).json()).data;
+ assert.equal(data.projects.length,2);assert.equal(data.tasks[0].projectId,'ofd');assert.equal(data.tasks[0].duration,75);
+ const assets=await readdir(new URL('../dist/client/assets/',import.meta.url));
+ const bundles=await Promise.all(assets.filter(name=>/^workspace-.*\.js$/.test(name)).map(name=>readFile(new URL('../dist/client/assets/'+name,import.meta.url),'utf8')));
+ assert.ok(bundles.some(source=>source.includes('그래프 프로젝트 선택')&&source.includes('그래프에 연결된 할 일')&&source.includes('새 프로젝트')));
+});

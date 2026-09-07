@@ -79,7 +79,7 @@ import { TodayLaser } from '@/components/orbit/coach/today-laser';
 import { GoalsPanel } from '@/components/orbit/coach/goals-panel';
 import { WeeklyStats } from '@/components/orbit/coach/weekly-stats';
 import { coachTask } from '@/lib/orbit/coach';
-import { suggestProject, autoAssignments } from '@/lib/orbit/classify';
+import { suggestProject, automaticProject, projectDraft, assignmentPlan } from '@/lib/orbit/classify';
 import { GraphView } from '@/components/orbit/graph/graph-view';
 import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
 import { addDays, todayInZone, koreanDate, weekDates, weekday } from '@/lib/orbit/dates';
@@ -385,7 +385,7 @@ function WorkspaceContent({
     [projectTouched, setProjectTouched] = useState(false),
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
-    [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
+    [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('graph');
   const [energy, setEnergy] = useState<Proposal['energy']>('normal'),
     [reviewDate, setReviewDate] = useState(TODAY);
   const [deferId, setDeferId] = useState<string | null>(null),
@@ -490,7 +490,7 @@ function WorkspaceContent({
   };
   const openCreate = (kind: NonNullable<typeof create>) => {
     setAttachmentDraft('event-draft:' + crypto.randomUUID());
-    if (kind !== 'project' && kind !== 'event' && projects.length === 0) {
+    if (kind !== 'project' && kind !== 'event' && kind !== 'task' && projects.length === 0) {
       kind = 'project';
       toast('먼저 첫 프로젝트를 만들어 주세요.');
     }
@@ -556,17 +556,19 @@ function WorkspaceContent({
     );
   // 자동 안분: while a new task is being written and the project was not chosen by hand, a
   // confident keyword match selects the project; the coach shows lower-confidence suggestions.
-  const autoProject =
-    create === 'task' && !editingId && !projectTouched && newTitle.trim()
-      ? suggestProject(`${newTitle} ${newBody}`, projects, tasks, notes)[0]
-      : undefined;
-  const taskProject =
-    create === 'task' &&
-    autoProject?.confidence === 'high' &&
-    projects.some((p) => p.id === autoProject.projectId)
-      ? autoProject.projectId
-      : newProject;
-  const assignable = useMemo(() => autoAssignments(tasks, projects, notes).length, [tasks, projects, notes]);
+  const draftProject = create === 'task' && !editingId ? projectDraft(newTitle, newDate) : undefined;
+  const autoProject = create === 'task' && !editingId && !projectTouched && newTitle.trim()
+    ? automaticProject(`${newTitle} ${newBody}`, projects, tasks, notes) : undefined;
+  const ambiguousProject = create === 'task' &&
+    suggestProject(`${newTitle} ${newBody}`, projects, tasks, notes).some((p) => p.confidence === 'high');
+  const newProjectCandidate = draftProject && !ambiguousProject &&
+    !projects.some((p) => p.id === draftProject.id || p.name.replace(/\s/g, '') === draftProject.name.replace(/\s/g, ''))
+      ? draftProject : undefined;
+  const taskProject = autoProject?.projectId ??
+    (!editingId && !projectTouched && newProjectCandidate ? newProjectCandidate.id :
+      projects.some((p) => p.id === newProject) || newProjectCandidate?.id === newProject ? newProject : projects[0]?.id ?? '');
+  const selectedDraft = newProjectCandidate?.id === taskProject ? newProjectCandidate : undefined;
+  const assignable = useMemo(() => assignmentPlan(tasks, projects, notes).assignments.length, [tasks, projects, notes]);
   const coachContext = {
     today: TODAY,
     tasks,
@@ -613,9 +615,12 @@ function WorkspaceContent({
     const id = editingId ?? crypto.randomUUID();
     let action: WorkspaceAction;
     if (create === 'task') {
+      if (!taskProject) { toast.error('연결할 프로젝트를 선택해 주세요.'); return; }
       const old = tasks.find((t) => t.id === id);
       action = {
         type: 'task.upsert',
+        project: selectedDraft,
+        autoAssign: !editingId && !projectTouched,
         task: {
           ...old,
           id,
@@ -1034,6 +1039,9 @@ function WorkspaceContent({
                     <Network size={14} /> 그래프
                   </button>
                 </div>
+                <button className="secondary-button" onClick={() => setAssignOpen(true)}>
+                  <Wand2 size={15} /> 자동 안분{assignable ? ` · ${assignable}` : ''}
+                </button>
                 <button className="secondary-button" onClick={() => setBrainyOpen(true)}>
                   <Crosshair size={16} />
                   목표·도미노
@@ -1391,6 +1399,11 @@ function WorkspaceContent({
             </>
           )}
           {view === 'projects' && projectsMode === 'graph' && (
+            <>
+            {assignable > 0 && <div className="info-banner">
+              <Wand2 size={18} /><span>키워드로 분류할 할 일이 {assignable}개 있습니다. 프로젝트를 생성하거나 연결하면 그래프에도 반영됩니다.</span>
+              <button className="secondary-button" onClick={() => setAssignOpen(true)}>지금 분류하기</button>
+            </div>}
             <GraphView
               data={data}
               onOpen={(ref) => {
@@ -1398,6 +1411,7 @@ function WorkspaceContent({
                 else if (ref.kind !== 'keyword') setDetail({ kind: ref.kind, id: ref.id });
               }}
             />
+            </>
           )}
           {view === 'projects' && projectsMode === 'cards' && (
             <>
@@ -2133,14 +2147,16 @@ function WorkspaceContent({
                   items={[
                     ...(create === 'event' ? [{ value: 'none', label: '개인 일정 · 프로젝트 없음' }] : []),
                     ...projects.map((p) => ({ value: p.id, label: p.name })),
+                    ...(create === 'task' && newProjectCandidate ? [{ value: newProjectCandidate.id, label: `${newProjectCandidate.name} · 새 프로젝트` }] : []),
                   ]}
                 />
+                {create === 'task' && selectedDraft && <p className="form-hint auto-project"><Wand2 size={12} /> 저장하면 <b>{selectedDraft.name}</b> 프로젝트를 만들고 이 할 일을 연결합니다. 프로젝트 목표일은 할 일의 마감일로 시작합니다.</p>}
                 {create === 'task' &&
                   autoProject?.confidence === 'high' &&
                   taskProject === autoProject.projectId && (
                     <p className="form-hint auto-project">
                       <Wand2 size={12} /> 키워드 ‘{autoProject.matched.slice(0, 2).join('’, ‘')}’으로{' '}
-                      <b>{projectById(autoProject.projectId)?.name}</b>에 자동 안분됐습니다. 다른 프로젝트를
+                      <b>{projectById(autoProject.projectId)?.name}</b>에 저장됩니다. 다른 프로젝트를
                       고르면 그대로 둡니다.
                     </p>
                   )}

@@ -265,3 +265,20 @@ test('a stop request escapes an unreachable gateway after repeated failures; app
     assert.ok(state.turns[0].error.includes('중지'));
     assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(), null);
   }));
+
+test('Hermes stages content-based project creation with a task, then one approval persists both exactly once',()=>fixture(async db=>{
+ await connectHermes(db);
+ await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project}});
+ const input={id:randomUUID(),message:'올드페리도넛 영업자료 완성하는 할 일을 추가해 줘'};
+ globalThis.fetch=async(url,options)=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):completed(final([{type:'task.upsert',task:{...task,title:'올드페리도넛 영업자료 완성'}}]));
+ await complete(db,input);
+ const card=(await listAgent(db,'owner')).actions[0];
+ assert.equal(card.action.project.name,'올드페리도넛');
+ assert.equal(card.action.task.projectId,card.action.project.id);
+ assert.equal((await readWorkspace(db,'owner')).data.projects.length,1,'staging writes no project');
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);
+ const result=await readWorkspace(db,'owner');
+ assert.equal(result.data.projects.length,2);assert.equal(result.data.tasks.length,1);
+ assert.equal(result.data.tasks[0].projectId,card.action.project.id);
+}));

@@ -88,7 +88,7 @@ export function scoreProject(text: string, project: Project, tasks: Task[] = [],
     if (haystack.includes(term.text)) {
       score += term.text.length * term.text.length * term.weight;
       matched.push(term.text);
-      if (term.manual || term.text.length >= 3) high = true;
+      if (term.manual || (term.weight >= 2 && term.text.length >= 3)) high = true;
       continue;
     }
     const common = lcs(term.text, haystack);
@@ -125,9 +125,10 @@ export function autoAssignments(tasks: Task[], projects: Project[], notes: Note[
   for (const task of tasks) {
     if (task.status === 'done') continue;
     const text = `${task.title} ${task.definition}`;
-    const ranked = suggestProject(text, projects, tasks, notes);
+    const ranked = suggestProject(text, projects, tasks.filter((t) => t.id !== task.id), notes);
     const best = ranked[0];
     if (!best || best.projectId === task.projectId || best.confidence !== 'high') continue;
+    if (ranked[1]?.confidence === 'high' && ranked[1].score * 1.5 >= best.score) continue;
     const current = ranked.find((s) => s.projectId === task.projectId);
     if (current && current.confidence === 'high' && current.score * 1.5 >= best.score) continue;
     out.push({ taskId: task.id, projectId: best.projectId, matched: best.matched, from: task.projectId });
@@ -155,4 +156,62 @@ export function keywordLinks(project: Project, tasks: Task[]) {
           o.taskIds.every((id) => l.taskIds.includes(id)),
       ),
   );
+}
+
+// Strong, unambiguous identity only. Learned vocabulary can suggest, but cannot move a task.
+export function automaticProject(text: string, projects: Project[], tasks: Task[] = [], notes: Note[] = []) {
+  const ranked = suggestProject(text, projects, tasks, notes);
+  const best = ranked[0];
+  if (best?.confidence !== 'high') return undefined;
+  if (ranked[1]?.confidence === 'high' && ranked[1].score * 1.5 >= best.score) return undefined;
+  return best;
+}
+
+// Missing projects are reviewable drafts, not invented business relationships. Extract the named
+// subject from the title; broad work domains are used only when there is no named subject.
+export function projectDraft(title: string, due: string): Project | undefined {
+  const cleaned = title.normalize('NFKC').trim().replace(/^(오늘|내일)\s+/, '');
+  let name = '', keywords: string[] = [];
+  const subject = cleaned.match(/^([가-힣A-Za-z0-9&.-]{3,30}?)(?:에서|에게|으로|과|와|에|의)?\s+(?=영업|제안|계약|자료|공동|미팅|회의|견적|납품|샘플|브랜드|네이밍|디자인|개발|출시|마케팅|넘어갈|[0-9]+층)/u)?.[1];
+  const genericSubject = /^(다음|이번|새로운|기존|모든|필요한|중요한|고객|거래처|대표님|담당자|프로젝트|자료|업무|회의|최종|진행)/;
+  if (subject && !genericSubject.test(subject) && !GENERIC.has(normalize(subject))) {
+    name = subject; keywords = [subject];
+  } else if (/HR|채용|면접|구인/i.test(cleaned)) {
+    name = '채용·HR'; keywords = ['HR', '채용', '면접', '구인'];
+  } else if (/자금|현금흐름|조달/.test(cleaned)) {
+    name = '재무·자금'; keywords = ['자금', '현금흐름', '조달'];
+  }
+  if (!name) return undefined;
+  // Stable ID across previews and repeated imports; reducer also deduplicates normalized names.
+  let hash = 2166136261;
+  for (const c of normalize(name)) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+  return { id: 'classified-' + (hash >>> 0).toString(36), name, keywords,
+    color: '#6558e8', symbol: name.slice(0, 1), goal: '', due, priority: 3 };
+}
+
+export function assignmentPlan(tasks: Task[], projects: Project[], notes: Note[] = []) {
+  const drafts: Project[] = [], assignments: Assignment[] = [];
+  for (const task of tasks) {
+    if (task.status === 'done') continue;
+    const candidates = [...projects, ...drafts];
+    const text = `${task.title} ${task.definition}`;
+    const ranked = suggestProject(text, candidates, tasks.filter((t) => t.id !== task.id), notes);
+    const best = automaticProject(text, candidates, tasks.filter((t) => t.id !== task.id), notes);
+    if (best) {
+      const current = ranked.find((s) => s.projectId === task.projectId);
+      if (best.projectId === task.projectId || (current?.confidence === 'high' && current.score * 1.5 >= best.score)) continue;
+      assignments.push({ taskId: task.id, projectId: best.projectId, from: task.projectId, matched: best.matched });
+      continue;
+    }
+    // Ambiguous existing identities need a manual choice, not yet another project.
+    if (ranked.some((s) => s.confidence === 'high')) continue;
+    const draft = projectDraft(task.title, task.due);
+    if (!draft) continue;
+    const existing = candidates.find((p) => normalize(p.name) === normalize(draft.name));
+    const target = existing ?? draft;
+    if (target.id === task.projectId) continue;
+    if (!existing) drafts.push(draft);
+    assignments.push({ taskId: task.id, projectId: target.id, from: task.projectId, matched: draft.keywords ?? [] });
+  }
+  return { projects: drafts, assignments };
 }

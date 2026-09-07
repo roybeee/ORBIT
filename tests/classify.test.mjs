@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { suggestProject, autoAssignments, keywordLinks, projectTerms } from '../lib/orbit/classify.ts';
+import { suggestProject, autoAssignments, keywordLinks, projectTerms, assignmentPlan, projectDraft, automaticProject } from '../lib/orbit/classify.ts';
 import { applyAction, DomainError } from '../lib/orbit/reducer.ts';
 import { coachTask } from '../lib/orbit/coach.ts';
-import { buildGraph, layoutGraph } from '../lib/orbit/graph.ts';
+import { buildGraph, layoutGraph, connectedTasks } from '../lib/orbit/graph.ts';
 import { parseAction } from '../lib/orbit/agent/protocol.ts';
 import { emptyWorkspace } from '../lib/orbit/model.ts';
 const now = new Date('2026-09-07T01:00:00Z');
@@ -180,7 +180,7 @@ test('the connection graph links projects, tasks and keywords and lays them out 
   const data = {
     ...emptyWorkspace(),
     projects,
-    tasks: [...tasks, task('done', '올드페리도넛 계약서 서명', 'ofd', { status: 'done' })],
+    tasks: [...tasks.map((t) => t.id === 't3' ? { ...t, projectId: 'mapdal' } : t), task('done', '올드페리도넛 계약서 서명', 'ofd', { status: 'done' })],
   };
   const graph = buildGraph(data, { notes: false, done: false, goals: true, keywords: true });
   assert.equal(graph.nodes.filter((n) => n.kind === 'project').length, projects.length);
@@ -206,4 +206,67 @@ test('the connection graph links projects, tasks and keywords and lays them out 
   assert.deepEqual(links.map((l) => l.keyword).sort(), ['4층', '멜로우빈']);
   const withDone = buildGraph(data, { notes: false, done: true, goals: false, keywords: false });
   assert.ok(withDone.nodes.some((n) => n.id === 'task:done' && n.muted));
+});
+
+test('six tasks in a daily bucket produce six reviewable project drafts without pre-created brands', () => {
+  const bucket = projects.filter((p) => p.id === 'bucket');
+  const plan = assignmentPlan(tasks, bucket);
+  assert.deepEqual(plan.projects.map((p) => p.name), ['올드페리도넛', '피자브랜드', '채용·HR', '멜로우빈', '한투파', '재무·자금']);
+  assert.equal(plan.assignments.length, 6);
+  assert.ok(plan.projects.every((p) => p.goal === '' && p.due === '2026-09-08'));
+  assert.equal(projectDraft('프로젝트 자료 정리', '2026-09-08'), undefined);
+  assert.equal(projectDraft('오늘 점심 뭐 먹지', '2026-09-08'), undefined);
+  const duplicated = assignmentPlan([tasks[0], { ...tasks[0], id: 'second', title: '올드페리도넛 계약 검토' }], bucket);
+  assert.equal(duplicated.projects.length, 1);
+  assert.equal(new Set(duplicated.assignments.map((a) => a.projectId)).size, 1);
+});
+test('strong existing matches are reused, learned words cannot move tasks, and ambiguous brands need review', () => {
+  assert.equal(assignmentPlan([tasks[0]], projects).projects.length, 0);
+  assert.equal(assignmentPlan([tasks[0]], projects).assignments[0].projectId, 'ofd');
+  const same = [project('a', '올드페리도넛 서울'), project('b', '올드페리도넛 부산')];
+  assert.equal(automaticProject(tasks[0].title, same), undefined);
+  assert.deepEqual(assignmentPlan([tasks[0]], same), { projects: [], assignments: [] });
+  const learned = [task('a', '영업자료 최종 검수', 'bucket'), task('b', '영업자료 인쇄', 'bucket')];
+  assert.equal(automaticProject('영업자료 발송', [projects[4]], learned), undefined);
+});
+test('project creation and assignment are atomic, preserve facts, deduplicate names and survive repeat application', () => {
+  const data = { ...emptyWorkspace(), projects: [projects[4]], tasks: [tasks[0]], events: [{ id: 'block', title: tasks[0].title, date: '2026-09-08', start: 600, end: 660, kind: 'focus', taskId: 't0', projectId: 'bucket' }] };
+  const plan = assignmentPlan(data.tasks, data.projects);
+  const action = parseAction({ type: 'task.assign', projects: plan.projects, assignments: plan.assignments.map((a) => ({ id: a.taskId, projectId: a.projectId })) });
+  const result = applyAction(data, action, now);
+  assert.equal(result.projects.length, 2);
+  assert.deepEqual(result.tasks[0], { ...tasks[0], projectId: plan.projects[0].id });
+  assert.equal(result.events[0].projectId, result.tasks[0].projectId);
+  assert.deepEqual(applyAction(result, action, now), result);
+  assert.equal(data.projects.length, 1);
+  assert.throws(() => applyAction(data, { ...action, assignments: [...action.assignments, { id: 'missing', projectId: 'bucket' }] }, now), DomainError);
+  assert.equal(data.projects.length, 1, 'invalid batch does not partially create projects');
+  const renamed = { ...data, projects: [...data.projects, project('manual-id', '올드 페리 도넛')] };
+  const merged = applyAction(renamed, action, now);
+  assert.equal(merged.projects.length, 2);
+  assert.equal(merged.tasks[0].projectId, 'manual-id');
+  assert.throws(() => applyAction(result, { ...action, projects: [{ ...plan.projects[0], name: '다른 사업' }] }, now), DomainError);
+});
+test('new task save includes a reviewable project draft; explicit project choices and edits are preserved', () => {
+  const data = { ...emptyWorkspace(), projects, tasks: [] };
+  const automatic = applyAction(data, parseAction({ type: 'task.upsert', task: tasks[0], autoAssign: true }), now);
+  assert.equal(automatic.tasks[0].projectId, 'ofd');
+  const manual = applyAction(data, parseAction({ type: 'task.upsert', task: tasks[0], autoAssign: false }), now);
+  assert.equal(manual.tasks[0].projectId, 'bucket');
+  const edited = applyAction(manual, { type: 'task.upsert', task: { ...tasks[0], title: '올드페리도넛 계약 검토' }, autoAssign: true }, now);
+  assert.equal(edited.tasks[0].projectId, 'bucket');
+  const draft = projectDraft(tasks[0].title, tasks[0].due);
+  const first = applyAction(emptyWorkspace(), parseAction({ type: 'task.upsert', project: draft, task: { ...tasks[0], projectId: draft.id } }), now);
+  assert.equal(first.projects[0].name, '올드페리도넛');
+  assert.equal(first.tasks[0].projectId, draft.id);
+  assert.throws(() => applyAction(emptyWorkspace(), { type: 'task.upsert', project: draft, task: tasks[0] }, now), DomainError);
+});
+test('project graph and linked list scope keywords to actual membership, including optional completed work', () => {
+  const data = { ...emptyWorkspace(), projects: projects.slice(0, 2), tasks: [task('a', '올드페리도넛 자료', 'ofd'), task('b', '올드페리도넛 피자 협업', 'pizza'), task('c', '올드페리도넛 완료', 'ofd', { status: 'done' })] };
+  const graph = buildGraph(data, { projectId: 'ofd', done: false, notes: false, goals: true, keywords: true });
+  assert.ok(graph.nodes.some((n) => n.kind === 'keyword' && n.projectId === 'ofd'));
+  assert.ok(!graph.nodes.some((n) => n.id === 'task:b' || n.id === 'project:pizza' || n.id === 'task:c'));
+  assert.ok(graph.edges.some((e) => e.a === 'keyword:ofd:올드페리도넛' && e.b === 'task:a'));
+  assert.deepEqual(connectedTasks(data, { projectId: 'ofd', keyword: '올드페리도넛', done: false }).map((t) => t.id), ['a']);
+  assert.deepEqual(connectedTasks(data, { projectId: 'ofd', done: true }).map((t) => t.id), ['a', 'c']);
 });

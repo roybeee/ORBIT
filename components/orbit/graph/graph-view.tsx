@@ -3,7 +3,7 @@ import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type
 import { Search, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import type { WorkspaceData } from '@/lib/orbit/model';
 import { normalize } from '@/lib/orbit/classify';
-import { buildGraph, layoutGraph, type GraphNode, type GraphRef } from '@/lib/orbit/graph';
+import { buildGraph, layoutGraph, connectedTasks, type GraphNode, type GraphRef } from '@/lib/orbit/graph';
 // Connection graph screen: the SVG is panned and zoomed by hand; hovering isolates a node's links.
 export type { GraphRef } from '@/lib/orbit/graph';
 export function GraphView({ data, onOpen }: { data: WorkspaceData; onOpen: (ref: GraphRef) => void }) {
@@ -11,13 +11,16 @@ export function GraphView({ data, onOpen }: { data: WorkspaceData; onOpen: (ref:
     [showDone, setShowDone] = useState(false),
     [showGoals, setShowGoals] = useState(true),
     [showKeywords, setShowKeywords] = useState(true),
+    [projectId, setProjectId] = useState(''),
+    [keyword, setKeyword] = useState(''),
     [query, setQuery] = useState(''),
     [focus, setFocus] = useState<string | null>(null),
     [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const dragged = useRef(false);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const graph = useMemo(
-    () => buildGraph(data, { notes: showNotes, done: showDone, goals: showGoals, keywords: showKeywords }),
-    [data, showNotes, showDone, showGoals, showKeywords],
+    () => buildGraph(data, { notes: showNotes, done: showDone, goals: showGoals, keywords: showKeywords, projectId: projectId || undefined }),
+    [data, showNotes, showDone, showGoals, showKeywords, projectId],
   );
   const placed = useMemo(() => layoutGraph(graph.nodes, graph.edges), [graph]);
   const bounds = useMemo(() => {
@@ -40,20 +43,24 @@ export function GraphView({ data, onOpen }: { data: WorkspaceData; onOpen: (ref:
   }, [graph]);
   const q = normalize(query);
   const hit = (n: GraphNode) => !!q && normalize(n.label).includes(q);
+  const searchContext = new Set(placed.filter(hit).map((n) => n.id));
+  for (const n of placed.filter(hit)) for (const id of neighbours.get(n.id) ?? []) searchContext.add(id);
   const dim = (id: string) =>
     (focus && focus !== id && !neighbours.get(focus)?.has(id)) ||
-    (q && !hit(placed.find((n) => n.id === id)!));
+    (q && !searchContext.has(id));
   const zoom = (factor: number) => setView((v) => ({ ...v, k: Math.min(4, Math.max(0.4, v.k * factor)) }));
   const onWheel = (e: WheelEvent<SVGSVGElement>) => {
     e.preventDefault();
     zoom(e.deltaY < 0 ? 1.12 : 0.9);
   };
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    dragged.current = false;
     drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!drag.current) return;
+    if (Math.hypot(e.clientX - drag.current.x, e.clientY - drag.current.y) > 5) dragged.current = true;
     const scale = bounds.w / Math.max(1, (e.currentTarget as SVGSVGElement).clientWidth) / view.k;
     setView((v) => ({
       ...v,
@@ -64,11 +71,27 @@ export function GraphView({ data, onOpen }: { data: WorkspaceData; onOpen: (ref:
   const onPointerUp = () => {
     drag.current = null;
   };
+  const selectProject = (id: string) => {
+    setProjectId(id); setKeyword(''); setQuery(''); setFocus(null); setView({ x: 0, y: 0, k: 1 });
+  };
+  const openNode = (n: GraphNode) => {
+    if (n.kind === 'project') selectProject(n.refId);
+    else if (n.kind === 'keyword') {
+      selectProject(n.projectId ?? ''); setKeyword(n.refId);
+    } else onOpen({ kind: n.kind, id: n.refId });
+  };
+  const linkedTasks = connectedTasks(data, { projectId: projectId || undefined, keyword, done: showDone, query });
+  const selectedProject = data.projects.find((p) => p.id === projectId);
   const cx = bounds.minX + bounds.w / 2,
     cy = bounds.minY + bounds.h / 2;
   return (
     <section className="graph-view" aria-label="연결 그래프">
       <div className="graph-toolbar">
+        <select className="form-field graph-project-select" aria-label="그래프 프로젝트 선택" value={projectId}
+          onChange={(e) => selectProject(e.target.value)}>
+          <option value="">전체 프로젝트</option>
+          {data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
         <label className="search-box">
           <Search size={15} />
           <input
@@ -158,13 +181,12 @@ export function GraphView({ data, onOpen }: { data: WorkspaceData; onOpen: (ref:
                 onPointerLeave={() => setFocus(null)}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (n.kind !== 'keyword') onOpen({ kind: n.kind, id: n.refId });
-                  else setQuery(n.label);
+                  if (!dragged.current) openNode(n);
                 }}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && n.kind !== 'keyword') onOpen({ kind: n.kind, id: n.refId });
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openNode(n); }
                 }}
               >
                 <title>{n.label}</title>
@@ -181,13 +203,29 @@ export function GraphView({ data, onOpen }: { data: WorkspaceData; onOpen: (ref:
           </g>
         </svg>
       )}
+      <section className="graph-task-panel" aria-label="그래프에 연결된 할 일">
+        <div className="graph-task-heading">
+          <div><strong>{selectedProject?.name ?? '전체 프로젝트'} · 연결된 할 일 {linkedTasks.length}개</strong>
+            {keyword && <button className="text-button" onClick={() => setKeyword('')}>#{keyword} ×</button>}
+          </div>
+          {selectedProject && <button className="secondary-button" onClick={() => onOpen({ kind: 'project', id: selectedProject.id })}>프로젝트 상세</button>}
+        </div>
+        {linkedTasks.length === 0 && <p className="muted">이 조건에 연결된 할 일이 없습니다. 완료 포함을 켜거나 필터를 바꿔 보세요.</p>}
+        <div className="graph-task-list">
+          {linkedTasks.map((t) => <button className="graph-task-row" key={t.id} onClick={() => onOpen({ kind: 'task', id: t.id })}>
+            <span className={`graph-task-status is-${t.status}`}>{({ todo: '예정', doing: '진행 중', waiting: '대기', done: '완료' })[t.status]}</span>
+            <span><strong>{t.title}</strong><small>{data.projects.find((p) => p.id === t.projectId)?.name} · {t.due} 마감 · {t.duration}분</small></span>
+            <span aria-hidden="true">↗</span>
+          </button>)}
+        </div>
+      </section>
       <p className="graph-legend">
         <span className="is-project">프로젝트</span>
         <span className="is-task">할 일</span>
         <span className="is-keyword">키워드</span>
         <span className="is-goal">목표</span>
         <span className="is-note">기록</span>
-        <span className="muted">노드를 누르면 열립니다 · 휠로 확대, 끌어서 이동</span>
+        <span className="muted">프로젝트·키워드를 누르면 할 일 목록 · 할 일을 누르면 상세 보기</span>
       </p>
     </section>
   );
