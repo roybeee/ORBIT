@@ -186,3 +186,29 @@ test('without a connected Hermes the review detail is saved and the BRAINY plann
  const again=await startPlanningAction(db,'owner',{operationId:id,expectedRevision:snapshot.revision,action:{type:'review.saveGenerate',review:{date:today,win:'',block:'',energy:'normal'},detail}},env);
  assert.equal(again.snapshot.revision,state.revision);
 }));
+
+test('today and past targets collect dated context without claiming historical task snapshots',()=>fixture(async db=>{
+ const snapshot=await seed(db),past=addDays(today,-60);
+ snapshot.data.events.push({id:'historic',title:'그날의 미팅',date:past,start:600,end:660,kind:'meeting'});
+ for(const target of [today,addDays(today,-1),past]){
+  const context=await collectPlanningContext(db,'owner',snapshot,{date:target,energy:'normal'},[],env);
+  assert.equal(context.catalog.targetDate,target);assert.equal(context.cutoff,today);
+  assert.equal(context.catalog.analysisMode,target<today?'retrospective-current-records':'current-records');
+  if(target<today)assert.ok(context.coverage.warnings.some(w=>w.includes('당시 업무 상태를 복원한 기록이 아니')));
+  if(target===past){assert.ok(context.catalog.events.some(e=>e.id==='historic'));assert.ok(!context.catalog.availableWindows.some(w=>w.start<660&&w.end>600));}
+ }
+}));
+test('Hermes generates and reloads yesterday and today independently, preserving other dates and actual tasks',()=>fixture(async db=>{
+ const initial=await seed(db);await hermes(db);
+ globalThis.fetch=async(url,options={})=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):response({kind:'brief',brief:content()});
+ for(const target of [date,addDays(today,-1),today]){
+  const request={date:target,energy:'normal'},id=randomUUID();
+  await runAgent(db,'owner',{id,message:briefMessage(request),planning:request},env);await complete(db,id);
+  const reloaded=await readWorkspace(db,'owner'),plan=reloaded.data.proposals.find(p=>p.date===target);
+  assert.equal(plan.brief.date,target);assert.equal(plan.brief.cutoff,today);
+  assert.equal(reloaded.data.events.length,0);assert.deepEqual(reloaded.data.tasks,initial.data.tasks);
+ }
+ const result=await readWorkspace(db,'owner');assert.equal(result.data.proposals.length,3);
+ const old=result.data.proposals.find(p=>p.date===addDays(today,-1));assert.ok(old.items.length);
+ assert.throws(()=>applyAction(result.data,{type:'proposal.approve',date:old.date,itemId:old.items[0].id}),/지난 날짜/);
+}));

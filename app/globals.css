@@ -308,3 +308,9 @@ button,a,input,textarea,[role=button]{touch-action:manipulation}button:active:no
 .graph-task-status.is-done{color:#267b62;background:#eaf8f2}
 .graph-task-status.is-waiting{color:#a96717;background:#fff4e3}
 @media(max-width:640px){.graph-project-select{width:100%}.graph-canvas{height:420px}.graph-task-row{padding:11px 9px;gap:8px}.assign-drafts{padding:12px}}
+
+.brief-date-navigation{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 20px}
+.brief-date-navigation .secondary-button{min-height:40px;font-size:13px}
+.brief-date-navigation [aria-pressed="true"]{background:#eeebff;border-color:#8f83eb;color:#5145cf}
+.brief-date-navigation select{width:auto;max-width:100%;margin-left:auto;min-height:40px}
+@media(max-width:640px){.brief-date-navigation{gap:6px}.brief-date-navigation select{width:100%;margin-left:0}.brief-decisions small{display:block;width:100%}}
