@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import type {DailyBrief} from './brief/schema';
 import {validDate} from './dates.ts';
 const attachmentIds=z.array(z.string().uuid()).max(8).refine(ids=>new Set(ids).size===ids.length);
 const id=z.string().min(1).max(100);
@@ -25,6 +26,7 @@ export const actionSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('event.upsert'),event:eventSchema,attachmentIds:attachmentIds.optional()}).strict(),
  z.object({type:z.literal('event.delete'),id}).strict(),
  z.object({type:z.literal('event.attach'),id,attachmentIds}).strict(),
+ z.object({type:z.literal('review.save'),review}).strict(),
  z.object({type:z.literal('review.saveGenerate'),review}).strict(),
  z.object({type:z.literal('proposal.generate'),date:dateSchema,energy}).strict(),
  z.object({type:z.literal('proposal.approve'),date:dateSchema,itemId:id}).strict(),
@@ -33,5 +35,5 @@ export const actionSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('proposal.revoke'),date:dateSchema,itemId:id}).strict(),
  z.object({type:z.literal('preferences.update'),preferences:preferencesSchema}).strict(),
 ]);
-export type WorkspaceAction=z.infer<typeof actionSchema>;
+export type WorkspaceAction=z.infer<typeof actionSchema>|{type:'proposal.brief';brief:DailyBrief;energy:'low'|'normal'|'high'};
 export const commandSchema=z.object({operationId:z.string().uuid(),expectedRevision:z.number().int().nonnegative(),action:actionSchema}).strict();
