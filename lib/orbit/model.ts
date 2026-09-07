@@ -19,6 +19,7 @@ export interface Project {
   due: string;
   priority: number;
   goalId?: string;
+  keywords?: string[];
 }
 export interface Task {
   id: string;

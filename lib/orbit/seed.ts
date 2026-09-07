@@ -19,6 +19,7 @@ export const initialProjects: Project[] = [
     due: '2026-09-18',
     priority: 5,
     goalId: 'g-short',
+    keywords: ['화덕피자', '피자', '파일럿'],
   },
   {
     id: 'ofd',
@@ -29,6 +30,7 @@ export const initialProjects: Project[] = [
     due: '2026-09-11',
     priority: 4,
     goalId: 'g-mid',
+    keywords: ['올드페리도넛', 'OFD', '가맹', '영업자료'],
   },
   {
     id: 'mapdal',
@@ -38,6 +40,7 @@ export const initialProjects: Project[] = [
     goal: '라이브커머스 협업의 실행 계획 확정',
     due: '2026-09-15',
     priority: 4,
+    keywords: ['맵달', '라이브커머스', '협업사'],
   },
   {
     id: 'orbit',
@@ -47,6 +50,7 @@ export const initialProjects: Project[] = [
     goal: '폰에서 오늘의 업무와 프로젝트를 관리',
     due: '2026-09-13',
     priority: 5,
+    keywords: ['매니지먼트 앱', '설계도', '결과물 정리'],
   },
 ];
 export const initialTasks: Task[] = [

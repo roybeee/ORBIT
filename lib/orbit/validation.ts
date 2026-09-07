@@ -24,6 +24,7 @@ export const projectSchema = z
     due: dateSchema,
     priority: z.number().int().min(1).max(5),
     goalId: id.optional(),
+    keywords: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
   })
   .strict();
 export const taskSchema = z
@@ -215,6 +216,19 @@ export const actionSchema = z.discriminatedUnion('type', [
     .strict(),
   z.object({ type: z.literal('task.focus'), id, focus: z.boolean() }).strict(),
   z.object({ type: z.literal('task.laser'), id, date: dateSchema, laser: z.boolean() }).strict(),
+  z
+    .object({
+      type: z.literal('task.assign'),
+      assignments: z
+        .array(z.object({ id, projectId: id }).strict())
+        .min(1)
+        .max(200)
+        .refine(
+          (list) => new Set(list.map((a) => a.id)).size === list.length,
+          '같은 할 일이 두 번 있습니다.',
+        ),
+    })
+    .strict(),
   z.object({ type: z.literal('task.start'), id }).strict(),
   z.object({ type: z.literal('task.stop'), id }).strict(),
   z

@@ -1,5 +1,6 @@
-import type { Task, Project, Goal, Improvement, Quadrant, Cognition } from './model.ts';
+import type { Task, Project, Goal, Improvement, Quadrant, Cognition, Note } from './model.ts';
 import { calibrate, inferQuadrant } from './planner.ts';
+import { suggestProject } from './classify.ts';
 // The coach checks a task while it is being written, started and finished — not afterwards.
 // Every check is advice: nothing here blocks a save (속전속결).
 export interface CoachCheck {
@@ -17,6 +18,7 @@ export interface CoachContext {
   improvements: Improvement[];
   dominoProjectId?: string;
   factor: number;
+  notes?: Note[];
 }
 export type TaskDraft = Pick<
   Task,
@@ -59,6 +61,26 @@ export function coachTask(draft: TaskDraft, ctx: CoachContext): CoachCheck[] {
       title: '완료 조건이 “내 손에서 끝남”으로 읽힙니다',
       detail: '누구에게 무엇이 넘어가야 완료인지 덧붙여 주세요. 예: 검토 의견을 반영한 회신 메일 발송',
     });
+  // Keyword hold: the project whose vocabulary this task carries, when it is not the chosen one.
+  const ranked = suggestProject(
+    `${draft.title ?? ''} ${definition}`,
+    ctx.projects,
+    ctx.tasks,
+    ctx.notes ?? [],
+  );
+  const best = ranked[0];
+  if (best && best.projectId !== draft.projectId) {
+    const current = ranked.find((s) => s.projectId === draft.projectId);
+    const name = ctx.projects.find((p) => p.id === best.projectId)?.name ?? best.projectId;
+    if (!current || current.score * 1.5 < best.score)
+      checks.push({
+        id: 'project',
+        level: best.confidence === 'high' ? 'warn' : 'info',
+        title: `프로젝트 추정: ${name}`,
+        detail: `키워드 ‘${best.matched.join('’, ‘')}’이(가) 이 프로젝트를 가리킵니다.${best.confidence === 'high' ? '' : ' 확신이 낮으니 맞다면 프로젝트에 키워드를 등록해 두세요.'}`,
+        fix: { label: `${name}(으)로 이동`, patch: { projectId: best.projectId } },
+      });
+  }
   const quadrant: Quadrant = inferQuadrant({ ...(draft as Task), impact: draft.impact ?? 3 }, ctx.today);
   if (!draft.quadrant)
     checks.push({

@@ -41,6 +41,8 @@ import {
   MessagesSquare,
   Crosshair,
   Wand2,
+  Network,
+  LayoutGrid,
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -77,6 +79,9 @@ import { TodayLaser } from '@/components/orbit/coach/today-laser';
 import { GoalsPanel } from '@/components/orbit/coach/goals-panel';
 import { WeeklyStats } from '@/components/orbit/coach/weekly-stats';
 import { coachTask } from '@/lib/orbit/coach';
+import { suggestProject, autoAssignments } from '@/lib/orbit/classify';
+import { GraphView } from '@/components/orbit/graph/graph-view';
+import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
 import { addDays, todayInZone, koreanDate, weekDates, weekday } from '@/lib/orbit/dates';
 import type { Preferences } from '@/lib/orbit/model';
 import type { WorkspaceAction } from '@/lib/orbit/validation';
@@ -376,7 +381,11 @@ function WorkspaceContent({
     [newQuadrant, setNewQuadrant] = useState<Quadrant | 'auto'>('auto'),
     [newCognition, setNewCognition] = useState<Cognition | 'auto'>('auto'),
     [newMust, setNewMust] = useState(false),
-    [brainyOpen, setBrainyOpen] = useState(false);
+    [newKeywords, setNewKeywords] = useState(''),
+    [projectTouched, setProjectTouched] = useState(false),
+    [brainyOpen, setBrainyOpen] = useState(false),
+    [assignOpen, setAssignOpen] = useState(false),
+    [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
   const [energy, setEnergy] = useState<Proposal['energy']>('normal'),
     [reviewDate, setReviewDate] = useState(TODAY);
   const [deferId, setDeferId] = useState<string | null>(null),
@@ -410,12 +419,13 @@ function WorkspaceContent({
       !!create ||
         settingsOpen ||
         brainyOpen ||
+        assignOpen ||
         view === 'agent' ||
         view === 'review' ||
         detail?.kind === 'note',
     );
     return () => pauseRefresh(false);
-  }, [create, settingsOpen, brainyOpen, view, detail?.kind, pauseRefresh]);
+  }, [create, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
@@ -506,6 +516,8 @@ function WorkspaceContent({
     setNewQuadrant('auto');
     setNewCognition('auto');
     setNewMust(false);
+    setNewKeywords('');
+    setProjectTouched(false);
     setCreate(kind);
   };
   const saveReview = async (
@@ -542,10 +554,24 @@ function WorkspaceContent({
           ? '결과와 규칙 ★를 기록했습니다.'
           : '결과를 기록했습니다.',
     );
+  // 자동 안분: while a new task is being written and the project was not chosen by hand, a
+  // confident keyword match selects the project; the coach shows lower-confidence suggestions.
+  const autoProject =
+    create === 'task' && !editingId && !projectTouched && newTitle.trim()
+      ? suggestProject(`${newTitle} ${newBody}`, projects, tasks, notes)[0]
+      : undefined;
+  const taskProject =
+    create === 'task' &&
+    autoProject?.confidence === 'high' &&
+    projects.some((p) => p.id === autoProject.projectId)
+      ? autoProject.projectId
+      : newProject;
+  const assignable = useMemo(() => autoAssignments(tasks, projects, notes).length, [tasks, projects, notes]);
   const coachContext = {
     today: TODAY,
     tasks,
     projects,
+    notes,
     goals: data.goals ?? [],
     improvements: data.improvements ?? [],
     dominoProjectId: data.dominoProjectId,
@@ -556,7 +582,7 @@ function WorkspaceContent({
           {
             id: editingId ?? 'draft',
             title: newTitle,
-            projectId: newProject,
+            projectId: taskProject,
             duration: Number(newDuration),
             due: newDate,
             definition: newBody,
@@ -572,7 +598,7 @@ function WorkspaceContent({
               tasks,
               {
                 id: editingId ?? 'draft',
-                projectId: newProject,
+                projectId: taskProject,
                 cognition: newCognition === 'auto' ? undefined : newCognition,
               } as Task,
               TODAY,
@@ -594,7 +620,7 @@ function WorkspaceContent({
           ...old,
           id,
           title: newTitle.trim(),
-          projectId: newProject,
+          projectId: taskProject,
           status: old?.status ?? 'todo',
           duration: Number(newDuration),
           due: newDate,
@@ -622,6 +648,12 @@ function WorkspaceContent({
           symbol: old?.symbol ?? newTitle.slice(0, 1),
           due: newDate,
           priority: old?.priority ?? 3,
+          ...(old?.goalId ? { goalId: old.goalId } : {}),
+          keywords: newKeywords
+            .split(/[,、\n]/)
+            .map((k) => k.trim())
+            .filter(Boolean)
+            .slice(0, 12),
         },
       };
     } else if (create === 'event') {
@@ -698,6 +730,7 @@ function WorkspaceContent({
       setNewTitle(p.name);
       setNewBody(p.goal);
       setNewDate(p.due);
+      setNewKeywords((p.keywords ?? []).join(', '));
     } else if (kind === 'note') {
       const n = loadedNote ?? notes.find((n) => n.id === id)!;
       if (n.bodyStored) {
@@ -985,6 +1018,22 @@ function WorkspaceContent({
               </span>
             ) : view === 'projects' ? (
               <div className="heading-actions">
+                <div className="mode-toggle" role="group" aria-label="프로젝트 보기">
+                  <button
+                    className={projectsMode === 'cards' ? 'is-active' : ''}
+                    aria-pressed={projectsMode === 'cards'}
+                    onClick={() => setProjectsMode('cards')}
+                  >
+                    <LayoutGrid size={14} /> 목록
+                  </button>
+                  <button
+                    className={projectsMode === 'graph' ? 'is-active' : ''}
+                    aria-pressed={projectsMode === 'graph'}
+                    onClick={() => setProjectsMode('graph')}
+                  >
+                    <Network size={14} /> 그래프
+                  </button>
+                </div>
                 <button className="secondary-button" onClick={() => setBrainyOpen(true)}>
                   <Crosshair size={16} />
                   목표·도미노
@@ -1296,6 +1345,14 @@ function WorkspaceContent({
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </label>
+                <button
+                  className="secondary-button"
+                  onClick={() => setAssignOpen(true)}
+                  title="제목의 키워드로 프로젝트를 다시 배정합니다"
+                >
+                  <Wand2 size={15} />
+                  프로젝트 자동 안분{assignable ? <span className="number">{assignable}</span> : null}
+                </button>
               </div>
               <section className="full-card">
                 {filteredTasks.length ? (
@@ -1333,7 +1390,16 @@ function WorkspaceContent({
               </section>
             </>
           )}
-          {view === 'projects' && (
+          {view === 'projects' && projectsMode === 'graph' && (
+            <GraphView
+              data={data}
+              onOpen={(ref) => {
+                if (ref.kind === 'goal') setBrainyOpen(true);
+                else if (ref.kind !== 'keyword') setDetail({ kind: ref.kind, id: ref.id });
+              }}
+            />
+          )}
+          {view === 'projects' && projectsMode === 'cards' && (
             <>
               <div className="info-banner">
                 <Target size={18} />
@@ -2058,14 +2124,26 @@ function WorkspaceContent({
               <>
                 <label className="form-label">연결 프로젝트</label>
                 <Choice
-                  value={newProject}
-                  onChange={setNewProject}
+                  value={create === 'task' ? taskProject : newProject}
+                  onChange={(v) => {
+                    setProjectTouched(true);
+                    setNewProject(v);
+                  }}
                   label="연결 프로젝트"
                   items={[
                     ...(create === 'event' ? [{ value: 'none', label: '개인 일정 · 프로젝트 없음' }] : []),
                     ...projects.map((p) => ({ value: p.id, label: p.name })),
                   ]}
                 />
+                {create === 'task' &&
+                  autoProject?.confidence === 'high' &&
+                  taskProject === autoProject.projectId && (
+                    <p className="form-hint auto-project">
+                      <Wand2 size={12} /> 키워드 ‘{autoProject.matched.slice(0, 2).join('’, ‘')}’으로{' '}
+                      <b>{projectById(autoProject.projectId)?.name}</b>에 자동 안분됐습니다. 다른 프로젝트를
+                      고르면 그대로 둡니다.
+                    </p>
+                  )}
               </>
             )}
             {(create === 'task' || create === 'event' || create === 'project') && (
@@ -2195,6 +2273,21 @@ function WorkspaceContent({
                       : '핵심 내용, 결정한 사항, 다음 행동을 남겨 주세요.'
                   }
                 />
+                {create === 'project' && (
+                  <>
+                    <label className="form-label" htmlFor="new-keywords">
+                      키워드 (쉼표로 구분)
+                    </label>
+                    <input
+                      id="new-keywords"
+                      className="form-field"
+                      value={newKeywords}
+                      maxLength={400}
+                      onChange={(e) => setNewKeywords(e.target.value)}
+                      placeholder="예: OFD, 도넛, 가맹 — 할 일 제목에 이 말이 있으면 이 프로젝트로 자동 안분"
+                    />
+                  </>
+                )}
               </>
             )}
             {create === 'task' && (
@@ -2204,6 +2297,10 @@ function WorkspaceContent({
                   if (patch.quadrant) setNewQuadrant(patch.quadrant);
                   if (patch.cognition) setNewCognition(patch.cognition);
                   if (patch.duration) setNewDuration(String(patch.duration));
+                  if (patch.projectId) {
+                    setProjectTouched(true);
+                    setNewProject(patch.projectId);
+                  }
                 }}
               />
             )}
@@ -2555,6 +2652,15 @@ function WorkspaceContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {assignOpen && (
+        <AssignDialog
+          data={data}
+          busy={busy || !loaded}
+          demo={demo}
+          perform={perform}
+          onClose={() => setAssignOpen(false)}
+        />
+      )}
       {brainyOpen && (
         <GoalsPanel
           data={data}

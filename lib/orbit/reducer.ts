@@ -199,6 +199,15 @@ export function applyAction(
       } else if (t.laserDate === action.date) delete t.laserDate;
       break;
     }
+    case 'task.assign': {
+      for (const { id, projectId } of action.assignments) {
+        const t = task(id);
+        if (!data.projects.some((p) => p.id === projectId)) fail('옮길 프로젝트를 찾을 수 없습니다.');
+        t.projectId = projectId;
+        for (const e of data.events.filter((e) => e.taskId === t.id)) e.projectId = projectId;
+      }
+      break;
+    }
     case 'task.start': {
       const t = task(action.id);
       if (t.status === 'done') fail('완료한 일은 다시 시작할 수 없습니다. 상태를 먼저 바꿔 주세요.');
