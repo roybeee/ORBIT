@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {startPlanningAction} from '../brief/start.ts';
 import {readWorkspace,writeCommand,RevisionConflict,type Database} from '../../../db/repository.ts';
 import {dateSchema} from '../validation.ts';
 import {addDays,todayInZone} from '../dates.ts';
@@ -21,8 +22,9 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
  try{
   const parsed=parseAction(action.action);let revision=action.expectedRevision,result:unknown={};
   if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
+  else if(parsed.type==='proposal.generate'||parsed.type==='review.saveGenerate'){const planning=await startPlanningAction(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed},env);revision=planning.snapshot.revision;result={briefDate:planning.date};}
   else{
-   if(['proposal.generate','proposal.approve','review.saveGenerate','event.upsert'].includes(parsed.type))await syncCalendar(db,owner,env,'date' in parsed?parsed.date:parsed.type==='event.upsert'?parsed.event.date:parsed.type==='review.saveGenerate'?addDays(parsed.review.date,1):undefined);
+   if(['proposal.approve','event.upsert'].includes(parsed.type))await syncCalendar(db,owner,env,'date' in parsed?parsed.date:parsed.type==='event.upsert'?parsed.event.date:undefined);
    revision=(await writeCommand(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed})).revision;
   }
   await markApproved(db,owner,action,lease,revision,result);

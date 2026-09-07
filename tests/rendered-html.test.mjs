@@ -118,3 +118,13 @@ test('file endpoints require owner identity and same-origin writes, and stream t
 test('share intake preserves its draft through login and unhandled POST reports failure',async()=>{
  const id=randomUUID();const r=await request('/share?draft='+id);assert.equal(r.status,307);assert.ok(decodeURIComponent(r.headers.get('location')).includes('/share?draft='+id));const page=await request('/share?draft='+id,{headers:identity()});assert.equal(page.status,200);const html=await page.text();assert.match(html,/Orbit 에이전트/);assert.ok(html.includes(id));const fallback=await request('/share-target',{method:'POST',body:'not processed'});assert.equal(fallback.status,503);assert.match(await fallback.text(),/공유/);
 });
+
+test('daily brief routes require ownership, validate the date and report missing Hermes honestly',async()=>{
+ assert.equal((await request('/api/brief?date=2026-10-01')).status,401);
+ const headers={...identity('brief-http'),'content-type':'application/json',origin:'https://orbit.test'};
+ assert.equal((await request('/api/brief?date=bad',{headers})).status,400);
+ const empty=await request('/api/brief?date=2026-10-01',{headers});assert.equal(empty.status,200);assert.match(empty.headers.get('cache-control'),/no-store/);assert.equal((await empty.json()).run,null);
+ const body=JSON.stringify({id:randomUUID(),date:'2026-10-01',energy:'normal'});
+ assert.equal((await request('/api/brief',{method:'POST',headers:{...headers,origin:'https://foreign.test'},body})).status,403);
+ const missing=await request('/api/brief',{method:'POST',headers,body});assert.equal(missing.status,409);assert.equal((await missing.json()).code,'HERMES_SETUP');
+});

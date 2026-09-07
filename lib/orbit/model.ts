@@ -1,3 +1,4 @@
+import type {DailyBrief} from './brief/schema';
 export type View = 'agent'|'today'|'calendar'|'tasks'|'projects'|'wiki'|'knowledge'|'review'|'proposal';
 export type TaskStatus = 'todo'|'doing'|'waiting'|'done';
 export interface Project {id:string;name:string;color:string;symbol:string;goal:string;due:string;priority:number}
@@ -5,8 +6,8 @@ export interface Task {id:string;title:string;projectId:string;status:TaskStatus
 export interface Note {id:string;title:string;kind:'meeting'|'wiki'|'knowledge';projectId:string;summary:string;body:string;tags:string[];updated:string;revision?:number;bodyStored?:boolean}
 export interface NoteRevision {revision:number;title:string;updatedAt:string}
 export interface CalendarEvent {id:string;title:string;date:string;start:number;end:number;kind:'meeting'|'focus'|'break';projectId?:string;taskId?:string}
-export interface ProposalItem {id:string;taskId:string;start:number;end:number;reason:string;state:'pending'|'approved'|'deferred';deferReason?:string;revisitDate?:string}
-export interface Proposal {id:string;date:string;items:ProposalItem[];unscheduled:string[];budget:number;energy:'low'|'normal'|'high'}
+export interface ProposalItem {draftTask?:Task;id:string;taskId:string;start:number;end:number;reason:string;state:'pending'|'approved'|'deferred';deferReason?:string;revisitDate?:string}
+export interface Proposal {brief?:DailyBrief;draftTasks?:Task[];id:string;date:string;items:ProposalItem[];unscheduled:string[];budget:number;energy:'low'|'normal'|'high'}
 export interface Preferences {timeZone:string;workStart:number;workEnd:number;workDays:number[];focusLimit:number;breakMinutes:number;bufferFraction:number}
 export interface DailyReview {id:string;date:string;win:string;block:string;energy:Proposal['energy'];completedIds:string[];updatedAt:string}
 export interface WorkspaceData {schemaVersion:2|3;projects:Project[];tasks:Task[];notes:Note[];events:CalendarEvent[];proposals:Proposal[];reviews:DailyReview[];preferences:Preferences}
