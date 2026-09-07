@@ -52,3 +52,14 @@ export async function listConversations(db:Database,owner:string,options:{projec
  const {results}=await db.prepare(`SELECT * FROM orbit_conversations WHERE owner_id=? AND (updated_at<? OR (updated_at=? AND id<?))${project} ORDER BY updated_at DESC,id DESC LIMIT 51`).bind(owner,cursor.at,cursor.at,cursor.id,...(options.projectId===undefined?[]:[options.projectId])).all<Row>();
  return {items:results.slice(0,50).map(toConversation),hasMore:results.length>50,nextBefore:results.length>50?results[49].updated_at+'|'+results[49].id:null};
 }
+
+// Stable per-date analysis thread: independent from chat, one generation per date.
+export async function planningConversation(db:Database,owner:string,date:string){
+ const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['orbit-planning',owner,date]))));
+ digest[6]=(digest[6]&15)|80;digest[8]=(digest[8]&63)|128;
+ const hex=Array.from(digest.slice(0,16),b=>b.toString(16).padStart(2,'0')).join('');
+ const id=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
+ const now=new Date().toISOString();
+ await db.prepare("INSERT OR IGNORE INTO orbit_conversations(owner_id,id,title,project_id,revision,created_at,updated_at) VALUES(?,?,?,NULL,0,?,?)").bind(owner,id,'실행 제안 · '+date,now,now).run();
+ return id;
+}

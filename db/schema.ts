@@ -38,7 +38,7 @@ export const agentTurns=sqliteTable('orbit_agent_turns',{
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),input:text('input').notNull(),
  attachmentIds:text('attachment_ids').notNull().default('[]'),
  status:text('status').notNull(),responseJson:text('response_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
-},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),index('idx_orbit_turn_conversation_created').on(table.ownerId,table.conversationId,table.createdAt,table.id),uniqueIndex('idx_orbit_one_running_turn').on(table.ownerId).where(sql`${table.status} = 'running'`)]);
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),index('idx_orbit_turn_conversation_created').on(table.ownerId,table.conversationId,table.createdAt,table.id),uniqueIndex('idx_orbit_one_running_turn_per_conversation').on(table.ownerId,table.conversationId).where(sql`${table.status} = 'running'`)]);
 export const agentActions=sqliteTable('orbit_agent_actions',{
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),turnId:text('turn_id').notNull(),
  title:text('title').notNull(),reason:text('reason').notNull(),actionJson:text('action_json').notNull(),expectedRevision:integer('expected_revision').notNull(),

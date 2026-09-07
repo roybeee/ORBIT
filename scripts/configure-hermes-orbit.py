@@ -31,7 +31,10 @@ def main():
     parser = argparse.ArgumentParser(description="기존 Hermes를 Orbit에 연결할 준비를 합니다.")
     parser.add_argument("--profile-home", required=True, type=Path,
                         help="현재 사용하는 Hermes 프로필 폴더")
+    parser.add_argument("--max-concurrent-runs", type=int, default=10, help="동시 Hermes 실행 수 (기본 10)")
     args = parser.parse_args()
+    if not 2 <= args.max_concurrent_runs <= 100:
+        parser.error("동시 실행 수는 2~100 사이로 지정해 주세요.")
     profile = args.profile_home.expanduser().resolve()
     config, dotenv = profile / "config.yaml", profile / ".env"
     binary = shutil.which("hermes")
@@ -73,6 +76,8 @@ def main():
     # The API lane gets Orbit's read/proposal protocol. Explicit no_mcp also
     # prevents globally configured MCP servers from being silently inherited.
     try:
+        subprocess.run([binary, "config", "set", "gateway.api_server.max_concurrent_runs", str(args.max_concurrent_runs)],
+                       env=process_env, check=True, capture_output=True, timeout=30)
         subprocess.run([binary, "config", "set", "platform_toolsets.api_server", '["no_mcp"]'],
                        env=process_env, check=True, capture_output=True, timeout=30)
     except (subprocess.SubprocessError, OSError):

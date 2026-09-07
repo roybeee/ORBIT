@@ -16,8 +16,9 @@ export async function listAgent(db:Database,owner:string,before?:string,conversa
  const {results}=await db.prepare('SELECT * FROM orbit_agent_turns WHERE owner_id=? AND conversation_id=? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 31').bind(owner,conversationId,cursor.at,cursor.at,cursor.id).all<TurnRow>();
  const page=results.slice(0,30),ids=page.map(t=>t.id),attachments=await filesForTurns(db,owner,ids);
  const actions=ids.length?(await db.prepare(`SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id WHERE a.owner_id=? AND a.turn_id IN (${ids.map(()=>'?').join(',')}) ORDER BY a.created_at,a.rowid`).bind(owner,...ids).all<ActionRow>()).results.map(toAction):[];
- const active=await db.prepare("SELECT id,conversation_id FROM orbit_agent_turns WHERE owner_id=? AND status='running'").bind(owner).first<{id:string;conversation_id:string}>();
- return {conversation,turns:page.reverse().map(r=>({attachments:(JSON.parse(r.attachment_ids) as string[]).flatMap(id=>{const file=attachments.find(a=>a.id===id);return file?[file]:[]}),conversationId:r.conversation_id,id:r.id,input:r.input,status:r.status,...publicResponse(r.response_json),createdAt:r.created_at} as AgentTurn)),actions,pendingActions:await pendingActions(db,owner),activeRun:active?{id:active.id,conversationId:active.conversation_id}:null,hasMore:results.length>30,nextBefore:results.length>30?results[29].created_at+'|'+results[29].id:null};
+ const {results:running}=await db.prepare("SELECT id,conversation_id FROM orbit_agent_turns WHERE owner_id=? AND status='running' ORDER BY created_at,id").bind(owner).all<{id:string;conversation_id:string}>();
+ const activeRuns=running.map(r=>({id:r.id,conversationId:r.conversation_id})),activeRun=activeRuns.find(r=>r.conversationId===conversationId)??null;
+ return {conversation,turns:page.reverse().map(r=>({attachments:(JSON.parse(r.attachment_ids) as string[]).flatMap(id=>{const file=attachments.find(a=>a.id===id);return file?[file]:[]}),conversationId:r.conversation_id,id:r.id,input:r.input,status:r.status,...publicResponse(r.response_json),createdAt:r.created_at} as AgentTurn)),actions,pendingActions:await pendingActions(db,owner),activeRun,activeRuns,hasMore:results.length>30,nextBefore:results.length>30?results[29].created_at+'|'+results[29].id:null};
 }
 export async function beginTurn(db:Database,owner:string,id:string,input:string,conversationId='legacy',attachmentIds:string[]=[]){
  const old=await db.prepare('SELECT * FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,id).first<TurnRow>();
@@ -36,7 +37,7 @@ export async function beginTurn(db:Database,owner:string,id:string,input:string,
    db.prepare("UPDATE orbit_conversations SET title=CASE WHEN title='새 대화' THEN ? ELSE title END,revision=revision+1,updated_at=? WHERE owner_id=? AND id=? AND changes()=1 AND EXISTS(SELECT 1 FROM orbit_agent_turns WHERE owner_id=? AND id=? AND status='running' AND updated_at=?)").bind(input.replace(/\s+/g,' ').slice(0,60),now,owner,conversationId,owner,id,now),
    ...bindFiles(db,owner,attachmentIds,'turn',id,"EXISTS(SELECT 1 FROM orbit_agent_turns WHERE owner_id=? AND id=? AND updated_at=? AND attachment_ids=?)",[owner,id,now,JSON.stringify(attachmentIds)])
   ]);if(results[0].meta?.changes!==1)throw new Error('Busy');
- }catch{throw new AgentError('다른 대화의 응답을 처리 중입니다. 응답이 끝나면 보내 주세요.','BUSY',409)}
+ }catch{throw new AgentError('이 대화의 응답을 처리 중입니다. 다른 대화에서는 동시에 요청할 수 있습니다.','BUSY',409)}
  return {replayed:false,lease:now};
 }
 export async function finishTurn(db:Database,owner:string,id:string,lease:string,response:Pick<AgentTurn,'text'|'sources'>,actions:AgentAction[]){

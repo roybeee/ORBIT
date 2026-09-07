@@ -33,7 +33,7 @@ export function AgentWorkspace({demo,displayName,snapshot,onWorkspaceChange,navi
  const [feedback,setFeedback]=useState(''),[settings,setSettings]=useState(false),[acting,setActing]=useState<string|null>(null),[deferred,setDeferred]=useState<AgentAction|null>(null),[reason,setReason]=useState(''),[revisit,setRevisit]=useState(addDays(todayInZone(snapshot.data.preferences.timeZone),1)),[queue,setQueue]=useState(false);
  const [actionNotices,setActionNotices]=useState<Record<string,{message:string;success?:boolean;overlap?:OverlapDetails}>>({});
  const decisionLock=useRef(false);
- const input=useRef<HTMLTextAreaElement>(null),end=useRef<HTMLDivElement>(null),running=!!state.activeRun;
+ const input=useRef<HTMLTextAreaElement>(null),end=useRef<HTMLDivElement>(null),running=!!state.activeRuns?.some(r=>r.conversationId===chat.selected);
  useEffect(()=>{const url=new URL(location.href),changed=url.searchParams.has('connected')||url.searchParams.has('connection_error');if(url.searchParams.has('connected')){setFeedback('계정 연결을 저장했습니다. 필요한 기록을 대화에서 요청해 보세요.');if(url.searchParams.get('connected')==='google_calendar')void agentRequest('/api/integrations/sync','POST',{}).then(()=>onWorkspaceChange()).catch(e=>setError(e.message));url.searchParams.delete('connected')}else if(url.searchParams.has('connection_error')){setError('계정 연결을 마치지 못했습니다. 연결 설정에서 다시 시도해 주세요.');setSettings(true);url.searchParams.delete('connection_error')}if(changed)history.replaceState(null,'',url.pathname+url.search+'#agent')},[]);
  const refresh=async()=>{await chat.refresh();onWorkspaceChange()};
  async function send(text=draft,id=crypto.randomUUID(),retryFiles?:StoredAttachment[]){
