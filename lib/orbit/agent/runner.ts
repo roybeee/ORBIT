@@ -14,7 +14,7 @@ import {hermesConfig,hermesRequest,validRunId} from './hermes.ts';
 import {plaudRead,plaudTools} from './plaud.ts';
 import {syncCalendar} from './calendar.ts';
 import {beginTurn,failTurn,finishTurn,listAgent,pendingActions} from './repository.ts';
-import {getConversation} from './conversations.ts';
+import {getConversation,planningConversation} from './conversations.ts';
 import {AgentError} from './errors.ts';
 import {contract,parseAction} from './protocol.ts';
 import type {AgentAction} from './types.ts';
@@ -23,7 +23,7 @@ export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 type Message={role:'user'|'assistant';content:string};
 type ReadRequest={tool:string;arguments:Record<string,unknown>};
 interface Job {
- planning?:PlanningRequest; planningContext?:PlanningContext; plaudAttempted?:boolean; budget?:number; attempts?:string[]; failures?:number;
+ retryAt?:number; capacityWaits?:number; planning?:PlanningRequest; planningContext?:PlanningContext; plaudAttempted?:boolean; budget?:number; attempts?:string[]; failures?:number;
  attachmentIds?:string[]; phase:'prepare'|'submit'|'poll'|'read'; connectionId:string; sessionId:string; sessionKey:string;
  started:number; round:number; revision:number; request?:{input:string;instructions:string;conversation_history:Message[];session_id:string};
  history:Message[]; runId?:string; attempted?:boolean; cancel?:boolean; invalid:number;
@@ -76,8 +76,10 @@ function remember(job:Job,input:string,output:string){
 }
 
 export async function runAgent(db:Database,owner:string,input:{id:string;message:string;conversationId?:string;attachmentIds?:string[];planning?:PlanningRequest},env:Runtime){
- const conversationId=input.conversationId??'legacy',attachmentIds=input.attachmentIds??[];
+ let conversationId=input.conversationId??'legacy';const attachmentIds=input.attachmentIds??[];
  const old=await db.prepare('SELECT attachment_ids,conversation_id,input,status,updated_at FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,input.id).first<{attachment_ids:string;conversation_id:string;input:string;status:string;updated_at:string}>();
+ // Existing jobs retain their original conversation and native session across deployment.
+ if(input.planning)conversationId=old?.conversation_id??await planningConversation(db,owner,input.planning.date);
  if(old&&(old.input!==input.message||old.conversation_id!==conversationId||old.attachment_ids!==JSON.stringify(attachmentIds)))throw new AgentError('같은 대화 번호의 내용이 다릅니다. 새 메시지로 보내 주세요.','CONFLICT',409);
  if(old?.status==='completed')return;
  const config=await hermesConfig(db,owner,env);
@@ -134,6 +136,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    await save('헤르메스에 전달할 업무와 일정을 준비했습니다.');return;
   }
   if(job.phase==='submit'){
+   if(!job.cancel&&job.retryAt&&Date.now()<job.retryAt)return;
    if(!job.attempted&&Date.now()-job.started>1200000)throw new AgentError('요청을 이어갈 시간이 지났습니다. 최신 기록으로 다시 요청해 주세요.','HERMES_EXPIRED',422);
    // Persist the identical body before sending. Lost acknowledgements reuse
    // the native durable idempotency key instead of starting another agent.
@@ -141,7 +144,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    job.attempted=true;await save(job.cancel?'헤르메스 실행을 확인한 뒤 중지합니다.':'헤르메스가 요청을 시작하고 있습니다.');
    const result=await hermesRequest(config,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':job.sessionId+':'+job.round,'X-Hermes-Session-Key':job.sessionKey},body:nativeBody});
    if(!validRunId(result.run_id))throw new AgentError('헤르메스 실행 번호를 확인하지 못했습니다.','HERMES_FORMAT',502);
-   job.runId=result.run_id;job.phase='poll';await save('헤르메스가 기록을 검토하고 있습니다. 화면을 다시 열면 이어서 확인합니다.');return;
+   job.retryAt=undefined;job.capacityWaits=0;job.runId=result.run_id;job.phase='poll';await save('헤르메스가 기록을 검토하고 있습니다. 화면을 다시 열면 이어서 확인합니다.');return;
   }
   if(job.phase==='poll'){
    // Escape hatches that need no successful status read: a stop request the gateway keeps failing,
@@ -254,8 +257,12 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    await save(!job.reads.length?'조회한 기록을 헤르메스에 전달합니다.':'요청한 참고 기록을 이어서 조회합니다.');
   }
  }catch(error){
+  if(error instanceof AgentError&&error.code==='HERMES_CAPACITY'&&job.phase==='submit'){
+   job.capacityWaits=(job.capacityWaits??0)+1;job.retryAt=Date.now()+Math.min(60000,5000*2**Math.min(job.capacityWaits-1,4));job.attempted=false;
+   await save(error.message);return;
+  }
   // Retain native run IDs across transport loss; publish no partial changes.
-  if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
+  if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_CAPACITY','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
   await discard(db,owner,id,row.turn_lease,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
  }finally{await db.prepare('UPDATE orbit_hermes_jobs SET lease_until=0 WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(owner,id,lock).run()}
 }

@@ -1,0 +1,2 @@
+DROP INDEX `idx_orbit_one_running_turn`;--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_orbit_one_running_turn_per_conversation` ON `orbit_agent_turns` (`owner_id`,`conversation_id`) WHERE "orbit_agent_turns"."status" = 'running';

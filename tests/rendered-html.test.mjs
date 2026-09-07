@@ -181,3 +181,17 @@ test('wiki intake requires owner authentication and same origin, and never expos
  for(const file of assets.filter(n=>n.endsWith('.js'))){const source=await readFile(new URL('../dist/client/assets/'+file,import.meta.url),'utf8');assert.ok(!source.includes(seed.id));assert.ok(!source.includes('ORBIT_WIKI_SEED_KEY'));if(source.includes('개인 위키 문서 연결 그래프')&&source.includes('새 정보 확인'))wikiUI=true}
  assert.ok(wikiUI);
 });
+
+
+test('built API accepts independent conversations while one is already running and exposes scoped busy state',async()=>{
+ const owner='parallel-http',headers={...identity(owner),'content-type':'application/json',origin:'https://orbit.test'};
+ const {saveConnection}=await import('../lib/orbit/agent/secrets.ts');
+ globalThis.__orbitCloudflareEnv.ORBIT_ENCRYPTION_KEY=randomBytes(32).toString('base64');
+ await saveConnection(db,owner,'hermes',{endpoint:'https://hermes.example.com',token:'test',connectionId:'parallel'},{connected:true},globalThis.__orbitCloudflareEnv.ORBIT_ENCRYPTION_KEY);
+ const ids=[randomUUID(),randomUUID()];
+ for(const conversationId of ids){assert.equal((await request('/api/agent/conversations',{method:'POST',headers,body:JSON.stringify({id:conversationId,title:'병렬 대화',projectId:null})})).status,200);assert.equal((await request('/api/agent',{method:'POST',headers,body:JSON.stringify({id:randomUUID(),conversationId,message:'별도 업무 준비'})})).status,200)}
+ const state=await (await request('/api/agent?conversationId='+ids[1],{headers})).json();assert.equal(state.activeRuns.length,2);assert.equal(state.activeRun.conversationId,ids[1]);
+ assert.equal((await request('/api/agent',{method:'POST',headers,body:JSON.stringify({id:randomUUID(),conversationId:ids[1],message:'같은 대화 중복'})})).status,409);
+ const fresh=await (await request('/api/agent?conversationId=new',{headers})).json();assert.equal(fresh.activeRun,null);assert.equal(fresh.activeRuns.length,2);
+ const files=await readdir(new URL('../dist/client/assets/',import.meta.url));const source=(await Promise.all(files.filter(n=>/^workspace-.*\.js$/.test(n)).map(n=>readFile(new URL('../dist/client/assets/'+n,import.meta.url),'utf8')))).join('');assert.ok(source.includes('여기서도 바로 요청할 수 있어요'));assert.ok(!source.includes('완료되면 여기서 보낼 수 있어요'));
+});

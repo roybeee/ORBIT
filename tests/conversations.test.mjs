@@ -21,9 +21,9 @@ test('conversation ownership, project ownership and metadata revision checks are
  await projectWrite(db);const c=await create(db,'p');await assert.rejects(()=>getConversation(db,'b',c.id),e=>e.status===404);await assert.rejects(()=>create(db,'p','b'),e=>e.code==='PROJECT');await assert.rejects(()=>updateConversation(db,'b',{id:c.id,title:'변경',projectId:null,expectedRevision:0}),e=>e.status===404);
  const other=await createConversation(db,'b',{id:c.id,title:'다른 소유자',projectId:null});assert.equal(other.title,'다른 소유자');const renamed=await updateConversation(db,'a',{id:c.id,title:'회의 후속 업무',projectId:null,expectedRevision:0});assert.equal(renamed.revision,1);await assert.rejects(()=>updateConversation(db,'a',{id:c.id,title:'오래된 편집',projectId:null,expectedRevision:0}),e=>e.code==='CONFLICT');await stage(db,c.id,'첫 메시지');assert.equal((await getConversation(db,'a',c.id)).title,'회의 후속 업무');const auto=await create(db);await stage(db,auto.id,'첫 줄\n두 번째 줄');assert.equal((await getConversation(db,'a',auto.id)).title,'첫 줄 두 번째 줄');assert.equal((await getConversation(db,'b',c.id)).title,'다른 소유자');
 }));
-test('transcripts are isolated while review queue and running-turn limit remain owner-wide',()=>fixture(async db=>{
+test('transcripts and running limits are conversation-scoped while review queue remains owner-wide',()=>fixture(async db=>{
  const a=await create(db),b=await create(db);const prior=await stage(db,a.id,'A_ONLY', 'a',true);await stage(db,b.id,'B_ONLY','a',true);const state=await listAgent(db,'a',undefined,b.id);assert.equal(state.turns.length,1);assert.equal(state.actions.length,1);assert.equal(state.pendingActions.length,2);assert.ok(state.pendingActions.some(c=>c.turnId===prior.id&&c.conversationId===a.id));assert.ok(!JSON.stringify(state.actions).includes('A_ONLY'));
- const pending=await beginTurn(db,'a',randomUUID(),'아직 실행 중',a.id);await assert.rejects(()=>beginTurn(db,'a',randomUUID(),'동시 실행',b.id),e=>e.code==='BUSY');const current=await getConversation(db,'a',a.id);await assert.rejects(()=>updateConversation(db,'a',{id:a.id,title:'응답 중 이동',projectId:null,expectedRevision:current.revision}),e=>e.code==='CONFLICT');assert.equal((await listAgent(db,'a',undefined,b.id)).activeRun.conversationId,a.id);assert.ok(pending.lease);
+ const pending=await beginTurn(db,'a',randomUUID(),'아직 실행 중',a.id);await beginTurn(db,'a',randomUUID(),'동시 실행',b.id);await assert.rejects(()=>beginTurn(db,'a',randomUUID(),'같은 대화 중복',b.id),e=>e.code==='BUSY');const current=await getConversation(db,'a',a.id);await assert.rejects(()=>updateConversation(db,'a',{id:a.id,title:'응답 중 이동',projectId:null,expectedRevision:current.revision}),e=>e.code==='CONFLICT');assert.equal((await listAgent(db,'a',undefined,b.id)).activeRun.conversationId,b.id);assert.equal((await listAgent(db,'a',undefined,b.id)).activeRuns.length,2);assert.equal((await listAgent(db,'a',undefined,'new')).activeRun,null);assert.ok(pending.lease);
 }));
 test('compound cursors never skip tied timestamps or leak another thread or owner',()=>fixture(async db=>{
  const a=await create(db),b=await create(db),ids=[];
@@ -52,3 +52,53 @@ test('approval cards preserve prerequisite order even when random IDs sort diffe
 test('a different conversation cannot bypass the owner-wide 200-card review limit',()=>fixture(async db=>{
  const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};await saveConnection(db,'a','hermes',{endpoint:'https://hermes.example.com',token:'test',connectionId:'test'},{connected:true},env.ORBIT_ENCRYPTION_KEY);const a=await create(db),b=await create(db),turn=await stage(db,a.id);for(let i=0;i<200;i++)await db.prepare("INSERT INTO orbit_agent_actions(owner_id,id,turn_id,title,reason,action_json,expected_revision,state,note,revisit_date,result_json,created_at,updated_at) VALUES('a',?,?,'보류한 변경','근거','{}',0,'deferred','보류',NULL,'{}',?,?)").bind(randomUUID(),turn.id,at,at).run();globalThis.fetch=async(url,options)=>options.method==='POST'?Response.json({run_id:'run_1',status:'started'}):Response.json({object:'hermes.run',run_id:'run_1',status:'completed',output:JSON.stringify({kind:'final',text:'새 제안',proposals:[{title:'프로젝트',reason:'결과물',action:{type:'project.upsert',project}}]})});const input={id:randomUUID(),conversationId:b.id,message:'다른 대화에서 제안'};await runAgent(db,'a',input,env);await advanceAgent(db,'a',input.id,env);await assert.rejects(()=>advanceAgent(db,'a',input.id,env),e=>e.code==='QUEUE_FULL');assert.equal((await listAgent(db,'a',undefined,b.id)).actions.length,0);
 }));
+
+test('two native Hermes requests stay in flight together and completion or cancellation stays in its own thread',async t=>{
+ t.setTimeout?.(10000);
+ await fixture(async db=>{
+  const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};await saveConnection(db,'a','hermes',{endpoint:'https://hermes.example.com',token:'test',connectionId:'parallel'},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+  const a=await create(db),b=await create(db),first={id:randomUUID(),conversationId:a.id,message:'A_PRIVATE'},second={id:randomUUID(),conversationId:b.id,message:'B_PRIVATE'};
+  await runAgent(db,'a',first,env);await runAgent(db,'a',second,env);
+  const startA=Promise.withResolvers(),startB=Promise.withResolvers(),releaseA=Promise.withResolvers(),releaseB=Promise.withResolvers(),keys=[];
+  globalThis.fetch=async(url,options={})=>{
+   if(url.endsWith('/stop'))return Response.json({status:'stopping'});
+   if(options.method==='POST'){
+    const request=JSON.parse(options.body),isA=request.input.includes('A_PRIVATE');assert.ok(!request.input.includes(isA?'B_PRIVATE':'A_PRIVATE'));
+    keys.push({session:options.headers['X-Hermes-Session-Key'],idempotency:options.headers['Idempotency-Key'],body:request.session_id});
+    (isA?startA:startB).resolve();await (isA?releaseA:releaseB).promise;return Response.json({run_id:isA?'run_a':'run_b',status:'started'},{status:202});
+   }
+   const isA=url.endsWith('/run_a');return Response.json({object:'hermes.run',run_id:isA?'run_a':'run_b',status:isA?'running':'completed',output:JSON.stringify({kind:'final',text:'B 결과',proposals:[]})});
+  };
+  const requestA=advanceAgent(db,'a',first.id,env);await startA.promise;
+  const requestB=advanceAgent(db,'a',second.id,env);await startB.promise;
+  assert.equal((await listAgent(db,'a',undefined,'new')).activeRuns.length,2);
+  assert.notEqual(keys[0].session,keys[1].session);assert.notEqual(keys[0].idempotency,keys[1].idempotency);assert.notEqual(keys[0].body,keys[1].body);
+  releaseB.resolve();await requestB;releaseA.resolve();await requestA;
+  await advanceAgent(db,'a',second.id,env);
+  assert.equal((await listAgent(db,'a',undefined,b.id)).turns[0].text,'B 결과');assert.equal((await listAgent(db,'a',undefined,a.id)).turns[0].status,'running');
+  await advanceAgent(db,'a',first.id,env,true);assert.equal((await listAgent(db,'a',undefined,b.id)).turns[0].status,'completed');
+  assert.equal((await listAgent(db,'other',undefined,'new')).activeRuns.length,0);
+ });
+});
+
+test('daily strategy runs independently of chat and duplicate generation for the same date is serialized',()=>fixture(async db=>{
+ const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};await saveConnection(db,'a','hermes',{endpoint:'https://hermes.example.com',token:'test',connectionId:'parallel'},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+ const c=await create(db);await runAgent(db,'a',{id:randomUUID(),conversationId:c.id,message:'일반 대화'},env);
+ const planning={date:'2026-09-10',energy:'normal'},id=randomUUID();await runAgent(db,'a',{id,message:'내일 전략',planning},env);
+ let all=(await listAgent(db,'a',undefined,c.id)).activeRuns;assert.equal(all.length,2);assert.ok(all.find(r=>r.id===id).conversationId!==c.id);
+ await assert.rejects(()=>runAgent(db,'a',{id:randomUUID(),message:'다시 생성',planning},env),e=>e.code==='BUSY');
+ await runAgent(db,'a',{id:randomUUID(),message:'다른 날짜 전략',planning:{...planning,date:'2026-09-11'}},env);assert.equal((await listAgent(db,'a',undefined,c.id)).activeRuns.length,3);
+}));
+
+test('gateway capacity waits back off with the original submission key and do not block another conversation',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-08T00:00:00Z')});
+ await fixture(async db=>{
+  const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};await saveConnection(db,'a','hermes',{endpoint:'https://hermes.example.com',token:'test',connectionId:'parallel'},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+  const a=await create(db),b=await create(db),id=randomUUID();await runAgent(db,'a',{id,message:'한도 대기',conversationId:a.id},env);
+  const keys=[];globalThis.fetch=async(url,options)=>{keys.push(options.headers['Idempotency-Key']);return keys.length===1?Response.json({error:'capacity'},{status:429}):Response.json({run_id:'run_resumed',status:'started'},{status:202})};
+  await advanceAgent(db,'a',id,env);assert.match((await listAgent(db,'a',undefined,a.id)).turns[0].progress,/동시 실행 한도/);
+  await advanceAgent(db,'a',id,env);assert.equal(keys.length,1);
+  await runAgent(db,'a',{id:randomUUID(),message:'별도 대화',conversationId:b.id},env);assert.equal((await listAgent(db,'a',undefined,'new')).activeRuns.length,2);
+  t.mock.timers.tick(5001);await advanceAgent(db,'a',id,env);assert.equal(keys.length,2);assert.equal(keys[0],keys[1]);
+ });
+});
