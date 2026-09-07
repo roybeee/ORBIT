@@ -11,13 +11,13 @@ function harness(fetcher,idb=new IDBFactory()){
  const caches={open:async name=>{if(!stores.has(name))stores.set(name,new Map());const data=stores.get(name);return{put:async(key,value)=>data.set(key,value.clone()),match:async key=>data.get(key)?.clone(),keys:async()=>[...data.keys()],delete:async key=>data.delete(key)}},keys:async()=>[...stores.keys()],delete:async key=>{deleted.push(key);return stores.delete(key)}};
  const self={location:{origin:'https://orbit.test'},addEventListener:(name,fn)=>listeners.set(name,fn),skipWaiting:async()=>{},clients:{claim:async()=>{}}};
  vm.runInNewContext(source,{self,caches,fetch:fetcher,Request,Response,URL,Map,Promise,indexedDB:idb,crypto,Date});
- return{idb,stores,deleted,caches,lifecycle:async name=>{let work;listeners.get(name)({waitUntil:p=>work=p});await work},request:(path,options={})=>{let result;listeners.get('fetch')({request:{url:new URL(path,self.location.origin).href,method:'GET',mode:'cors',...options},respondWith:p=>result=p});return result}};
+ return{listeners,idb,stores,deleted,caches,lifecycle:async name=>{let work;listeners.get(name)({waitUntil:p=>work=p});await work},request:(path,options={})=>{let result;listeners.get('fetch')({request:{url:new URL(path,self.location.origin).href,method:'GET',mode:'cors',...options},respondWith:p=>result=p});return result}};
 }
 test('manifest launches the standalone agent on desktop and phone with real icons and in-scope shortcuts',async()=>{
  const manifest=JSON.parse(await readFile(new URL('../public/manifest.webmanifest',import.meta.url),'utf8'));
  assert.equal(manifest.display,'standalone');assert.equal(manifest.start_url,'/');assert.equal(manifest.scope,'/');assert.equal(manifest.prefer_related_applications,false);
  assert.equal(manifest.id,'/');assert.equal(manifest.orientation,undefined);
- for(const icon of manifest.icons){const bytes=await readFile(new URL('../public'+icon.src,import.meta.url));assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.equal(`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`,icon.sizes)}
+ for(const icon of manifest.icons){assert.match(icon.src,/^data:image\/png;base64,/);const bytes=Buffer.from(icon.src.split(',')[1],'base64');const name=icon.purpose==='maskable'?'orbit-maskable-512.png':`orbit-${icon.sizes.split('x')[0]}.png`;assert.deepEqual(bytes,await readFile(new URL('../public/icons/'+name,import.meta.url)));assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.equal(`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`,icon.sizes)}
  assert.ok(manifest.icons.some(icon=>icon.purpose==='maskable'&&icon.sizes==='512x512'));
  const apple=await readFile(new URL('../public/icons/apple-touch-icon.png',import.meta.url));assert.equal(apple.readUInt32BE(16),180);assert.equal(apple.readUInt32BE(20),180);
  for(const shortcut of manifest.shortcuts)assert.match(shortcut.url,/^\/#(today|tasks|review|proposal)$/);
@@ -97,3 +97,7 @@ test('hash-named static code is cached while private responses and unversioned b
 test('share handoffs survive unrelated retries, in-flight additions, partial commits and cleanup failures',async()=>{
  const registry=new ShareHandoffs(),removed=[];const remove=async id=>removed.push(id);registry.register('chat:new','share-A',['a','b']);registry.transfer('chat:new','chat:c');registry.register('chat:c','share-B',['new']);await registry.complete('chat:c',['older'],remove);assert.deepEqual(removed,[]);await registry.complete('chat:c',['a'],remove);assert.deepEqual(removed,[]);await registry.complete('chat:c',['a','b'],remove);assert.deepEqual(removed,['share-A']);await registry.complete('chat:c',['new'],async()=>{throw new Error('transaction failed')});await registry.complete('chat:c',['new'],remove);assert.deepEqual(removed,['share-A','share-B']);await registry.complete('chat:c',['a','b','new'],remove);assert.equal(removed.length,2);
 });
+
+test('active worker reports its actual share receiver revision without exposing private state',()=>{const h=harness(()=>{});let answer;h.listeners.get('message')({data:{type:'ORBIT_SHARE_STATUS'},ports:[{postMessage:value=>answer=value}]});assert.equal(answer.build,'2026-09-07.1');assert.equal(answer.files,true);assert.deepEqual(Object.keys(answer).sort(),['build','files','type']);});
+
+test('share setup rejects stale manifest settings without claiming OS installation',async()=>{const {checkShareManifest}=await import('../lib/orbit/share-setup.ts');const m=JSON.parse(await readFile(new URL('../public/manifest.webmanifest',import.meta.url),'utf8'));assert.equal(checkShareManifest(m),true);assert.equal(checkShareManifest({...m,share_target:undefined}),false);assert.equal(checkShareManifest({...m,icons:[{src:'/private-icon.png'}]}),false);assert.equal(checkShareManifest(null),false);});

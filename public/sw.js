@@ -1,3 +1,5 @@
+const SHARE_BUILD='2026-09-07.1';
+self.addEventListener('message',event=>{if(event.data?.type==='ORBIT_SHARE_STATUS')event.ports?.[0]?.postMessage({type:'ORBIT_SHARE_STATUS',build:SHARE_BUILD,files:true});});
 const CACHE='orbit-offline-v3';
 const BUNDLES='orbit-static-v1';
 const SAFE_ASSETS=new Map([
