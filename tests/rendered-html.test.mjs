@@ -159,3 +159,13 @@ test('the packaged workspace atomically creates a keyword project and moves its 
  const bundles=await Promise.all(assets.filter(name=>/^workspace-.*\.js$/.test(name)).map(name=>readFile(new URL('../dist/client/assets/'+name,import.meta.url),'utf8')));
  assert.ok(bundles.some(source=>source.includes('그래프 프로젝트 선택')&&source.includes('그래프에 연결된 할 일')&&source.includes('새 프로젝트')));
 });
+
+test('past and current proposal dates are accepted by the built HTTP API and available through workspace reload',async()=>{
+ const headers={...identity('dated-brief-owner'),'content-type':'application/json',origin:'https://orbit.test'};
+ for(const date of ['2026-01-02',new Date().toISOString().slice(0,10)]){
+  const generated=await request('/api/brief',{method:'POST',headers,body:JSON.stringify({id:randomUUID(),date,energy:'normal'})});assert.equal(generated.status,200);
+  const read=await request('/api/brief?date='+date,{headers});assert.equal(read.status,200);
+  const workspace=await (await request('/api/workspace',{headers})).json();assert.ok(workspace.data.proposals.some(p=>p.date===date));
+ }
+ const invalid=await request('/api/brief',{method:'POST',headers,body:JSON.stringify({id:randomUUID(),date:'2026-02-30',energy:'normal'})});assert.equal(invalid.status,400);
+});

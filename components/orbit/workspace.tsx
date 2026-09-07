@@ -154,7 +154,7 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
     eyebrow: 'EVENING REVIEW',
   },
   proposal: {
-    title: '내일의 실행 제안',
+    title: '일별 실행 제안',
     subtitle: '오늘까지의 진척에서, 목표를 앞당길 다음 행동으로. Goal Laser가 1순위입니다.',
     eyebrow: 'NEXT DAY',
   },
