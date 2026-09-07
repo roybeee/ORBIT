@@ -39,7 +39,7 @@ export function PwaProvider({children}:{children:ReactNode}){
     display.addEventListener('change',updateDisplay);
     // Only static installation assets are cached. Demo records and private pages are never cached.
     if(location.pathname!=='/demo'&&'serviceWorker' in navigator){
-      void navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(()=>{});
+      void navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(()=>{console.warn('Orbit share receiver registration failed. Open /install#share-setup to check installation.');});
     }
     const viewport=window.visualViewport;
     const updateViewport=()=>{

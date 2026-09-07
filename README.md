@@ -101,3 +101,11 @@ Do not commit real meetings, calendars, tokens, local databases, account credent
 - JSON 내보내기는 업무·문서 기록을 내보내며 첨부 원본을 포함하지 않습니다. 첨부 원본은 해당 대화/일정에서 별도로 내려받으세요.
 
 자동 검사에는 임시 공유 트랜잭션, 파일 소유권, 첨부 원자성, 업로드 확인 유실, 동영상 범위 전송, Hermes 동일 요청 재개가 포함됩니다. 실제 휴대폰의 공유 목록 등록과 연결된 Hermes의 이미지 답변은 사용자 기기에서 확인해야 합니다.
+
+### Android 공유 목록 등록 복구
+
+`/install#share-setup`에서 현재 화면의 manifest/공유 수신 워커를 점검합니다. 이 점검은 Android 앱 패키지 설치 상태를 확인하거나 강제로 갱신하지 않습니다. `chrome://webapks`의 Pending은 완료가 아니며 Successful과 구분합니다.
+
+Chrome의 WebAPK 아이콘 해시 요청은 로그인 쿠키를 보내지 않으므로, 비공개 Site의 아이콘 주소에 의존하지 않도록 manifest에 동일한 PNG 바이트를 data URL로 포함합니다. manifest 경로, 앱 id, 시작 URL, 사용자 데이터와 접근 정책은 유지합니다. 이는 확인된 설치 의존성을 제거하는 수정이며, 해당 기기의 원인이 아이콘 요청 실패였다고 단정하지 않습니다.
+
+갱신 대기가 지속되면 작성 중인 내용을 먼저 저장한 뒤 앱만 재설치하며 Chrome 사이트 데이터는 삭제하지 않습니다. 공유 목록에 표시되는지는 실제 기기에서 별도 확인해야 합니다.

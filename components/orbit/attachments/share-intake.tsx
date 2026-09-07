@@ -28,7 +28,7 @@ export function ShareIntake(props:Props){
    {error&&<p role="alert" className="agent-error">{error}</p>}
    {selected?<SharedItem key={selected.id} {...props} draft={selected} saving={saving} setSaving={setSaving} onBack={forgetSelection} onDiscard={async()=>{await removeShare(selected.id);forgetSelection();await refresh()}} onDone={async(committed)=>{if(committed)await removeShare(selected.id);close()}}/>:
     <div className="shared-drafts">{drafts.length?drafts.map(d=><button key={d.id} className="link-card" onClick={()=>setSelected(d)}><FileText size={18}/><span>{d.files[0]?.file.name??'공유한 파일'}<small>{d.files.length}개 · {new Date(d.createdAt).toLocaleString('ko-KR')}</small></span></button>):
-     <div className="file-no-preview"><Share2 size={28}/><p>갤러리나 파일 앱에서 공유 → Orbit을 선택하세요.</p><p className="form-hint">갤럭시에서는 Chrome으로 설치한 앱을 사용해 주세요. iPhone에서는 대화·일정의 파일 첨부 버튼을 이용할 수 있습니다.</p><a className="text-button" href="/install">앱 설치 안내</a></div>}
+     <div className="file-no-preview"><Share2 size={28}/><p>갤러리나 파일 앱에서 공유 → Orbit을 선택하세요.</p><p className="form-hint">갤럭시에서는 Chrome으로 설치한 앱을 사용해 주세요. iPhone에서는 대화·일정의 파일 첨부 버튼을 이용할 수 있습니다.</p><a className="text-button" href="/install#share-setup">공유 목록에 Orbit이 없나요?</a></div>}
     </div>}
    <p className="file-hint">공유 원본은 이 기기에 최대 24시간 임시 보관됩니다. 대화 보내기나 일정 저장을 마치면 목록에서 정리됩니다.</p>
   </DialogContent></Dialog>
