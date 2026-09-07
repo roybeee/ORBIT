@@ -92,7 +92,7 @@ test('approved Google creation is repeat-safe after a lost acknowledgement and n
  await connect(db);let saved,posts=0;const id=randomUUID();globalThis.fetch=async(url,options={})=>{if(options.method==='POST'){posts++;saved=JSON.parse(options.body);assert.ok(!('attendees' in saved));assert.equal(new URL(url).searchParams.get('sendUpdates'),'none');assert.equal(saved.reminders.useDefault,false);return j({...saved,htmlLink:'https://calendar.google.com/calendar/event?eid=test'})}if(url.includes('/events/'))return saved?j({...saved,htmlLink:'https://calendar.google.com/calendar/event?eid=test'}):j({error:'not found'},404);return j({items:[]})};await createGoogleEvent(db,'owner',env,id,googleAction);await createGoogleEvent(db,'owner',env,id,googleAction);assert.equal(posts,1);assert.equal(saved.id,'orbit'+id.replaceAll('-',''));assert.equal(saved.extendedProperties.private.orbitAction,id);
 }));
 test('live Google conflicts prevent an approved event creation and cache changes invalidate stale plans',()=>fixture(async db=>{
- await connect(db);let posts=0;globalThis.fetch=async(url,options={})=>{if(options.method==='POST'){posts++;throw new Error('must not create')}return url.includes('/events/')?j({},404):j({items:[{id:'busy',start:{dateTime:tomorrow+'T09:00:00+09:00'},end:{dateTime:tomorrow+'T10:00:00+09:00'}}]})};await assert.rejects(()=>createGoogleEvent(db,'owner',env,randomUUID(),googleAction),e=>e.code==='CONFLICT');assert.equal(posts,0);const [card]=await stage(db,[{type:'proposal.generate',date:tomorrow,energy:'normal'}]);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env),e=>e.code==='CONFLICT');assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);
+ await connect(db);let posts=0;globalThis.fetch=async(url,options={})=>{if(options.method==='POST'){posts++;throw new Error('must not create')}return url.includes('/events/')?j({},404):j({items:[{id:'busy',start:{dateTime:tomorrow+'T09:00:00+09:00'},end:{dateTime:tomorrow+'T10:00:00+09:00'}}]})};await assert.rejects(()=>createGoogleEvent(db,'owner',env,randomUUID(),googleAction),e=>e.code==='CALENDAR_OVERLAP');assert.equal(posts,0);const [card]=await stage(db,[{type:'proposal.generate',date:tomorrow,energy:'normal'}]);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env),e=>e.code==='CONFLICT');assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);
 }));
 
 test('pre-registered Plaud login starts even when outbound registration is unavailable',()=>fixture(async db=>{
@@ -127,4 +127,48 @@ test('Hermes native read rounds receive only the owner workspace and use a new r
 }));
 test('workspace changes during a native run invalidate all proposed changes',()=>fixture(async db=>{
  await connectHermes(db);const input={id:randomUUID(),message:'프로젝트'};await runAgent(db,'owner',input,env);globalThis.fetch=async(url,options)=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):completed(final([{type:'project.upsert',project}]));await advanceAgent(db,'owner',input.id,env);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project:{...project,name:'새로운 결과물'}}});await assert.rejects(()=>advanceAgent(db,'owner',input.id,env),e=>e.code==='CONFLICT');assert.equal((await listAgent(db,'owner')).actions.length,0);assert.equal((await readWorkspace(db,'owner')).data.projects[0].name,'새로운 결과물');
+}));
+
+test('overlapping approval requires current explicit confirmation, remains retry-safe, and preserves existing events',()=>fixture(async db=>{
+ await connect(db);
+ const [card]=await stage(db,[googleAction]);
+ let items=[{id:'busy',summary:'기존 회의',start:{dateTime:tomorrow+'T09:00:00+09:00'},end:{dateTime:tomorrow+'T10:00:00+09:00'}}],saved,posts=0;
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST'){posts++;saved=JSON.parse(options.body);throw new Error('lost acknowledgement')}
+  if(url.includes('/events/'))return saved?j({...saved,htmlLink:'https://calendar.google.com/calendar/event?eid=test'}):j({},404);
+  return j({items});
+ };
+ let first;
+ await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env),error=>{
+  first=error.details;return error.code==='CALENDAR_OVERLAP'&&first.total===1&&first.conflicts[0].title==='기존 회의';
+ });
+ assert.equal(posts,0);assert.equal((await findAction(db,'owner',card.id)).state,'pending');
+ await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve',overlapConfirmation:'0'.repeat(64)},env),e=>e.code==='CALENDAR_OVERLAP');
+ items.push({id:'new-busy',summary:'추가된 회의',start:{date:tomorrow},end:{date:addDays(tomorrow,1)}});
+ let latest;
+ await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve',overlapConfirmation:first.overlapConfirmation},env),e=>{latest=e.details;return e.code==='CALENDAR_OVERLAP'&&latest.total===2});
+ assert.notEqual(first.overlapConfirmation,latest.overlapConfirmation);assert.equal(posts,0);
+ await assert.rejects(()=>decide(db,'other',{id:card.id,decision:'approve',overlapConfirmation:latest.overlapConfirmation},env),e=>e.code==='NOT_FOUND');
+ await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve',overlapConfirmation:latest.overlapConfirmation},env),e=>e.code==='UPSTREAM_NETWORK');
+ assert.equal(posts,1);assert.equal((await findAction(db,'owner',card.id)).state,'pending');
+ // A normal retry reconciles the earlier insert instead of requiring a new override or duplicating it.
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);
+ assert.equal(posts,1);const approved=await findAction(db,'owner',card.id);assert.equal(approved.state,'approved');assert.match(approved.result.url,/calendar.google.com/);
+ assert.equal((await readWorkspace(db,'owner')).data.events.length,2);
+}));
+
+test('local overlaps are listed while stale cached Google overlaps do not block a free live calendar',()=>fixture(async db=>{
+ await connect(db);
+ globalThis.fetch=async url=>url.includes('/events/')?j({},404):j({items:[{id:'gone',summary:'삭제 전 일정',start:{date:tomorrow},end:{date:addDays(tomorrow,1)}}]});
+ await syncCalendar(db,'owner',env);
+ let posts=0;globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST'){posts++;return j({htmlLink:'https://calendar.google.com/calendar/event?eid=test'})}
+  return url.includes('/events/')?j({},404):j({items:[]});
+ };
+ await createGoogleEvent(db,'owner',env,randomUUID(),googleAction);assert.equal(posts,1);
+ await syncCalendar(db,'owner',env);
+ const state=await readWorkspace(db,'owner');
+ await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:state.revision,action:{type:'event.upsert',event:{id:'local',title:'Orbit 회의',date:tomorrow,start:540,end:600,kind:'meeting'}}});
+ await assert.rejects(()=>createGoogleEvent(db,'owner',env,randomUUID(),googleAction),e=>e.code==='CALENDAR_OVERLAP'&&e.details.total===1&&e.details.conflicts[0].title==='Orbit 회의');assert.equal(posts,1);
 }));

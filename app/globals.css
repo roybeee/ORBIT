@@ -99,3 +99,5 @@ button,a,input,textarea,[role=button]{touch-action:manipulation}button:active:no
 @media(prefers-reduced-motion:reduce){button,a,.file-progress [data-slot=progress-indicator]{transition:none!important}button:active:not(:disabled),.primary-button:active,.secondary-button:active{transform:none}}
 
 .share-setup{margin-top:24px}.share-setup h2{font-size:22px;line-height:1.5;font-weight:650}.share-setup p,.share-repair-steps{font-size:16px;line-height:1.8;margin:16px 0;color:#566079}.share-repair-steps{list-style:decimal;padding-left:24px}.share-repair-steps li+li{margin-top:14px}.share-setup code{overflow-wrap:anywhere;font-size:14px}.share-setup .text-button{display:flex;margin-top:12px;min-height:44px}.share-setup .form-hint{font-size:14px}
+
+.agent-overlap-list{display:grid;gap:10px;margin:12px 0;padding-left:18px}.agent-overlap-list li strong,.agent-overlap-list li span{display:block}.agent-overlap-options{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.agent-error .agent-overlap-options button{margin:0;text-decoration:none;min-height:44px}

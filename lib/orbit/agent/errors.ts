@@ -1,1 +1,1 @@
-export class AgentError extends Error {code:string;status:number;constructor(message:string,code='INPUT',status=400){super(message);this.code=code;this.status=status}}
+export class AgentError extends Error {code:string;status:number;details?:unknown;constructor(message:string,code='INPUT',status=400,details?:unknown){super(message);this.code=code;this.status=status;this.details=details}}

@@ -1,4 +1,5 @@
 'use client';
+import {AgentRequestError} from '@/lib/orbit/agent/approval-feedback';
 import {useState} from 'react';
 import {Check,ExternalLink,Link2,LoaderCircle,Unplug,CalendarDays,Mic,Orbit} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
@@ -8,7 +9,7 @@ export async function agentRequest(path:string,method='GET',body?:unknown){
  try{
   const response=await fetch(path,{method,signal:controller.signal,credentials:'same-origin',cache:'no-store',...(body!==undefined?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
   let data;try{data=await response.json()}catch{throw new Error('연결이 중단됐습니다. 다시 불러오면 저장된 결과를 확인할 수 있습니다.')}
-  if(!response.ok)throw new Error(data.error??'요청을 완료하지 못했습니다.');return data;
+  if(!response.ok)throw new AgentRequestError(data.error??'요청을 완료하지 못했습니다.',data.code,data.details);return data;
  }catch(error){if(controller.signal.aborted)throw new Error('연결 시간이 초과됐습니다. 다시 눌러 진행 상태를 확인해 주세요.');throw error}finally{clearTimeout(timer)}
 }
 export function Connections({connections,onClose,onChange}:{connections:Connection[];onClose:()=>void;onChange:()=>Promise<void>}){
