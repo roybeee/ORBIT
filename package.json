@@ -19,7 +19,7 @@
     "test:smoke": "node --test tests/rendered-html.test.mjs",
     "test:storage": "node --experimental-strip-types --test tests/storage.test.mjs",
     "test:notes": "node --experimental-strip-types --test tests/notes.test.mjs",
-    "test:pwa": "node --experimental-strip-types --test tests/pwa.test.mjs",
+    "test:pwa": "node --experimental-strip-types --test tests/pwa.test.mjs tests/app-version.test.mjs",
     "test:agent": "node --experimental-strip-types --test tests/agent.test.mjs tests/hermes-setup.test.mjs tests/conversations.test.mjs tests/attachments.test.mjs tests/brief.test.mjs"
   },
   "dependencies": {
