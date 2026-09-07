@@ -172,3 +172,20 @@ test('local overlaps are listed while stale cached Google overlaps do not block 
  await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:state.revision,action:{type:'event.upsert',event:{id:'local',title:'Orbit 회의',date:tomorrow,start:540,end:600,kind:'meeting'}}});
  await assert.rejects(()=>createGoogleEvent(db,'owner',env,randomUUID(),googleAction),e=>e.code==='CALENDAR_OVERLAP'&&e.details.total===1&&e.details.conflicts[0].title==='Orbit 회의');assert.equal(posts,1);
 }));
+
+test('a chat run the gateway forgot fails the turn instead of polling forever, and a stop request escapes an unreachable gateway',()=>fixture(async db=>{
+ await connectHermes(db);
+ const input={id:randomUUID(),message:'초안'};await runAgent(db,'owner',input,env);
+ globalThis.fetch=async()=>j({run_id:'run_1',status:'started'},202);await advanceAgent(db,'owner',input.id,env);
+ globalThis.fetch=async()=>j({error:'not found'},404);
+ await assert.rejects(()=>advanceAgent(db,'owner',input.id,env),e=>e.code==='HERMES_MISSING');
+ let state=await listAgent(db,'owner');assert.equal(state.turns[0].status,'failed');assert.match(state.turns[0].error,/잃었습니다/);assert.equal(state.actions.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
+ const second={id:randomUUID(),message:'초안'};await runAgent(db,'owner',second,env);
+ globalThis.fetch=async()=>j({run_id:'run_2',status:'started'},202);await advanceAgent(db,'owner',second.id,env);
+ globalThis.fetch=async()=>j({error:'gateway restarting'},503);
+ for(let n=0;n<2;n++)await assert.rejects(()=>advanceAgent(db,'owner',second.id,env),e=>e.code==='HERMES_UPSTREAM');
+ const turn=async()=>(await listAgent(db,'owner')).turns.find(t=>t.id===second.id);assert.equal((await turn()).status,'running');
+ await advanceAgent(db,'owner',second.id,env,true);let upstream=0;globalThis.fetch=async()=>{upstream++;return j({error:'gateway restarting'},503)};
+ await advanceAgent(db,'owner',second.id,env);
+ assert.equal(upstream,0,'the escape hatch needs no upstream round trip');assert.equal((await turn()).status,'failed');assert.match((await turn()).error,/중지/);assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
+}));

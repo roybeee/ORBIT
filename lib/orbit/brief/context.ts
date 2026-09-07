@@ -1,5 +1,5 @@
 import {type Database} from '../../../db/repository.ts';
-import type {WorkspaceSnapshot} from '../model.ts';
+import type {WorkspaceSnapshot,Note} from '../model.ts';
 import {todayInZone,addDays} from '../dates.ts';
 import {availableWindows} from '../planner.ts';
 import {plaudTools} from '../agent/plaud.ts';
@@ -8,17 +8,36 @@ import type {Connection} from '../agent/types.ts';
 import type {BriefEvidence,BriefCoverage,PlanningRequest,BriefContent,DailyBrief} from './schema.ts';
 import {AgentError} from '../agent/errors.ts';
 
-export interface PlanningContext {evidence:BriefEvidence[];coverage:BriefCoverage;cutoff:string;catalog:unknown;notes:Record<string,number>;fullNoteIds:string[];plaudAvailable:boolean}
-export async function collectPlanningContext(db:Database,owner:string,snapshot:WorkspaceSnapshot,request:PlanningRequest,connected:Connection[],env:Runtime,warnings:string[]=[]):Promise<PlanningContext>{
+export interface PlanningContext {evidence:BriefEvidence[];coverage:BriefCoverage;cutoff:string;catalog:unknown;notes:Record<string,number>;fullNoteIds:string[];plaudAvailable:boolean;budget:number}
+// Character budgets for one Hermes run. Korean text costs roughly one token per
+// character on most providers, so the first level already fits a 128K-token model
+// with room for read rounds; the runner steps down a level when Hermes fails.
+export interface PlanningBudget {level:number;label:string;catalog:number;bodies:number;conversations:number;conversationChars:number;previousPlans:number;taskExcerpt:number;doneDays:number;pastEventDays:number;readResult:number;readRound:number;history:number}
+export const PLANNING_BUDGETS:PlanningBudget[]=[
+ {level:0,label:'표준',catalog:90000,bodies:20000,conversations:10,conversationChars:1000,previousPlans:3,taskExcerpt:300,doneDays:45,pastEventDays:14,readResult:25000,readRound:50000,history:260000},
+ {level:1,label:'축소',catalog:55000,bodies:8000,conversations:5,conversationChars:600,previousPlans:2,taskExcerpt:200,doneDays:21,pastEventDays:7,readResult:15000,readRound:30000,history:150000},
+ {level:2,label:'최소',catalog:30000,bodies:0,conversations:3,conversationChars:400,previousPlans:1,taskExcerpt:120,doneDays:14,pastEventDays:3,readResult:8000,readRound:16000,history:80000},
+];
+export const planningBudget=(level:number)=>PLANNING_BUDGETS[Math.min(Math.max(0,level),PLANNING_BUDGETS.length-1)];
+const size=(value:unknown)=>JSON.stringify(value).length;
+export async function collectPlanningContext(db:Database,owner:string,snapshot:WorkspaceSnapshot,request:PlanningRequest,connected:Connection[],env:Runtime,warnings:string[]=[],budget:PlanningBudget=PLANNING_BUDGETS[0]):Promise<PlanningContext>{
  const {data}=snapshot,cutoff=todayInZone(data.preferences.timeZone),evidence:BriefEvidence[]=[],noteVersions:Record<string,number>={};
  if(request.date<=cutoff)throw new AgentError('원페이지 제안은 내일 이후 날짜로 만들어 주세요.','INPUT',422);
  const add=(kind:BriefEvidence['kind'],recordId:string,title:string,rest:Partial<BriefEvidence>={})=>{const ref={id:kind+':'+recordId,kind,recordId,title,...rest};evidence.push(ref);return ref.id};
  const projects=data.projects.map(p=>({...p,evidence:add('project',p.id,p.name,{excerpt:p.goal})}));
- const tasks=data.tasks.map(t=>({...t,evidence:add('task',t.id,t.title,{date:t.completedOn??t.due,excerpt:(t.result||t.definition).slice(0,500)})}));
- const reviews=data.reviews.filter(r=>r.date<=cutoff).map(r=>({...r,evidence:add('review',r.id,'저녁 회고 '+r.date,{date:r.date,excerpt:(r.win+' / '+r.block).slice(0,500)})}));
- const events=data.events.filter(e=>e.date<=addDays(request.date,7)).map(e=>({...e,evidence:add('event',e.id,e.title,{date:e.date})}));
+ // Every task keeps its evidence ID (citable), but only open work and recent completions travel in full.
+ const doneSince=addDays(cutoff,-budget.doneDays);
+ const allTasks=data.tasks.map(t=>({...t,evidence:add('task',t.id,t.title,{date:t.completedOn??t.due,excerpt:(t.result||t.definition).slice(0,500)})}));
+ const recent=(t:typeof allTasks[number])=>t.status!=='done'||(t.completedOn??t.due)>=doneSince;
+ const clip=(t:typeof allTasks[number],max:number)=>({...t,definition:t.definition.slice(0,max),...(t.result?{result:t.result.slice(0,max)}:{}),...(t.blocker?{blocker:t.blocker.slice(0,max)}:{})});
+ let tasks=allTasks.filter(recent).map(t=>clip(t,budget.taskExcerpt));
+ const olderDone=allTasks.filter(t=>!recent(t));
+ const completedSummary=olderDone.length?projects.map(p=>({projectId:p.id,olderCompleted:olderDone.filter(t=>t.projectId===p.id).length})).filter(x=>x.olderCompleted>0):[];
+ if(olderDone.length)warnings.push(`${budget.doneDays}일보다 오래전에 완료한 업무 ${olderDone.length}개는 프로젝트별 개수로만 참고했습니다.`);
+ const reviews=data.reviews.filter(r=>r.date<=cutoff).slice(-30).map(r=>({...r,evidence:add('review',r.id,'저녁 회고 '+r.date,{date:r.date,excerpt:(r.win+' / '+r.block).slice(0,500)})}));
+ const events=data.events.filter(e=>e.date<=addDays(request.date,7)&&e.date>=addDays(cutoff,-budget.pastEventDays)).map(e=>({...e,evidence:add('event',e.id,e.title,{date:e.date})}));
  const notes=data.notes.filter(n=>n.updated<=cutoff).sort((a,b)=>b.updated.localeCompare(a.updated)||a.id.localeCompare(b.id));
- let remaining=100000,bodies=0;const fullNoteIds:string[]=[];const documents=[];
+ let remaining=budget.bodies,bodies=0;const fullNoteIds:string[]=[];const documents:(Note&{body:string;bodyComplete:boolean;evidence:string})[]=[];
  // Every current note is represented in the catalog. Bodies are read from the
  // immutable revision pointer; omitted bodies are counted and can be requested.
  for(const meta of notes){
@@ -28,16 +47,29 @@ export async function collectPlanningContext(db:Database,owner:string,snapshot:W
   documents.push({...meta,body,bodyComplete:complete,evidence:reference});
  }
  if(bodies<notes.length)warnings.push(`기록 ${notes.length}개의 목록·요약을 검토하며 원문 전체는 ${bodies}개를 포함했습니다. 나머지 원문은 추가 조회가 필요합니다.`);
- const {results:turns}=await db.prepare("SELECT id,input,response_json,created_at FROM orbit_agent_turns WHERE owner_id=? AND status='completed' AND substr(created_at,1,10)<=? ORDER BY created_at DESC LIMIT 51").bind(owner,cutoff).all<{id:string;input:string;response_json:string;created_at:string}>();
- const conversations=turns.slice(0,50).map(t=>({user:t.input.slice(0,4000),answer:String(JSON.parse(t.response_json).text??'').slice(0,4000),evidence:add('conversation',t.id,'대화 '+t.created_at.slice(0,10),{date:t.created_at.slice(0,10)})}));
- if(turns.length>50)warnings.push('대화는 최근 완료된 50건을 참고했습니다. 업무·프로젝트·회고는 전체 현재 기록을 포함합니다.');
+ const {results:turns}=await db.prepare("SELECT id,input,response_json,created_at FROM orbit_agent_turns WHERE owner_id=? AND status='completed' AND substr(created_at,1,10)<=? ORDER BY created_at DESC LIMIT ?").bind(owner,cutoff,budget.conversations+1).all<{id:string;input:string;response_json:string;created_at:string}>();
+ let conversations=turns.slice(0,budget.conversations).map(t=>({user:t.input.slice(0,budget.conversationChars),answer:String(JSON.parse(t.response_json).text??'').slice(0,budget.conversationChars),evidence:add('conversation',t.id,'대화 '+t.created_at.slice(0,10),{date:t.created_at.slice(0,10)})}));
+ if(turns.length>budget.conversations)warnings.push(`대화는 최근 완료된 ${budget.conversations}건을 참고했습니다. 업무·프로젝트·회고는 현재 기록을 포함합니다.`);
  const google=connected.find(c=>c.provider==='google_calendar')?.connected?'Google 기본 캘린더 · 조회된 기간의 일정':'Google 미연결 · Orbit에 저장한 일정만 검토';
  let plaudCatalog:unknown=[],plaudAvailable=false,plaud='Plaud 미연결 · Orbit에 저장한 회의록만 검토';
  if(connected.find(c=>c.provider==='plaud')?.connected){try{plaudCatalog=await plaudTools(db,owner,env);plaudAvailable=true;plaud='Plaud 연결됨 · 아직 회의 기록 조회 전';}catch{plaud='Plaud 조회 실패 · Orbit 기록으로 분석';warnings.push('Plaud 회의록을 불러오지 못했습니다.')}}
- const coverage:BriefCoverage={projects:projects.length,tasks:tasks.length,completed:tasks.filter(t=>t.status==='done').length,incomplete:tasks.filter(t=>t.status!=='done').length,notes:notes.length,noteBodies:bodies,reviews:reviews.length,events:events.length,conversations:conversations.length,warnings:[...warnings,'완료율은 목표 달성률이 아닙니다. 기록되지 않은 결과·과거 상태는 추정하지 않습니다.'],google,plaud};
- const catalog={targetDate:request.date,cutoff,energy:request.energy,preferences:data.preferences,projects,tasks,notes:documents,reviews,events,conversations,previousPlans:data.proposals.slice(-7),availableWindows:availableWindows(data.events,request.date,data.preferences.workStart,data.preferences.workEnd),coverage,plaudTools:plaudCatalog};
- if(JSON.stringify(catalog).length>850000)throw new AgentError('분석할 기록의 양이 한 번에 처리할 범위를 넘었습니다. 기록을 줄이지 않아도 기존 내용은 보존됩니다.','CONTEXT_SIZE',422);
- return {catalog,evidence,coverage,cutoff,notes:noteVersions,fullNoteIds,plaudAvailable};
+ if(size(plaudCatalog)>20000){plaudCatalog=(plaudCatalog as {name?:string}[]).map(t=>({name:t.name,note:'schema omitted; call plaud_tools for the full input schema'}));}
+ let previousPlans=data.proposals.slice(-budget.previousPlans).map(({brief:_brief,...plan})=>plan);
+ const build=()=>({targetDate:request.date,cutoff,energy:request.energy,preferences:data.preferences,projects,tasks,olderCompletedByProject:completedSummary,notes:documents,reviews,events,conversations,previousPlans,availableWindows:availableWindows(data.events,request.date,data.preferences.workStart,data.preferences.workEnd),budget:budget.label,plaudTools:plaudCatalog});
+ // Fit the catalog to the budget in stages, each stage recorded as a coverage warning.
+ // Nothing is lost for the user: trimmed material stays readable through read requests.
+ const stages:{note:string;apply:()=>void}[]=[
+  {note:'대화 기록은 분량 제한으로 이번 분석에서 제외했습니다.',apply:()=>{conversations=[]}},
+  {note:'회의록 원문은 분량 제한으로 제외하고 요약만 참고했습니다. 필요한 원문은 read_note로 조회합니다.',apply:()=>{for(const d of documents){d.body='';d.bodyComplete=false}bodies=0;fullNoteIds.length=0}},
+  {note:'완료한 업무는 최근 7일 이내만 포함했습니다.',apply:()=>{const since=addDays(cutoff,-7);tasks=tasks.filter(t=>t.status!=='done'||(t.completedOn??t.due)>=since)}},
+  {note:'기록 요약과 업무 설명을 짧게 줄여 참고했습니다.',apply:()=>{for(const d of documents)d.summary=d.summary.slice(0,120);tasks=tasks.map(t=>clip(t,80));previousPlans=[]}},
+ ];
+ let catalog=build();
+ for(const stage of stages){if(size(catalog)<=budget.catalog)break;stage.apply();warnings.push(stage.note);catalog=build();}
+ if(size(catalog)>budget.catalog)throw new AgentError(`진행 중인 업무·기록이 한 번의 분석 범위(${budget.label} ${Math.round(budget.catalog/10000)}만 자)를 넘습니다. 끝난 업무를 완료 처리하거나 오래된 기록을 정리한 뒤 다시 분석해 주세요. 기존 계획은 그대로입니다.`,'CONTEXT_SIZE',422);
+ const coverage:BriefCoverage={projects:projects.length,tasks:allTasks.length,completed:allTasks.filter(t=>t.status==='done').length,incomplete:allTasks.filter(t=>t.status!=='done').length,notes:notes.length,noteBodies:bodies,reviews:reviews.length,events:events.length,conversations:conversations.length,warnings:[...warnings,'완료율은 목표 달성률이 아닙니다. 기록되지 않은 결과·과거 상태는 추정하지 않습니다.'],google,plaud};
+ catalog={...catalog,coverage} as typeof catalog&{coverage:BriefCoverage};
+ return {catalog,evidence,coverage,cutoff,notes:noteVersions,fullNoteIds,plaudAvailable,budget:budget.level};
 }
 export function completeBrief(content:BriefContent,context:PlanningContext,request:PlanningRequest,revision:number,turnId:string):DailyBrief{
  const refs=[...content.progress,...content.priorities,...content.tradeoffs,...content.risks].flatMap(item=>item.evidence),known=new Set(context.evidence.map(e=>e.id));
