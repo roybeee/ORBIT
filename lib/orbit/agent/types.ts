@@ -1,6 +1,6 @@
 import type {StoredAttachment} from '../attachments/types';
 import type {WorkspaceAction} from '../validation';
-export type Provider='hermes'|'plaud'|'google_calendar';
+export type Provider='hermes'|'plaud'|'google_calendar'|'google_mail';
 export interface Connection {provider:Provider;configured:boolean;connected:boolean;label:string;updatedAt?:string;model?:string;endpoint?:string}
 export interface AgentAction {conversationId?:string;id:string;turnId:string;title:string;reason:string;action:WorkspaceAction|GoogleEventAction;expectedRevision:number;state:'pending'|'applying'|'approved'|'deferred'|'rejected';note:string;revisitDate:string|null;result?:{url?:string;briefDate?:string};createdAt:string}
 export interface GoogleEventAction {type:'google.event.create';event:{title:string;date:string;start:number;end:number;timeZone:string;description:string}}

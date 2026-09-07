@@ -1,3 +1,4 @@
+import { wikiMatches, wikiLinks } from './wiki/relations.ts';
 import { automaticProject, normalize } from './classify.ts';
 import { planFromBrief } from './brief/planning.ts';
 import type { WorkspaceData, Task, Proposal, Improvement, Project } from './model.ts';
@@ -286,15 +287,30 @@ export function applyAction(
           };
       }
       break;
+    case 'wiki.import': {
+      const projectId=createProject(action.project);
+      for (const note of action.notes) {
+        if (data.notes.some(n=>n.id===note.id)) continue;
+        data.notes.push({...note,projectId,revision:1,bodyStored:false});
+      }
+      break;
+    }
     case 'note.upsert':
       data.notes = replace(data.notes, {
         ...action.note,
+        wiki: action.note.wiki ?? data.notes.find(n=>n.id===action.note.id)?.wiki,
+        source: action.note.source ?? data.notes.find(n=>n.id===action.note.id)?.source,
         updated: today,
         revision:
           (data.notes.find((n) => n.id === action.note.id)?.revision ??
             (data.notes.some((n) => n.id === action.note.id) ? 1 : 0)) + 1,
         bodyStored: false,
       });
+      {
+        const saved=data.notes.find(n=>n.id===action.note.id)!;
+        saved.wikiMentionIds=wikiMatches(`${saved.title} ${saved.summary} ${saved.body} ${saved.tags.join(' ')}`,data.notes).filter(id=>id!==saved.id);
+        if(saved.wiki)saved.wiki={...saved.wiki,links:wikiLinks({...saved,wiki:{...saved.wiki,links:[]}},data.notes)};
+      }
       break;
     case 'note.restore':
       fail('이전 내용은 서버에서 확인한 뒤 복원해 주세요.');

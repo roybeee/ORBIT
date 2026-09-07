@@ -253,8 +253,8 @@ export async function writeCommand(
   next.events = next.events.filter((e) => !e.id.startsWith('google:'));
   const timestamp = now.toISOString(),
     revision = current.revision + 1;
-  const changedNote =
-    action.type === 'note.upsert' ? next.notes.find((n) => n.id === action.note.id) : undefined;
+  const changedNotes = action.type === 'note.upsert' ? next.notes.filter(n=>n.id===action.note.id) :
+    action.type === 'wiki.import' ? next.notes.filter(n=>!current.data.notes.some(old=>old.id===n.id)) : [];
   const legacy = current.data.notes
     .filter((n) => !n.bodyStored)
     .map((n) => ({ ...n, revision: n.revision ?? 1, bodyStored: false }));
@@ -299,7 +299,7 @@ export async function writeCommand(
         )
         .bind(ownerId, current.updatedAt ?? timestamp, JSON.stringify(legacy), ...gateValues),
     );
-  if (changedNote)
+  for (const changedNote of changedNotes)
     statements.push(
       db
         .prepare(

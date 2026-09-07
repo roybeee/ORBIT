@@ -82,6 +82,11 @@ export interface Risk {
   condition: string;
   projectId?: string;
 }
+export interface WikiMetadata {
+  parentId?: string; order?: string; aliases: string[]; links: string[];
+  sources: string[]; confidential?: boolean; private?: boolean; importedFrom?: string;
+}
+export interface RecordSource { provider: 'gmail' | 'plaud' | 'manual'; externalId: string; url?: string; date: string }
 export interface Note {
   id: string;
   title: string;
@@ -93,6 +98,9 @@ export interface Note {
   updated: string;
   revision?: number;
   bodyStored?: boolean;
+  wiki?: WikiMetadata;
+  wikiMentionIds?: string[];
+  source?: RecordSource;
 }
 export interface NoteRevision {
   revision: number;

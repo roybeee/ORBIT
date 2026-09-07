@@ -115,6 +115,8 @@ export const noteSchema = z
     body: z.string().max(100000),
     tags: z.array(z.string().max(40)).max(20),
     updated: dateSchema,
+    wiki: z.object({parentId:id.optional(),order:z.string().max(40).optional(),aliases:z.array(z.string().max(160)).max(50),links:z.array(id).max(300),sources:z.array(z.string().max(300)).max(50),confidential:z.boolean().optional(),private:z.boolean().optional(),importedFrom:z.string().max(300).optional()}).strict().optional(),
+    source:z.object({provider:z.enum(['gmail','plaud','manual']),externalId:z.string().max(200),url:z.string().url().max(1000).optional(),date:dateSchema}).strict().optional(),
   })
   .strict();
 export const eventSchema = z
@@ -205,6 +207,7 @@ export const reviewDetailSchema = z
   })
   .strict();
 export const actionSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('wiki.import'),project:projectSchema,notes:z.array(noteSchema).min(1).max(100).refine(list=>new Set(list.map(n=>n.id)).size===list.length)}).strict(),
   z.object({ type: z.literal('project.upsert'), project: projectSchema }).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),

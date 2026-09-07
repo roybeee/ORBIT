@@ -80,6 +80,7 @@ import { GoalsPanel } from '@/components/orbit/coach/goals-panel';
 import { WeeklyStats } from '@/components/orbit/coach/weekly-stats';
 import { coachTask } from '@/lib/orbit/coach';
 import { suggestProject, automaticProject, projectDraft, assignmentPlan } from '@/lib/orbit/classify';
+import { WikiLibrary, WikiRelated } from '@/components/orbit/wiki/wiki-library';
 import { GraphView } from '@/components/orbit/graph/graph-view';
 import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
 import { addDays, todayInZone, koreanDate, weekDates, weekday } from '@/lib/orbit/dates';
@@ -1502,6 +1503,7 @@ function WorkspaceContent({
               </div>
             </>
           )}
+          {view === 'wiki' && <WikiLibrary data={data} demo={demo} busy={busy || hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/>}
           {(view === 'wiki' || view === 'knowledge') && (
             <>
               <div className="view-toolbar">
@@ -1930,9 +1932,11 @@ function WorkspaceContent({
               </>
             )}
             {noteDetail && (
-              <NoteDetail
+              <><NoteDetail
                 key={`${noteDetail.id}:${noteDetail.revision ?? 1}`}
                 meta={noteDetail}
+                notes={notes}
+                onNote={(id)=>setDetail({kind:'note',id})}
                 tasks={tasks}
                 demo={demo}
                 busy={busy}
@@ -1944,7 +1948,7 @@ function WorkspaceContent({
                 onTask={(id) => setDetail({ kind: 'task', id })}
                 onProject={() => setDetail({ kind: 'project', id: noteDetail.projectId })}
                 onNewTask={() => openCreate('task')}
-              />
+              />{noteDetail.kind==='wiki'&&<WikiRelated data={data} note={noteDetail} onOpen={(kind,id)=>setDetail({kind,id})}/>}</>
             )}
             {projectDetail && (
               <>

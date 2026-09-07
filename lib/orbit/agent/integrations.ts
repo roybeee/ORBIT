@@ -18,9 +18,9 @@ export async function fetchJson(url:string,init:RequestInit={},timeout=20000):Pr
 }
 export async function connections(db:Database,owner:string,env:Runtime):Promise<Connection[]>{
  const {results}=await db.prepare('SELECT provider,public_json,updated_at FROM orbit_integrations WHERE owner_id=?').bind(owner).all<{provider:Provider;public_json:string;updated_at:string}>();
- return (['hermes','plaud','google_calendar'] as Provider[]).map(provider=>{const row=results.find(r=>r.provider===provider),data=row?JSON.parse(row.public_json):{};return {provider,configured:provider==='plaud'||!!row,connected:!!data.connected,label:provider==='hermes'?'헤르메스 에이전트':provider==='plaud'?'Plaud 회의 기록':'Google Calendar',updatedAt:row?.updated_at,...(provider==='hermes'?{endpoint:data.endpoint,model:data.model??'Hermes'}:{})}});
+ return (['hermes','plaud','google_calendar','google_mail'] as Provider[]).map(provider=>{const row=results.find(r=>r.provider===provider),data=row?JSON.parse(row.public_json):{};return {provider,configured:provider==='plaud'||!!row||(provider==='google_mail'&&results.some(r=>r.provider==='google_calendar')),connected:!!data.connected,label:provider==='hermes'?'헤르메스 에이전트':provider==='plaud'?'Plaud 회의 기록':provider==='google_mail'?'Gmail 읽기':'Google Calendar',updatedAt:row?.updated_at,...(provider==='hermes'?{endpoint:data.endpoint,model:data.model??'Hermes'}:{})}});
 }
-export async function accessToken(db:Database,owner:string,provider:'plaud'|'google_calendar',env:Runtime){
+export async function accessToken(db:Database,owner:string,provider:'plaud'|'google_calendar'|'google_mail',env:Runtime){
  const config=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));if(!config?.accessToken)throw new AgentError(`${provider==='plaud'?'Plaud':'Google Calendar'}에 먼저 연결해 주세요.`,'CONNECT',409);
  if(config.expiresAt&&config.expiresAt>Date.now()+60000)return config.accessToken;
  if(!config.refreshToken)throw new AgentError('연결 기간이 만료됐습니다. 다시 연결해 주세요.','RECONNECT',409);
@@ -36,13 +36,14 @@ export async function accessToken(db:Database,owner:string,provider:'plaud'|'goo
  }finally{await db.prepare('UPDATE orbit_integrations SET refresh_until=0 WHERE owner_id=? AND provider=? AND refresh_until=?').bind(owner,provider,lease).run()}
 
 }
-export async function startOAuth(db:Database,owner:string,provider:'plaud'|'google_calendar',origin:string,env:Runtime){
+export async function startOAuth(db:Database,owner:string,provider:'plaud'|'google_calendar'|'google_mail',origin:string,env:Runtime){
  const redirectUri=origin+'/api/integrations/callback';let config=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));
+ if(provider==='google_mail'&&!config?.clientId){const calendar=await readConnection<AuthConfig>(db,owner,'google_calendar',keyOf(env));if(calendar)config={clientId:calendar.clientId,clientSecret:calendar.clientSecret};}
  // Validate storage before making a remote registration, and support the app's
  // pre-registered public client so login does not depend on a registration POST.
  await encrypt({check:true},keyOf(env),`${owner}:connection-check`);
  if(provider==='plaud'&&!config?.clientId&&env.PLAUD_OAUTH_CLIENT_ID)config={clientId:env.PLAUD_OAUTH_CLIENT_ID};
- if(provider==='google_calendar'&&!config?.clientId)throw new AgentError('Google 연결 설정에 Orbit용 OAuth 클라이언트 정보를 먼저 등록해 주세요.','GOOGLE_SETUP',409);
+ if((provider==='google_calendar'||provider==='google_mail')&&!config?.clientId)throw new AgentError('Google 연결 설정에 Orbit용 OAuth 클라이언트 정보를 먼저 등록해 주세요.','GOOGLE_SETUP',409);
  if(provider==='plaud'&&!config?.clientId){
   const {response,data}=await fetchJson(PLAUD.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_name:'Orbit · Personal Manager',redirect_uris:[redirectUri],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'})});
   if(!response.ok||typeof data.client_id!=='string')throw new AgentError('Plaud 연결을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.','CONNECT',502);
@@ -52,17 +53,18 @@ export async function startOAuth(db:Database,owner:string,provider:'plaud'|'goog
  const encrypted=await encrypt({verifier,redirectUri,config},keyOf(env),`${owner}:oauth:${state}`);
  await db.prepare('DELETE FROM orbit_oauth_states WHERE expires_at<?').bind(new Date().toISOString()).run();
  await db.prepare('INSERT INTO orbit_oauth_states(state,owner_id,provider,secret_json,expires_at) VALUES(?,?,?,?,?)').bind(state,owner,provider,encrypted,new Date(Date.now()+600000).toISOString()).run();
- const url=new URL(provider==='plaud'?PLAUD.authorize:GOOGLE.authorize);url.search=new URLSearchParams({response_type:'code',client_id:config!.clientId,redirect_uri:redirectUri,state,code_challenge:challenge,code_challenge_method:'S256',...(provider==='plaud'?{resource:PLAUD.server}:{scope:GOOGLE.scope,access_type:'offline',prompt:'consent',include_granted_scopes:'true'})}).toString();
+ const url=new URL(provider==='plaud'?PLAUD.authorize:GOOGLE.authorize);url.search=new URLSearchParams({response_type:'code',client_id:config!.clientId,redirect_uri:redirectUri,state,code_challenge:challenge,code_challenge_method:'S256',...(provider==='plaud'?{resource:PLAUD.server}:{scope:provider==='google_mail'?'https://www.googleapis.com/auth/gmail.readonly':GOOGLE.scope,access_type:'offline',prompt:'consent',include_granted_scopes:'true'})}).toString();
  return {url:url.href,state};
 }
 export async function finishOAuth(db:Database,owner:string,state:string,code:string,cookieState:string,env:Runtime){
  if(!state||state!==cookieState)throw new AgentError('연결 확인이 만료됐습니다. 연결 버튼부터 다시 시작해 주세요.','OAUTH',400);
- const row=await db.prepare('SELECT provider,secret_json FROM orbit_oauth_states WHERE state=? AND owner_id=? AND expires_at>?').bind(state,owner,new Date().toISOString()).first<{provider:'plaud'|'google_calendar';secret_json:string}>();if(!row)throw new AgentError('연결 요청을 찾을 수 없습니다. 다시 연결해 주세요.','OAUTH',400);
+ const row=await db.prepare('SELECT provider,secret_json FROM orbit_oauth_states WHERE state=? AND owner_id=? AND expires_at>?').bind(state,owner,new Date().toISOString()).first<{provider:'plaud'|'google_calendar'|'google_mail';secret_json:string}>();if(!row)throw new AgentError('연결 요청을 찾을 수 없습니다. 다시 연결해 주세요.','OAUTH',400);
  const removed=await db.prepare('DELETE FROM orbit_oauth_states WHERE state=? AND owner_id=?').bind(state,owner).run();if(!removed.meta?.changes)throw new AgentError('이미 사용한 연결 요청입니다.','OAUTH',409);
  const saved=await decrypt<{verifier:string;redirectUri:string;config:AuthConfig}>(row.secret_json,keyOf(env),`${owner}:oauth:${state}`);
  const form=new URLSearchParams({grant_type:'authorization_code',code,client_id:saved.config.clientId,redirect_uri:saved.redirectUri,code_verifier:saved.verifier});if(saved.config.clientSecret)form.set('client_secret',saved.config.clientSecret);if(row.provider==='plaud')form.set('resource',PLAUD.server);
  const {response,data}=await fetchJson(row.provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
  if(!response.ok||typeof data.access_token!=='string')throw new AgentError('계정 연결을 확인하지 못했습니다. 다시 연결해 주세요.','OAUTH',502);
  if(row.provider==='google_calendar'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/calendar.events'))throw new AgentError('일정 권한을 승인해야 Calendar를 연결할 수 있습니다.','SCOPE',403);
+ if(row.provider==='google_mail'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly'))throw new AgentError('메일 읽기 권한을 승인해 주세요.','SCOPE',403);
  await saveConnection(db,owner,row.provider,{...saved.config,accessToken:data.access_token,refreshToken:data.refresh_token??saved.config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000,scope:data.scope},{connected:true},keyOf(env));return row.provider;
 }
