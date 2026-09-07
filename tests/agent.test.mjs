@@ -189,3 +189,79 @@ test('a chat run the gateway forgot fails the turn instead of polling forever, a
  await advanceAgent(db,'owner',second.id,env);
  assert.equal(upstream,0,'the escape hatch needs no upstream round trip');assert.equal((await turn()).status,'failed');assert.match((await turn()).error,/중지/);assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
 }));
+
+test('agent proposals may record outcomes, rules, habits and risks but never delete goals or habits', () => {
+  assert.ok(parseAction({ type: 'task.record', id: 'task', outcome: 'partial', reason: 'waiting' }));
+  assert.ok(
+    parseAction({
+      type: 'improvement.add',
+      improvement: {
+        id: 'rule',
+        rule: '검토 요청은 오전에',
+        kind: 'placement',
+        createdOn: today,
+        active: true,
+      },
+    }),
+  );
+  assert.ok(parseAction({ type: 'task.laser', id: 'task', date: tomorrow, laser: true }));
+  assert.ok(parseAction({ type: 'habit.check', id: 'habit', date: today, checked: true }));
+  assert.ok(parseAction({ type: 'project.domino', id: 'project' }));
+  assert.throws(() => parseAction({ type: 'goal.delete', id: 'goal' }));
+  assert.throws(() => parseAction({ type: 'habit.delete', id: 'habit' }));
+  assert.throws(() => parseAction({ type: 'task.start', id: 'task' }));
+  assert.throws(() => parseAction({ type: 'task.record', id: 'task', outcome: 'won' }));
+});
+test('a Hermes run that disappears fails the turn instead of polling forever', () =>
+  fixture(async (db) => {
+    await connectHermes(db);
+    const input = { id: randomUUID(), message: '초안' };
+    await runAgent(db, 'owner', input, env);
+    globalThis.fetch = async () => j({ run_id: 'run_1', status: 'started' }, 202);
+    await advanceAgent(db, 'owner', input.id, env);
+    globalThis.fetch = async () => j({ error: 'not found' }, 404);
+    await assert.rejects(
+      () => advanceAgent(db, 'owner', input.id, env),
+      (e) => e.code === 'HERMES_MISSING',
+    );
+    const state = await listAgent(db, 'owner');
+    assert.equal(state.turns[0].status, 'failed');
+    assert.ok(state.turns[0].error.includes('잃었습니다'));
+    assert.equal(state.actions.length, 0);
+    assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(), null);
+    await runAgent(db, 'owner', { id: randomUUID(), message: '초안' }, env);
+    assert.equal((await listAgent(db, 'owner')).turns.length, 2);
+  }));
+test('a stop request escapes an unreachable gateway after repeated failures; approval waits count as running', () =>
+  fixture(async (db) => {
+    await connectHermes(db);
+    const input = { id: randomUUID(), message: '초안' };
+    await runAgent(db, 'owner', input, env);
+    globalThis.fetch = async () => j({ run_id: 'run_1', status: 'started' }, 202);
+    await advanceAgent(db, 'owner', input.id, env);
+    globalThis.fetch = async () =>
+      j({ object: 'hermes.run', run_id: 'run_1', status: 'waiting_for_approval' });
+    await advanceAgent(db, 'owner', input.id, env);
+    let state = await listAgent(db, 'owner');
+    assert.equal(state.turns[0].status, 'running');
+    assert.ok(state.turns[0].progress.includes('승인'));
+    globalThis.fetch = async () => j({ error: 'gateway restarting' }, 503);
+    for (let n = 0; n < 2; n++)
+      await assert.rejects(
+        () => advanceAgent(db, 'owner', input.id, env),
+        (e) => e.code === 'HERMES_UPSTREAM',
+      );
+    assert.equal((await listAgent(db, 'owner')).turns[0].status, 'running');
+    await advanceAgent(db, 'owner', input.id, env, true);
+    let stopped = 0;
+    globalThis.fetch = async () => {
+      stopped++;
+      return j({ error: 'gateway restarting' }, 503);
+    };
+    await advanceAgent(db, 'owner', input.id, env);
+    state = await listAgent(db, 'owner');
+    assert.equal(stopped, 0, 'the escape hatch needs no upstream round trip');
+    assert.equal(state.turns[0].status, 'failed');
+    assert.ok(state.turns[0].error.includes('중지'));
+    assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(), null);
+  }));

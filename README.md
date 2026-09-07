@@ -2,7 +2,7 @@
 
 일정, 프로젝트, 개인 위키, 지식창고, 저녁 회고와 다음 날 제안을 연결하는 개인 매니지먼트 앱.
 
-**현재: v0.5.2 설치 앱 로그인 복구와 Mac·Windows·휴대폰 설치 지원.** 첫 화면에서 내 Hermes Agent와 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. [Mac의 Hermes 연결 안내](docs/Hermes_Setup.ko.md)에 따라 HTTPS gateway 주소와 연결 암호를 등록합니다. Plaud 공식 MCP와 Google Calendar OAuth를 통해 기록을 조회합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
+**현재: v0.6 BRAINY 동반 코치.** 할 일을 적는 순간부터 끝내는 순간까지 함께 확인합니다. 완료 조건·사분면·인지 등급·예상 시간을 쓰는 동안 코치가 점검하고, 집중 세션으로 실제 시간을 재고, 끝낼 때 ✓△✗와 이유·규칙을 남기며, 저녁의 4단계 PAFI 회고가 원페이지 실행 제안으로 이어집니다. 제안의 1순위는 오늘의 Goal Laser로 집중 구간에 연속 3시간을 먼저 확보합니다. 첫 화면에서 내 Hermes Agent와 대화하고, 제안을 승인하거나 이유와 검토일을 남겨 보류합니다. [Mac의 Hermes 연결 안내](docs/Hermes_Setup.ko.md)에 따라 HTTPS gateway 주소와 연결 암호를 등록합니다. Plaud 공식 MCP와 Google Calendar OAuth를 통해 기록을 조회합니다. 자동 야간 실행·푸시 알림은 아직 제공하지 않습니다.
 
 ## Mac, Windows and phone installation
 
@@ -18,11 +18,13 @@
 
 1. `/` 대화 화면의 **연결**에서 AI와 필요한 계정을 설정합니다. 첫 프로젝트의 목표를 이야기하거나 직접 추가합니다.
 2. 회의록·지식을 프로젝트에 연결하고, 명시한 할 일을 검토해 등록합니다.
-3. 저녁 회고를 저장하고 다음 날 제안을 생성합니다.
-4. 개별 승인 또는 다음 검토일을 지정한 보류를 선택합니다.
-5. 승인한 날짜의 일정에서 집중 시간을 확인합니다.
+3. 프로젝트 화면의 **목표·도미노**에서 목표 계층(꿈 → 중장기 → 단기)과 이것만 되면 나머지가 풀리는 **도미노 프로젝트**, 지킬 습관 1개·버릴 습관 2개, 상시 리스크를 둡니다.
+4. 할 일을 적을 때 **코치 체크**가 완료 조건(누구에게 무엇이 넘어가야 끝인지), 사분면 A/B/C/D, 인지 등급, 보정된 예상 시간을 함께 확인합니다. 경고는 저장을 막지 않습니다.
+5. 아침에는 **오늘의 Goal Laser** 한 가지를 정하고 집중 시작을 누릅니다. 끝낼 때 ✓ 완료 · △ 부분 · ✗ 못함과 실제 시간, 이유, 다음부터 지킬 규칙 한 줄을 남깁니다.
+6. 저녁에는 4단계 PAFI 회고(결과 → 원인·대안·규칙 → 에너지·습관 → 내가 해냄·감사)를 저장합니다. 저장과 동시에 Hermes가 원페이지 실행 제안을 분석하고, 1순위는 Goal Laser로 집중 구간에 연속 시간을 먼저 확보합니다. Hermes가 연결되어 있지 않으면 Orbit의 규칙 기반 계획(Goal Laser → 반드시 종결 → B → A → C)이 대신 시간을 배치합니다.
+7. 개별 승인 또는 다음 검토일을 지정한 보류를 선택하고, 승인한 날짜의 일정에서 집중 시간을 확인합니다. 저녁 회고 옆의 **이번 주 PAFI 결산**이 실행률(목표선 85%)·예측 정확도·규칙을 보여 줍니다.
 
-`/demo`는 저장되지 않는 예시입니다. 설정에서 시간대·업무 시간·요일·핵심 결과물 개수·여유 시간 비율을 바꾸거나 저장한 데이터를 JSON으로 내보낼 수 있습니다.
+`/demo`는 저장되지 않는 예시입니다. 설정에서 시간대·업무 시간·요일·핵심 결과물 개수·여유 시간 비율과 BRAINY 리듬(집중 구간·점심·Goal Laser 연속 시간·이동 버퍼·일정 색상 기준)을 바꾸거나 저장한 데이터를 JSON으로 내보낼 수 있습니다.
 
 ## Documents
 
@@ -46,6 +48,7 @@ Node 22.13+ is required. The Node 22 release line is used in CI.
 npm ci
 npm run typecheck
 npm run test:planner
+npm run test:brainy
 npm run test:storage
 npm run test:notes
 npm run test:pwa
@@ -60,7 +63,7 @@ The authenticated app deliberately does not fall back to a public dev identity o
 
 ## Storage and installation scope
 
-D1 stores atomic workspace metadata and request receipts, with immutable document versions in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. The metadata aggregate remains bounded to 950,000 UTF-8 bytes; each document to 100,000 characters, subject to the 400,000-byte request limit. Large collections still need a normalized/paged metadata catalog before bulk ingestion. JSON export streams current document versions; it excludes historical revisions, agent conversations/decisions, connection secrets and unsaved forms.
+D1 stores atomic workspace metadata and request receipts, with immutable document versions and evening review details in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. The metadata aggregate remains bounded to 950,000 UTF-8 bytes; each document to 100,000 characters, subject to the 400,000-byte request limit. Large collections still need a normalized/paged metadata catalog before bulk ingestion. JSON export streams current document versions and review details; it excludes historical revisions, agent conversations/decisions, connection secrets and unsaved forms.
 
 The app includes an authenticated guide for Mac, Windows, Android and iOS, browser-specific menu instructions, a supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Manual installation opens the agent route first so Safari does not pin the help page as the launch URL. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual OS installation, login hand-off and touch interaction still require verification on the user’s device.
 

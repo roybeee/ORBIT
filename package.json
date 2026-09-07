@@ -15,6 +15,7 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "typecheck": "tsc --noEmit",
     "test:planner": "node --experimental-strip-types --test tests/planner.test.mjs",
+    "test:brainy": "node --experimental-strip-types --test tests/brainy.test.mjs",
     "test:smoke": "node --test tests/rendered-html.test.mjs",
     "test:storage": "node --experimental-strip-types --test tests/storage.test.mjs",
     "test:notes": "node --experimental-strip-types --test tests/notes.test.mjs",

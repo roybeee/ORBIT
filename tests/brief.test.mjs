@@ -156,3 +156,33 @@ test('a planning run the gateway forgot restarts with the same budget; oversized
  assert.equal(posts.length,3);assert.match(posts[1].input,/"budget":"표준"/,'same budget after a lost run');assert.match(posts[2].input,/Read results/);assert.ok(posts[2].input.length<=PLANNING_BUDGETS[0].readRound+2000);
  const brief=(await readWorkspace(db,'owner')).data.proposals[0].brief;assert.ok(brief.coverage.warnings.some(w=>w.includes('실행 기록을 잃었습니다')));assert.equal(brief.coverage.warnings.some(w=>w.includes("'축소'")),false);
 }));
+
+test('the brief priority that deserves deep work becomes the Goal Laser; quick unblockers ranked first stay quick',()=>fixture(async db=>{
+ let snapshot=await seed(db);
+ snapshot=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'project.domino',id:'p'}});
+ snapshot=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task:{...task,id:'deep',title:'출시 결정안 작성',duration:60,cognition:'high'}}});
+ const ctx=await collectPlanningContext(db,'owner',snapshot,planning,[],env);
+ assert.equal(ctx.catalog.brainy.dominoProject.id,'p');assert.ok(ctx.catalog.brainy.laserMinutes>=60);
+ const c=content();c.priorities=[{...c.priorities[0],taskId:undefined,title:'가격 조건 확인',minutes:20},{...c.priorities[0],taskId:'deep',title:'출시 결정안 작성',minutes:60,cognition:'high',quadrant:'B'}];
+ const brief=completeBrief(c,ctx,planning,snapshot.revision,randomUUID());const data=applyAction(snapshot.data,{type:'proposal.brief',brief,energy:'normal'});const plan=data.proposals[0];
+ assert.equal(plan.laser.status,'placed');assert.equal(plan.laser.taskId,'deep');
+ const laser=plan.items.find(i=>i.role==='laser');assert.equal(laser.end-laser.start,180);assert.equal(laser.cognition,'high');assert.match(laser.reason,/Goal Laser/);
+ const quick=plan.items.find(i=>i.taskId!=='deep');assert.equal(quick.end-quick.start,20);assert.ok(quick.start<laser.start,'the quick unblocker keeps its first slot');
+ assert.equal(plan.items.find(i=>i.role==='laser').estimate,60);
+ const approved=applyAction(data,{type:'proposal.approve',date,itemId:laser.id});assert.equal(approved.tasks.find(t=>t.id==='deep').laserDate,date);assert.equal(approved.events[0].end-approved.events[0].start,180);
+}));
+
+test('without a connected Hermes the review detail is saved and the BRAINY planner produces tomorrow locally',()=>fixture(async db=>{
+ let snapshot=await seed(db);
+ snapshot=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'project.domino',id:'p'}});
+ const detail={date:today,items:[{taskId:'t',title:'의사결정안',outcome:'partial',estimateMinutes:45,actualMinutes:30,reason:'waiting'}],feedback:[{taskId:'t',cause:'가격 회신 대기',alternative:'회신 전 조건별 초안',rule:'회신을 기다리는 동안 조건별 초안을 먼저 쓴다',kind:'placement'}],energy:{sleepMinutes:400},smallWins:['비교자료 완성'],gratitude:[],habitChecks:[]};
+ const id=randomUUID();const out=await startPlanningAction(db,'owner',{operationId:id,expectedRevision:snapshot.revision,action:{type:'review.saveGenerate',review:{date:today,win:'',block:'',energy:'normal'},detail}},env);
+ assert.equal(out.local,true);const state=out.snapshot;
+ assert.equal(state.data.tasks.find(t=>t.id==='t').outcome,'partial');assert.equal(state.data.improvements.length,1);assert.equal(state.data.reviews[0].stats.planned,1);
+ assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM orbit_reviews WHERE owner_id=?').bind('owner').first()).n,1);
+ const plan=state.data.proposals.find(p=>p.date===date);assert.ok(plan);assert.equal(plan.laser.taskId,'t');assert.equal(plan.brief,undefined);
+ assert.equal(await db.prepare('SELECT * FROM orbit_hermes_jobs').first(),null);
+ // The same command replayed changes nothing and reports the same result.
+ const again=await startPlanningAction(db,'owner',{operationId:id,expectedRevision:snapshot.revision,action:{type:'review.saveGenerate',review:{date:today,win:'',block:'',energy:'normal'},detail}},env);
+ assert.equal(again.snapshot.revision,state.revision);
+}));

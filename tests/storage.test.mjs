@@ -41,3 +41,63 @@ test('workdays and cycle validation reject impossible plans and references',()=>
 test('local dates handle Korean midnight, month/year boundaries and leap years',()=>{
  assert.equal(todayInZone('Asia/Seoul',new Date('2026-09-06T15:01:00Z')),'2026-09-07');assert.equal(addDays('2026-12-31',1),'2027-01-01');assert.equal(validDate('2026-02-29'),false);assert.equal(validDate('2028-02-29'),true);assert.deepEqual(weekDates('2026-09-06'),['2026-08-31','2026-09-01','2026-09-02','2026-09-03','2026-09-04','2026-09-05','2026-09-06']);
 });
+
+test('an evening review detail is written atomically with the workspace, replays once and exports', async () => {
+  const db = createDatabase();
+  try {
+    const { readReview, listReviews, exportWorkspace } = await import('../db/repository.ts');
+    let state = await writeCommand(db, 'alice', command(0, { type: 'project.upsert', project }), now);
+    state = await writeCommand(db, 'alice', command(state.revision, { type: 'task.upsert', task }), now);
+    const detail = {
+      date: '2026-09-06',
+      items: [{ taskId: 'task', title: task.title, outcome: 'done', estimateMinutes: 60, actualMinutes: 80 }],
+      feedback: [
+        { taskId: 'task', cause: '검토 대기', alternative: '오전 발송', rule: '검토 요청은 오전에 보낸다' },
+      ],
+      energy: { sleepMinutes: 400 },
+      smallWins: ['릴리스 노트 완성'],
+      gratitude: [],
+      habitChecks: [],
+    };
+    const save = command(state.revision, {
+      type: 'review.saveGenerate',
+      review: { date: '2026-09-06', win: '', block: '', energy: 'normal' },
+      detail,
+    });
+    await assert.rejects(
+      () => writeCommand(db, 'alice', { ...save, expectedRevision: 0 }, now),
+      RevisionConflict,
+    );
+    assert.equal(
+      await readReview(db, 'alice', '2026-09-06'),
+      null,
+      'a rejected command writes no review row',
+    );
+    state = await writeCommand(db, 'alice', save, now);
+    state = await writeCommand(db, 'alice', save, now);
+    assert.equal(state.revision, 3);
+    assert.deepEqual(await readReview(db, 'alice', '2026-09-06'), detail);
+    assert.equal(await readReview(db, 'bob', '2026-09-06'), null);
+    assert.equal(state.data.tasks[0].outcome, 'done');
+    assert.equal(state.data.reviews[0].hasDetail, true);
+    assert.equal(state.data.improvements.length, 1);
+    assert.equal((await listReviews(db, 'alice', '2026-09-01', '2026-09-07')).length, 1);
+    assert.equal(
+      (await db.prepare("SELECT COUNT(*) AS n FROM orbit_reviews WHERE owner_id='alice'").first()).n,
+      1,
+    );
+    const revised = command(state.revision, {
+      type: 'review.saveGenerate',
+      review: { date: '2026-09-06', win: '', block: '', energy: 'high' },
+      detail: { ...detail, smallWins: ['수정된 기록'] },
+    });
+    state = await writeCommand(db, 'alice', revised, now);
+    assert.deepEqual((await readReview(db, 'alice', '2026-09-06')).smallWins, ['수정된 기록']);
+    const output = await new Response(exportWorkspace(db, 'alice', state)).json();
+    assert.equal(output.data.reviewDetails.length, 1);
+    assert.equal(output.data.reviewDetails[0].date, '2026-09-06');
+    assert.equal(output.data.reviews[0].highlight, '수정된 기록');
+  } finally {
+    db.close();
+  }
+});
