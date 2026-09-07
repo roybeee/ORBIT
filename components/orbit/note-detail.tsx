@@ -1,4 +1,5 @@
 'use client';
+import {WikiDocument} from './wiki/wiki-document';
 import {useEffect,useMemo,useState} from 'react';
 import {ArrowRight,Check,CheckCheck,History,LoaderCircle,Pencil,Plus,RotateCcw,Trash2} from 'lucide-react';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -6,11 +7,11 @@ import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,Alert
 import {meetingCandidates} from '@/lib/orbit/meeting';
 import type {Note,NoteRevision,Task} from '@/lib/orbit/model';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
-interface Props {meta:Note;tasks:Task[];demo:boolean;busy:boolean;defaultDue:string;projectName?:string;onAction:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onEdit:(note:Note)=>void;onDelete:()=>void;onTask:(id:string)=>void;onProject:()=>void;onNewTask:()=>void}
+interface Props {meta:Note;notes:Note[];onNote:(id:string)=>void;tasks:Task[];demo:boolean;busy:boolean;defaultDue:string;projectName?:string;onAction:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onEdit:(note:Note)=>void;onDelete:()=>void;onTask:(id:string)=>void;onProject:()=>void;onNewTask:()=>void}
 async function fetchNote<T>(params:Record<string,string>,signal?:AbortSignal):Promise<T>{
  const response=await fetch('/api/notes?'+new URLSearchParams(params),{cache:'no-store',signal});const data=await response.json();if(!response.ok)throw new Error(data.error||'기록을 불러오지 못했습니다.');return data;
 }
-export function NoteDetail({meta,tasks,demo,busy,defaultDue,projectName,onAction,onEdit,onDelete,onTask,onProject,onNewTask}:Props){
+export function NoteDetail({meta,notes,onNote,tasks,demo,busy,defaultDue,projectName,onAction,onEdit,onDelete,onTask,onProject,onNewTask}:Props){
  const [note,setNote]=useState<Note|null>(meta.bodyStored?null:meta),[error,setError]=useState(''),[attempt,setAttempt]=useState(0);
  const [historyOpen,setHistoryOpen]=useState(false),[versions,setVersions]=useState<NoteRevision[]>([]),[nextBefore,setNextBefore]=useState<number|null>(null),[historyBusy,setHistoryBusy]=useState(false),[historyError,setHistoryError]=useState('');
  const [previous,setPrevious]=useState<Note|null>(null),[restoreOpen,setRestoreOpen]=useState(false);
@@ -22,7 +23,7 @@ export function NoteDetail({meta,tasks,demo,busy,defaultDue,projectName,onAction
  return <>
   <div className="section-title"><button className="secondary-button" disabled={busy} onClick={()=>onEdit(note)}><Pencil size={14}/>내용 수정</button><button className="text-button danger-text" disabled={busy} onClick={onDelete}><Trash2 size={14}/>삭제</button></div>
   <div className="note-version"><span>{projectName??'개인 기록'}</span><span>버전 {note.revision??1} · {note.updated}</span></div>
-  <h3>본문</h3><div className="note-document">{note.body||'아직 작성한 본문이 없습니다.'}</div>
+  <h3>본문</h3>{note.kind==='wiki'?<WikiDocument body={note.body} notes={notes} onOpen={onNote}/>:<div className="note-document">{note.body||'아직 작성한 본문이 없습니다.'}</div>}
   <button className="secondary-button full-width note-history-toggle" disabled={historyBusy||demo} onClick={()=>historyOpen?setHistoryOpen(false):void loadHistory()}><History size={16}/>{demo?'변경 이력은 실제 기록에서 제공됩니다':historyBusy?'이력 불러오는 중':historyOpen?'변경 이력 접기':'이전 내용 확인 · 복원'}</button>
   {historyError&&<p className="note-error" role="alert">{historyError}</p>}
   {historyOpen&&<section className="note-history"><h3>변경 이력</h3><p className="form-hint">이전 내용을 선택해 현재 내용과 비교하세요. 복원하면 새 버전으로 저장됩니다.</p><div className="revision-list">{versions.map(v=><button key={v.revision} className={previous?.revision===v.revision?'selected':''} disabled={historyBusy} onClick={()=>void selectVersion(v.revision)}><span>버전 {v.revision}{v.revision===(meta.revision??1)?' · 현재':''}</span><strong>{v.title}</strong><small>{new Date(v.updatedAt).toLocaleString('ko-KR')}</small></button>)}</div>{nextBefore&&<button className="text-button" disabled={historyBusy} onClick={()=>void loadHistory(nextBefore)}>이전 이력 더 보기</button>}

@@ -9,6 +9,7 @@ export interface GraphNode {
   kind: GraphRef['kind'];
   refId: string;
   projectId?: string;
+  recordKind?: 'note'|'task'|'event';
   label: string;
   r: number;
   color?: string;

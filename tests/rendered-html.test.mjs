@@ -169,3 +169,15 @@ test('past and current proposal dates are accepted by the built HTTP API and ava
  }
  const invalid=await request('/api/brief',{method:'POST',headers,body:JSON.stringify({id:randomUUID(),date:'2026-02-30',energy:'normal'})});assert.equal(invalid.status,400);
 });
+
+
+test('wiki intake requires owner authentication and same origin, and never exposes the seed in browser bundles',async()=>{
+ const path='/api/wiki',body=JSON.stringify({action:'bootstrap'}),headers={...identity('wiki-http'),'content-type':'application/json',origin:'https://orbit.test'};
+ assert.equal((await request(path,{method:'POST',headers:{'content-type':'application/json'},body})).status,401);
+ assert.equal((await request(path,{method:'POST',headers:{...headers,origin:'https://foreign.test'},body})).status,403);
+ const unavailable=await request(path,{method:'POST',headers,body});assert.equal(unavailable.status,200);assert.deepEqual(await unavailable.json(),{available:false,imported:0});
+ const seed=JSON.parse(await readFile(new URL('../lib/orbit/wiki/seed.json',import.meta.url),'utf8'));
+ const assets=await readdir(new URL('../dist/client/assets/',import.meta.url));let wikiUI=false;
+ for(const file of assets.filter(n=>n.endsWith('.js'))){const source=await readFile(new URL('../dist/client/assets/'+file,import.meta.url),'utf8');assert.ok(!source.includes(seed.id));assert.ok(!source.includes('ORBIT_WIKI_SEED_KEY'));if(source.includes('개인 위키 문서 연결 그래프')&&source.includes('새 정보 확인'))wikiUI=true}
+ assert.ok(wikiUI);
+});
