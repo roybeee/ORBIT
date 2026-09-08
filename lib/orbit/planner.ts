@@ -53,7 +53,7 @@ export function calibrationFactor(tasks: Task[], task: Task, date: string) {
       typeof t.actualMinutes === 'number' &&
       t.actualMinutes > 0 &&
       t.duration > 0 &&
-      (t.completedOn ?? '') >= since,
+      (t.completedOn ?? '') >= since && (t.completedOn ?? '') <= date,
   );
   const ratios = (list: Task[]) => list.map((t) => t.actualMinutes! / t.duration);
   const cognition = taskCognition(task);

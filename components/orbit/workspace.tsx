@@ -69,6 +69,8 @@ import { focusIds } from '@/lib/orbit/derived';
 import { NoteLibrary } from '@/components/orbit/note-library';
 import { NoteDetail } from '@/components/orbit/note-detail';
 import { InstallBanner, InstallSettings, InstallRootHint } from '@/components/orbit/install-app';
+import {GoalDashboard} from './coach/goal-dashboard';
+import {Understanding} from './coach/understanding';
 import { AgentWorkspace } from '@/components/orbit/agent/chat';
 import { agentRequest } from '@/components/orbit/agent/connections';
 import { useWorkspace } from '@/lib/orbit/use-workspace';
@@ -116,16 +118,20 @@ import {
 } from '@/lib/orbit/model';
 const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'agent', label: 'AI 에이전트', icon: MessagesSquare },
+  { id: 'goals', label: '나의 목표', icon: Target },
   { id: 'today', label: '오늘', icon: Sun },
   { id: 'calendar', label: '일정', icon: CalendarDays },
   { id: 'tasks', label: '할 일', icon: CheckCheck },
   { id: 'projects', label: '프로젝트', icon: FolderKanban },
+  { id: 'understanding', label: '나를 이해하는 기록', icon: Sparkles },
   { id: 'wiki', label: '개인 위키', icon: BookOpen },
   { id: 'knowledge', label: '지식창고', icon: Library },
   { id: 'review', label: '저녁 회고', icon: Moon },
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  goals: {title:'나의 목표',subtitle:'원하는 삶에서 오늘의 한 걸음까지. 목표와 퀘스트를 연결합니다.',eyebrow:'MY ORBIT'},
+  understanding: {title:'나를 이해하는 기록',subtitle:'흩어진 일상을 연결해, 나에게 맞는 길을 찾아갑니다.',eyebrow:'UNDERSTANDING ME'},
   agent: { title: 'Orbit 에이전트', subtitle: '대화에서 실행까지.', eyebrow: 'ORBIT AGENT' },
   today: {
     title: '오늘, 중요한 일부터.',
@@ -200,7 +206,7 @@ function AppNavigation({
             <div className="nav-section-label">WORKSPACE</div>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navigation.slice(0, 5).map((n) => (
+                {navigation.slice(0, 6).map((n) => (
                   <SidebarMenuItem key={n.id}>
                     <SidebarMenuButton className="nav-item" isActive={view === n.id} onClick={() => go(n.id)}>
                       <n.icon />
@@ -214,7 +220,7 @@ function AppNavigation({
             <div className="nav-section-label">THINK & GROW</div>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navigation.slice(5).map((n) => (
+                {navigation.slice(6).map((n) => (
                   <SidebarMenuItem key={n.id}>
                     <SidebarMenuButton className="nav-item" isActive={view === n.id} onClick={() => go(n.id)}>
                       <n.icon />
@@ -255,7 +261,7 @@ function AppNavigation({
         {[
           { id: 'agent' as View, label: '대화', icon: MessagesSquare },
           { id: 'today' as View, label: '오늘', icon: Sun },
-          { id: 'projects' as View, label: '프로젝트', icon: FolderKanban },
+          { id: 'goals' as View, label: '목표', icon: Target },
           { id: 'proposal' as View, label: '내일 제안', icon: Sparkles },
         ].map((n) => (
           <button
@@ -1099,6 +1105,7 @@ function WorkspaceContent({
             <div hidden={view !== 'agent'}>
               <AgentWorkspace
                 perform={perform}
+                onOpenRecord={setDetail}
                 busy={busy || hasPending}
                 onGoals={() => setBrainyOpen(true)}
                 demo={demo}
@@ -1109,6 +1116,8 @@ function WorkspaceContent({
               />
             </div>
           )}
+          {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
+          {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
           {loaded && projects.length === 0 && view === 'today' && (
             <div className="welcome-card">
               <div>

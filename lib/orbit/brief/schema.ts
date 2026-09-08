@@ -10,7 +10,7 @@ export const briefContentSchema=z.object({
  success:text(400),questions:z.array(text(200)).max(3),
 }).strict();
 export type BriefContent=z.infer<typeof briefContentSchema>;
-export interface BriefEvidence {id:string;kind:'project'|'task'|'note'|'review'|'event'|'conversation'|'plaud';recordId:string;title:string;date?:string;revision?:number;excerpt?:string}
+export interface BriefEvidence {id:string;kind:'project'|'task'|'note'|'review'|'event'|'conversation'|'plaud'|'memory'|'goal';recordId:string;title:string;date?:string;revision?:number;excerpt?:string}
 export interface BriefCoverage {projects:number;tasks:number;completed:number;incomplete:number;notes:number;noteBodies:number;reviews:number;events:number;conversations:number;warnings:string[];google:string;plaud:string}
 export interface DailyBrief extends BriefContent {date:string;cutoff:string;generatedAt:string;sourceRevision:number;sourceTurnId:string;coverage:BriefCoverage;evidence:BriefEvidence[]}
 export interface PlanningRequest {date:string;energy:'low'|'normal'|'high'}

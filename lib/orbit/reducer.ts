@@ -1,4 +1,5 @@
-import {careEvents,goalAllowsWork} from './chief.ts';
+import {careEvents,goalAllowsWork,goalIsActive} from './chief.ts';
+import {questReadiness,memorySignature} from './pacemaker.ts';
 import { wikiMatches, wikiLinks } from './wiki/relations.ts';
 import { automaticProject, normalize } from './classify.ts';
 import { planFromBrief } from './brief/planning.ts';
@@ -19,6 +20,7 @@ function replace<T extends { id: string }>(list: T[], record: T) {
 }
 export const LIMITS = { goals: 12, improvements: 40, habits: 3, risks: 10, habitLog: 400 };
 export function validateLinks(data: WorkspaceData) {
+  if((data.memories??[]).length>60)fail('기억은 60개까지 보관합니다. 오래된 기억을 정리해 주세요.');
   const projectIds = new Set(data.projects.map((p) => p.id));
   const taskIds = new Set(data.tasks.map((t) => t.id));
   const noteIds = new Set(data.notes.map((n) => n.id));
@@ -50,6 +52,7 @@ export function validateLinks(data: WorkspaceData) {
     if (p.goalId && !goalIds.has(p.goalId)) fail('프로젝트의 목표를 확인해 주세요.');
   for (const g of data.goals ?? [])
     if (g.parentId && (g.parentId === g.id || !goalIds.has(g.parentId))) fail('상위 목표를 확인해 주세요.');
+  for(const goal of data.goals??[]){const seen=new Set<string>();let node:typeof goal|undefined=goal;while(node){if(seen.has(node.id))fail('상위 목표가 순환하고 있습니다.');seen.add(node.id);node=(data.goals??[]).find(g=>g.id===node?.parentId)}}
   if (data.dominoProjectId && !projectIds.has(data.dominoProjectId)) fail('도미노 프로젝트를 확인해 주세요.');
   for (const r of data.risks ?? [])
     if (r.projectId && !projectIds.has(r.projectId)) fail('리스크의 프로젝트를 확인해 주세요.');
@@ -115,6 +118,28 @@ export function applyAction(
       fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.');
   };
   switch (action.type) {
+    case 'memory.upsert': {
+      const m={...action.memory,sources:action.memory.sources.map(s=>s.kind==='note'?{...s,revision:s.revision??data.notes.find(n=>n.id===s.id)?.revision??1}:s)};
+      if(m.sources.some(s=>s.kind==='note'&&data.notes.find(n=>n.id===s.id)?.tags.includes('사주'))&&(m.kind!=='reflection'||m.origin!=='saju'))fail('사주 해석 자료는 사주·자기 탐색으로 구분해 보관해 주세요.');
+      if(m.origin==='saju'&&m.kind!=='reflection')fail('사주 자료는 자기 탐색으로 보관합니다.');
+      if(m.origin==='records'&&!m.sources.length)fail('근거 기록을 연결해 주세요.');
+      for(const s of m.sources){const exists=s.kind==='note'?data.notes.some(n=>n.id===s.id&&(s.revision===undefined||(n.revision??1)===s.revision)):s.kind==='task'?data.tasks.some(t=>t.id===s.id):data.reviews.some(r=>r.date===s.id);if(!exists)fail('근거 기록이 변경되었거나 없습니다. 다시 확인해 주세요.');}
+      const old=data.memories?.find(x=>x.id===m.id);
+      data.memories=replace(data.memories??[],{...m,sources:m.sources.map(s=>({...s,signature:memorySignature(data,s)})),confirmedOn:old?.confirmedOn??today,updatedOn:today});
+      break;
+    }
+    case 'memory.delete':
+      data.memories=(data.memories??[]).filter(m=>m.id!==action.id);
+      break;
+    case 'quest.plan': {
+      const goal=data.goals?.find(g=>g.id===action.goalId)??fail('목표를 먼저 등록해 주세요.');
+      if(!goalIsActive(data,goal.id))fail('진행 중인 목표에 퀘스트를 추가해 주세요.');
+      let createdId:string|undefined;
+      if(action.project){if(action.project.goalId!==goal.id)fail('프로젝트의 목표 연결을 확인해 주세요.');if(!action.tasks.some(t=>t.projectId===action.project!.id))fail('연결할 퀘스트가 없는 새 프로젝트입니다.');createdId=createProject(action.project)}
+      if(new Set(action.tasks.map(t=>t.id)).size!==action.tasks.length)fail('퀘스트 번호가 중복되었습니다.');
+      for(const item of action.tasks){const draft={...item,projectId:action.project&&item.projectId===action.project.id?createdId!:item.projectId};if(data.tasks.some(t=>t.id===draft.id))fail('이미 등록된 퀘스트입니다. 기존 기록을 덮어쓸 수 없습니다.');if(data.projects.find(p=>p.id===draft.projectId)?.goalId!==goal.id)fail('선택한 목표의 프로젝트에 퀘스트를 연결해 주세요.');if(!draft.definition.trim())fail('각 퀘스트의 완료 조건을 입력해 주세요.');data.tasks.push({...draft,status:'todo',focus:false});}
+      break;
+    }
     case 'chief.settings':
       data.chief = { ...data.chief, settings: action.settings };
       break;
@@ -201,6 +226,7 @@ export function applyAction(
         'actualMinutes',
         'outcome',
         'outcomeReason',
+        'outcomeOn',
         'startedAt',
         'laserDate',
         'unplanned',
@@ -273,6 +299,8 @@ export function applyAction(
     }
     case 'task.start': {
       const t = task(action.id);
+      const readiness=questReadiness(data,t,today);
+      if(!readiness.canStart)fail(readiness.reason);
       if (t.status === 'done') fail('완료한 일은 다시 시작할 수 없습니다. 상태를 먼저 바꿔 주세요.');
       const running = data.tasks.find((x) => x.id !== t.id && x.startedAt);
       if (running) fail(`"${running.title}" 집중 세션이 진행 중입니다. 먼저 끝내 주세요.`);
@@ -291,6 +319,7 @@ export function applyAction(
       finishSession(t);
       if (action.actualMinutes !== undefined) t.actualMinutes = action.actualMinutes;
       t.outcome = action.outcome;
+      t.outcomeOn = today;
       if (action.outcome === 'done') {
         t.status = 'done';
         t.completedOn = t.completedOn ?? today;
@@ -428,6 +457,7 @@ export function applyAction(
           finishSession(t);
           if (item.actualMinutes !== undefined) t.actualMinutes = item.actualMinutes;
           t.outcome = item.outcome;
+          t.outcomeOn = action.review.date;
           if (item.outcome === 'done') {
             if (t.status !== 'done') {
               t.status = 'done';

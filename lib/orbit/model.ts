@@ -1,6 +1,6 @@
 import type { DailyBrief } from './brief/schema';
 export type View =
-  'agent' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'agent' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).
@@ -49,6 +49,7 @@ export interface Task {
   actualMinutes?: number;
   outcome?: Outcome;
   outcomeReason?: OutcomeReason;
+  outcomeOn?: string;
   startedAt?: string;
   laserDate?: string;
 }
@@ -72,6 +73,15 @@ export interface ChiefState {
   settings?: { tone: 'gentle' | 'balanced' | 'firm'; quietStart: number; quietEnd: number; pausedUntil?: string };
   checkins?: { date: string; energy: 'low' | 'normal' | 'high'; strain: 'light' | 'normal' | 'heavy'; note: string; updatedAt: string }[];
   responses?: { key: string; kind: 'snooze' | 'blocked' | 'recovered'; until: string; reason: string; at: string }[];
+}
+export interface PersonalMemory {
+  id: string;
+  statement: string;
+  kind: 'preference' | 'constraint' | 'strategy' | 'reflection';
+  origin: 'user' | 'records' | 'saju';
+  sources: { kind: 'note' | 'task' | 'review'; id: string; revision?: number; signature?: string }[];
+  confirmedOn: string;
+  updatedOn: string;
 }
 export interface Improvement {
   id: string;
@@ -223,6 +233,7 @@ export interface DailyReview {
   hasDetail?: boolean;
 }
 export interface WorkspaceData {
+  memories?: PersonalMemory[];
   chief?: ChiefState;
   careRoutines?: CareRoutine[];
   schemaVersion: 2 | 3;

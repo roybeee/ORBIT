@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {Sparkles,LoaderCircle,Check,Pause,ArrowRight,RefreshCw,Clock3,ChevronDown,FileText} from 'lucide-react';
+import {EvidenceSheet} from '../agent/evidence-sheet';
 import {agentRequest} from '../agent/connections';
 import {formatTime,durationText,quadrantLabel,cognitionLabel,withDefaults,type WorkspaceSnapshot,type View,type Proposal} from '@/lib/orbit/model';
 import {Crosshair} from 'lucide-react';
@@ -10,6 +11,7 @@ import {addDays,koreanDate,todayInZone,validDate} from '@/lib/orbit/dates';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 interface Props {snapshot:WorkspaceSnapshot;date:string;setDate:(date:string)=>void;energy:Proposal['energy'];setEnergy:(energy:Proposal['energy'])=>void;busy:boolean;demo:boolean;refresh:()=>Promise<void>;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;navigate:(view:View)=>void;open:(kind:'task'|'note'|'project'|'event',id:string)=>void;launch?:{date:string;id:string}}
 export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,demo,refresh,perform,navigate,open,launch}:Props){
+ const [selectedEvidence,setSelectedEvidence]=useState<BriefEvidence|null>(null);
  const [run,setRun]=useState<BriefRun|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[starting,setStarting]=useState(false),[defer,setDefer]=useState<string|null>(null),[reason,setReason]=useState(''),[revisit,setRevisit]=useState(addDays(date,1));
  const refreshedRun=useRef(''),onRefresh=useRef(refresh);onRefresh.current=refresh;
  const currentDate=useRef(date),request=useRef<{id:string;date:string;energy:Proposal['energy']}|null>(null),launched=useRef(''),startingRef=useRef(false);currentDate.current=date;
@@ -37,7 +39,7 @@ export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,dem
   void poll();return()=>{active=false;clearTimeout(timer)};
  },[date,demo]);
  const evidence=(ids:string[])=>brief?<details className="brief-evidence"><summary>판단 근거 <ChevronDown size={13}/></summary><ul>{ids.map(id=>{const source=brief.evidence.find(e=>e.id===id);if(!source)return null;return <li key={id}><button onClick={()=>openEvidence(source)}><FileText size={13}/>{source.title}{source.revision?' · v'+source.revision:''}</button>{source.excerpt&&<p>{source.excerpt}</p>}</li>})}</ul></details>:null;
- const openEvidence=(source:BriefEvidence)=>{if(['task','note','project','event'].includes(source.kind))open(source.kind as 'task'|'note'|'project'|'event',source.recordId);else if(source.kind==='review')navigate('review');else navigate('agent')};
+ const openEvidence=(source:BriefEvidence)=>setSelectedEvidence(source);
  const approve=async(id:string)=>{setError('');if(!await perform({type:'proposal.approve',date,itemId:id},'승인한 결과물과 집중 시간을 Orbit 일정에 반영했습니다.'))setError('승인을 완료하지 못했습니다. 화면 위의 저장 안내를 확인해 주세요.')};
  const decisionButtons=(id:string)=>{const item=plan?.items.find(i=>i.id===id);if(!item)return null;if(historical)return <div className="brief-decisions"><span>{({pending:'검토용 제안',approved:'승인된 기록',deferred:'보류된 기록'})[item.state]}</span><small>지난 날짜의 제안은 확인·재생성할 수 있습니다. 일정에 새로 반영하려면 오늘 이후 날짜를 선택해 주세요.</small></div>;return <div className="brief-decisions">{item.state==='pending'?<><button className="primary-button" disabled={busy||running} onClick={()=>void approve(id)}><Check size={15}/>승인하고 일정에 반영</button><button className="secondary-button" disabled={busy||running} onClick={()=>{setDefer(id);setReason('');setRevisit(addDays(date,1))}}><Pause size={15}/>보류</button></>:item.state==='approved'?<><span className="brief-approved"><Check size={15}/>승인됨</span><button className="text-button" onClick={()=>navigate('calendar')}>일정 보기 <ArrowRight size={14}/></button><button className="text-button" disabled={busy||running} onClick={()=>void perform({type:'proposal.revoke',date,itemId:id},'승인한 집중 시간을 취소했습니다.')}>승인 취소</button></>:<><span>보류 · {item.revisitDate} · {item.deferReason}</span><button className="text-button" disabled={busy||running} onClick={()=>void perform({type:'proposal.reconsider',date,itemId:id})}>다시 검토</button></>}</div>};
  const mapped=new Set<string>();
@@ -68,7 +70,8 @@ export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,dem
       <div className="brief-brainy">{item?.role==='laser'&&<span className="brainy-badge is-laser"><Crosshair size={12}/>Goal Laser · {item.end-item.start}분 연속{item.end-item.start<withDefaults(snapshot.data.preferences).laserMinutes?' (목표 '+withDefaults(snapshot.data.preferences).laserMinutes+'분)':''}</span>}{item?.role==='must'&&<span className="brainy-badge is-must">반드시 종결</span>}{(priority.quadrant??item?.quadrant)&&<span className="brainy-badge">{quadrantLabel[(priority.quadrant??item!.quadrant)!]}</span>}{(priority.cognition??item?.cognition)&&<span className={'brainy-badge cog-'+(priority.cognition??item!.cognition)}>{cognitionLabel[(priority.cognition??item!.cognition)!]}</span>}{item?.factor&&item.factor!==1?<span className="brainy-badge">보정 ×{item.factor}</span>:null}</div>
       <div className="brief-priority-body"><div><label>목표에 대한 기여</label><p>{priority.whyNow}</p><label>{dayLabel}의 목표 결과물</label><p className="brief-outcome">{priority.outcome}</p></div><div><label>이렇게 진행</label><ol>{priority.approach.map((step,i)=><li key={i}>{step}</li>)}</ol></div></div>
       {evidence(priority.evidence)}{item?decisionButtons(item.id):<p className="brief-capacity">고정 일정·보류·선행 작업·집중 개수 제한으로 시간을 배치하지 않았습니다. 기존 계획을 조정한 뒤 다시 분석해 주세요.</p>}
-     </section>;
+     {selectedEvidence&&<EvidenceSheet key={selectedEvidence.id} source={{...selectedEvidence,label:selectedEvidence.kind==='note'?'원페이지 제안의 문서 근거':'원페이지 제안의 근거',scope:'excerpt',retrievedAt:brief?.generatedAt}} onClose={()=>setSelectedEvidence(null)} onOpen={target=>open(target.kind,target.id)} onConversation={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}}/>}
+ </section>;
     })}
     {!brief.priorities.length&&<p className="brief-capacity">현재 기록과 가용 시간으로 확정할 실행 항목이 없습니다. 아래 확인할 질문과 제약을 먼저 검토해 주세요.</p>}
    </section>
