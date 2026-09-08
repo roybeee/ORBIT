@@ -5,6 +5,7 @@ import { conversationIdSchema } from './conversations.ts';
 import { actionSchema, dateSchema } from '../validation.ts';
 import { AgentError } from './errors.ts';
 import type { GoogleEventAction } from './types.ts';
+export const googleDeleteSchema=z.object({type:z.literal('google.event.deleteSeries'),eventId:z.string().regex(/^[a-zA-Z0-9_-]{1,1024}$/),expectedTitle:z.string().trim().min(1).max(160),scope:z.literal('all'),verified:z.object({calendarId:z.string().min(1).max(1024),seriesId:z.string().regex(/^[a-zA-Z0-9_-]{1,1024}$/),etag:z.string().min(1).max(500),iCalUID:z.string().min(1).max(1024),title:z.string().min(1).max(160)}).strict().optional()}).strict();
 export const googleActionSchema = z
   .object({
     type: z.literal('google.event.create'),
@@ -68,6 +69,7 @@ const allowed = new Set([
   'risk.close',
 ]);
 export function parseAction(value: unknown) {
+  const deletion=googleDeleteSchema.safeParse(value);if(deletion.success)return deletion.data;
   const dispatch=orderActionSchema.safeParse(value);
   if(dispatch.success)return dispatch.data;
   const google = googleActionSchema.safeParse(value);
@@ -80,6 +82,8 @@ export function parseAction(value: unknown) {
   return parsed.data;
 }
 export const contract = `Supported action JSON examples (use actual user values and IDs):
+{"type":"google.event.deleteSeries","eventId":"exact-native-google-id","expectedTitle":"exact event title","scope":"all"}
+Calendar recurring-series deletion uses google.event.deleteSeries through Orbit's own Google OAuth, NEVER agent.dispatch to a Hermes run without Google tools. Only propose this for explicit ENTIRE series deletion, never single occurrence or this-and-following requests. Use the user-provided native ID or read google_calendar_read to obtain it (remove only the google: prefix and final :YYYY-MM-DD from Orbit cache IDs). No inferred IDs. Omit verified: the server resolves and validates the actual title, series, calendar and version before staging; approval revalidates and deletes only that series. No tasks are created, edited or completed by this action. If the user says keep an existing todo unchanged, propose only this deletion card. After an earlier Hermes permission failure, offer this direct action instead of repeating the same dispatch. Existing Google connection can be used without Hermes reauthentication; request Orbit → 연결 → Google Calendar only when that connection fails. A prior completed execution is not proof of deletion.
 {"type":"agent.dispatch","title":"Concrete execution order","instruction":"The exact approved scope, intended recipient if any, observable outcome and authorization limits","projectId":"actual-project-id or null","taskIds":["actual-task-id"],"eventIds":["actual-calendar-event-id"]}
 agent.dispatch is a REAL native Hermes execution order, not a task placeholder. One card approval submits an independent run with configured native tools and delegation. Use it when the user asks to execute work or direct the development team. Preserve the user's requested recipients and scope; never expand to publishing, purchases or messaging without explicit user authorization. Separate independent work into separate orders when helpful. References are optional context, not new records: taskIds must be raw IDs of already saved Orbit tasks only, never calendar IDs, evidence IDs, a task title or a task that will be created later. eventIds holds exact existing calendar record IDs. For a calendar operation without existing Orbit tasks, use projectId:null, taskIds:[], and the matching eventIds. Include only actual saved records; never invent an ID to fill these fields. Tasks from different projects require projectId:null; keep their original project membership. A linked project must own all linked tasks. Orbit Google OAuth and internal task-write access are not inherited by the native executor; do not promise calendar deletion or an end-to-end conversion without actual tool receipts. Recurring-event scope and the intended task creation are explicit work-order requirements and must not change while correcting references. Do not pair dispatch with fabricated task.status doing/done. Receipt/status/results are visible in 실행실. The user can also use 실행실 → 새 업무 지시 to directly execute without a proposal card. Unknown agent names must be verified at execution; no self-granted access. agent_orders reads actual order receipts and results. A completed run still needs result review before a linked task is marked complete.
 {"type":"memory.upsert","memory":{"id":"new-id","statement":"user-confirmed preference or useful strategy","kind":"preference or constraint or strategy or reflection","origin":"user or records or saju","sources":[]}}

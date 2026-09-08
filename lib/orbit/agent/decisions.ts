@@ -7,6 +7,7 @@ import {addDays,todayInZone} from '../dates.ts';
 import {AgentError} from './errors.ts';
 import {claimAction,findAction,markApproved,resetAction} from './repository.ts';
 import {createGoogleEvent,syncCalendar} from './calendar.ts';
+import {deleteCalendarSeries} from './calendar-delete.ts';
 import {parseAction} from './runner.ts';
 import type {Runtime} from './integrations.ts';
 export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional()}).strict();
@@ -23,6 +24,7 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
  try{
   const parsed=parseAction(action.action);let revision=action.expectedRevision,result:unknown={};
   if(parsed.type==='agent.dispatch'){const order=await dispatchOrder(db,owner,action.id,parsed,env,action.conversationId);result={orderId:order.id};}
+  else if(parsed.type==='google.event.deleteSeries'){result=await deleteCalendarSeries(db,owner,env,action.id,lease,parsed);}
   else if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
   else if(parsed.type==='proposal.generate'||parsed.type==='review.saveGenerate'){const planning=await startPlanningAction(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed},env);revision=planning.snapshot.revision;result={briefDate:planning.date};}
   else{
@@ -30,6 +32,6 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
    revision=(await writeCommand(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed})).revision;
   }
   await markApproved(db,owner,action,lease,revision,result);
-  if(parsed.type==='google.event.create'){try{await syncCalendar(db,owner,env,parsed.event.date)}catch{/* External creation is acknowledged; sync can be retried separately. */}}
+  if(parsed.type==='google.event.create'||parsed.type==='google.event.deleteSeries'){try{await syncCalendar(db,owner,env,parsed.type==='google.event.create'?parsed.event.date:undefined)}catch{/* External creation is acknowledged; sync can be retried separately. */}}
  }catch(error){await resetAction(db,owner,action.id,lease);if(error instanceof RevisionConflict)throw new AgentError('제안 이후 업무나 일정이 변경됐습니다. 에이전트에게 최신 내용으로 다시 제안해 달라고 요청해 주세요.','CONFLICT',409);throw error}
 }

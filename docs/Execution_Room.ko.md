@@ -32,3 +32,17 @@ Hermes가 켜져 있으면 접수한 작업은 Orbit을 닫아도 계속됩니�
 - 실제 실행 및 테스트 증거를 결과로 요청하지만, 에이전트의 텍스트 보고만으로 목표 달성을 확정하지 않습니다.
 
 확인한 upstream 계약: [Hermes API](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server), [run handlers](https://github.com/NousResearch/hermes-agent/blob/main/gateway/platforms/api_server_runs.py), [idempotency](https://github.com/NousResearch/hermes-agent/blob/main/gateway/platforms/api_server_run_idempotency.py).
+
+
+## Google 반복 시리즈 전체 삭제
+
+Hermes 독립 실행에 Orbit Google OAuth가 자동으로 전달되지 않는다. 캘린더 시리즈 삭제는 대화의 `google.event.deleteSeries` 승인 카드에서 Orbit 서버가 직접 수행한다. API 토큰은 Hermes에 보내지 않는다.
+
+- 실시간 primary 캘린더의 쓰기 권한, 실제 제목, 원본 반복 시리즈, ETag를 검증한 후 카드를 저장한다. 승인 시 계정과 ETag를 재검증한다.
+- 전체 시리즈 삭제만 지원한다. 단일 회차/이후 회차 삭제 요청은 전체 삭제로 바꾸지 않는다.
+- DELETE 전에 기존 action result에 대상을 저장한다. 204 빈 응답을 정상 처리하고 원본 및 향후 instances와 iCalUID 조회로 잔존을 확인한다. 확인 실패는 반영 완료가 아니다. 같은 카드에서 재시도한다.
+- 이 작업은 Orbit 할 일을 생성·수정·완료하지 않는다. 기존 todo는 그대로 유지된다.
+- 이전 Hermes 결과에서 도구 없음으로 막혔으면 ‘Orbit과 결과 검토하기’로 기존 지시를 읽어 직접 삭제 카드를 제안받는다.
+- Google 401/403이나 갱신 실패 시 Orbit 연결 → Google Calendar에서 일정 권한으로 재인증한다.
+
+Google 공식 계약: [삭제](https://developers.google.com/workspace/calendar/api/v3/reference/events/delete), [조건부 변경](https://developers.google.com/workspace/calendar/api/guides/version-resources), [반복 회차 조회](https://developers.google.com/workspace/calendar/api/v3/reference/events/instances).
