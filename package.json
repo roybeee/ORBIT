@@ -22,7 +22,7 @@
     "test:pwa": "node --experimental-strip-types --test tests/pwa.test.mjs tests/app-version.test.mjs",
     "test:agent": "node --experimental-strip-types --test tests/agent.test.mjs tests/hermes-setup.test.mjs tests/conversations.test.mjs tests/attachments.test.mjs tests/brief.test.mjs",
     "test:chief": "node --experimental-strip-types --test tests/chief.test.mjs",
-    "test:pacemaker": "node --experimental-strip-types --test tests/pacemaker.test.mjs"
+    "test:pacemaker": "node --experimental-strip-types --test tests/pacemaker.test.mjs tests/dashboard.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
