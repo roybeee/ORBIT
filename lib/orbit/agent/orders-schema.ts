@@ -6,6 +6,7 @@ export const orderActionSchema=z.object({
  instruction:z.string().trim().min(1).max(8000),
  projectId:z.string().min(1).max(100).nullable().default(null),
  taskIds:z.array(z.string().min(1).max(100)).max(12).default([]),
+ eventIds:z.array(z.string().min(1).max(200)).max(12).optional(),
 }).strict();
 export type DispatchAction=z.infer<typeof orderActionSchema>;
 export const orderInput=z.discriminatedUnion('action',[
@@ -17,6 +18,7 @@ export const orderInput=z.discriminatedUnion('action',[
 export type OrderStatus='queued'|'submitting'|'running'|'waiting_for_approval'|'stopping'|'completed'|'failed'|'cancelled'|'unknown';
 export interface WorkOrder {
  id:string;title:string;instruction:string;projectId:string|null;taskIds:string[];conversationId:string|null;
+ eventIds?:string[];
  status:OrderStatus;runId:string|null;output:string;error:string;createdAt:string;updatedAt:string;
  approval:null|{id:string;description:string};
  controls:{steer:boolean;approval:boolean};

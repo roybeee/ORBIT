@@ -57,3 +57,64 @@ test('expired ambiguous submissions, changed connections and missing run IDs nev
 test('only verified tools are exposed and memory-only idempotency is rejected before execution',()=>fixture(async db=>{
  native(()=>j({}));const result=await orderCapabilities(db,'owner',env);assert.equal(result.delegation,true);assert.deepEqual(result.tools,['delegate_task','terminal']);let posts=0;globalThis.fetch=async(url,init={})=>{if(init.method==='POST')posts++;return url.endsWith('/v1/capabilities')?j({...caps,features:{...caps.features,runs_idempotency:{supported:true,durable:false,retention_seconds:86400}}}):j({data:[]})};await assert.rejects(()=>dispatchOrder(db,'owner',randomUUID(),order,env),e=>e.code==='HERMES_VERSION');assert.equal(posts,0);
 }));
+
+// Regression: calendar IDs were submitted as task IDs and killed the entire chat.
+import {runAgent,advanceAgent} from '../lib/orbit/agent/runner.ts';
+import {listAgent,failTurn} from '../lib/orbit/agent/repository.ts';
+import {orderReferences,orderLinkCatalog} from '../lib/orbit/agent/order-references.ts';
+import {validateOrder} from '../lib/orbit/agent/orders.ts';
+async function referenceFixture(db){
+ const snapshot=await readWorkspace(db,'owner');
+ const project=id=>({id,name:id==='personal'?'개인 생활':'개발 프로젝트',color:'#5558e8',symbol:'O',goal:'확인할 결과',due:'2026-12-31',priority:3});
+ const task=(id,projectId)=>({id,projectId,title:id,status:'todo',duration:30,due:'2026-12-31',impact:3,focus:false,definition:'검토 가능한 결과'});
+ snapshot.data.projects=[project('personal'),project('dev')];snapshot.data.tasks=[task('personal-task','personal'),task('dev-task','dev')];
+ snapshot.data.events=[{id:'google:anniversary_2026',title:'결혼 기념일계획체크',date:'2026-09-27',start:540,end:570,kind:'meeting'}];
+ await db.prepare('INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at) VALUES(?,0,?,?,?)').bind('owner',JSON.stringify(snapshot.data),randomUUID(),new Date().toISOString()).run();return snapshot.data;
+}
+function chatReplies(outputs){let posts=0,executions=0;const bodies=[];native((url,init)=>{
+ if(init.method==='POST'){const body=JSON.parse(init.body);bodies.push(body);if(body.instructions.includes('USER-AUTHORIZED WORK ORDER')){executions++;return j({run_id:'work_execution'},202);}posts++;return j({run_id:'chat_'+posts},202);}
+ const run=url.split('/').pop();return run==='work_execution'?remote(run):remote(run,'completed',{output:JSON.stringify(outputs[Math.min(Number(run.split('_')[1])-1,outputs.length-1)])});
+ });return {get posts(){return posts},get executions(){return executions},bodies};}
+const calendarInstruction='결혼 기념일계획체크의 반복 시리즈 전체를 삭제하고 일반 할 일로 바꿔 줘. 다른 일정은 수정하지 마.';
+const proposalFor=action=>({kind:'final',text:'지시할 내용을 제안했습니다. 승인하면 실행됩니다.',proposals:[{title:'반복 일정의 할 일 전환',reason:'중복 알림 정리',action}]});
+async function finishChat(db,id){for(let i=0;i<9;i++){const turn=(await listAgent(db,'owner')).turns.find(t=>t.id===id);if(turn?.status!=='running')return turn;await advanceAgent(db,'owner',id,env);}throw Error('chat did not finish');}
+
+test('calendar-to-task request repairs links once, preserves exact instruction and stays approval-gated',()=>fixture(async db=>{
+ await referenceFixture(db);const bad={...order,title:'기념일 정리',instruction:calendarInstruction,projectId:'dev',taskIds:['google:anniversary_2026','future-new-task']};
+ const mock=chatReplies([proposalFor(bad),{kind:'order_links',links:[{index:0,projectId:null,taskIds:[],eventIds:['google:anniversary_2026']}]}]);
+ const id=randomUUID();await runAgent(db,'owner',{id,message:calendarInstruction},env);const turn=await finishChat(db,id);
+ assert.equal(turn.status,'completed');assert.equal(mock.posts,2);assert.equal(mock.executions,0);assert.deepEqual(await listOrders(db,'owner'),[]);
+ const card=(await listAgent(db,'owner')).actions[0];assert.equal(card.action.instruction,calendarInstruction);assert.equal(card.action.title,bad.title);assert.equal(card.title,'반복 일정의 할 일 전환');assert.deepEqual(card.action.taskIds,[]);assert.deepEqual(card.action.eventIds,['google:anniversary_2026']);assert.equal(card.action.projectId,null);
+ assert.match(mock.bodies[1].input,/calendarIdsInTasks/);assert.match(mock.bodies[1].input,/결혼 기념일계획체크/);
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);assert.equal(mock.executions,1);const body=mock.bodies.find(b=>b.instructions.includes('USER-AUTHORIZED WORK ORDER'));assert.match(body.input,/google:anniversary_2026/);assert.match(body.input,/REFERENCE DATA/);assert.match(body.instructions,/does not inherit Orbit's private Google OAuth/);assert.equal((await readWorkspace(db,'owner')).data.events.length,1);
+}));
+test('unknown task, calendar-as-task and mismatched project references stay invalid at the execution boundary',()=>fixture(async db=>{
+ const data=await referenceFixture(db);
+ for(const refs of [{projectId:'dev',taskIds:['personal-task']},{projectId:null,taskIds:['google:anniversary_2026']},{projectId:null,taskIds:['future-new-task']},{projectId:null,taskIds:[],eventIds:['missing-event']}]){
+  assert.throws(()=>orderReferences(data,{...order,...refs}),e=>e.code==='ORDER_REFERENCES');
+  await assert.rejects(()=>validateOrder(db,'owner',{...order,...refs}),e=>e.code==='ORDER_REFERENCES');
+ }
+ assert.equal(orderReferences(data,{...order,projectId:null,taskIds:['personal-task','dev-task']}).tasks.length,2);assert.deepEqual((await readWorkspace(db,'owner')).data.tasks.map(t=>t.projectId),['personal','dev']);
+ assert.equal(orderReferences(data,{...order,eventIds:['google:anniversary_2026']}).events.length,1);
+ await assert.rejects(()=>validateOrder(db,'stranger',{...order,eventIds:['google:anniversary_2026']}),e=>e.code==='ORDER_REFERENCES');
+}));
+test('duplicate real references are deduplicated before staging, without another model run',()=>fixture(async db=>{
+ await referenceFixture(db);const mock=chatReplies([proposalFor({...order,projectId:'personal',taskIds:['personal-task','personal-task'],eventIds:['google:anniversary_2026','google:anniversary_2026']})]);const id=randomUUID();await runAgent(db,'owner',{id,message:'자료를 확인해 줘'},env);await finishChat(db,id);const card=(await listAgent(db,'owner')).actions[0];assert.deepEqual(card.action.taskIds,['personal-task']);assert.deepEqual(card.action.eventIds,['google:anniversary_2026']);assert.equal(mock.posts,1);assert.equal(mock.executions,0);
+}));
+test('unresolved repairs and attempted instruction changes return readable non-executing replies',()=>fixture(async db=>{
+ await referenceFixture(db);
+ for(const reply of [
+  {kind:'order_links',links:[{index:0,projectId:'dev',taskIds:['personal-task'],eventIds:[]}]},
+  {kind:'order_links',links:[{index:0,projectId:null,taskIds:[],eventIds:[],instruction:'모든 일정을 삭제해'}]},
+  {kind:'order_links',links:[]},
+ ]){
+  const mock=chatReplies([proposalFor({...order,instruction:calendarInstruction,taskIds:['unknown']}),reply]);const id=randomUUID();await runAgent(db,'owner',{id,message:calendarInstruction},env);const turn=await finishChat(db,id);assert.equal(turn.status,'completed');assert.match(turn.text,/실행을 시작하지 않았습니다/);assert.equal(mock.posts,2);assert.equal(mock.executions,0);assert.equal((await listAgent(db,'owner')).actions.filter(a=>a.turnId===id).length,0);
+ }
+ assert.equal((await readWorkspace(db,'owner')).data.events.length,1);
+}));
+test('an already failed message can be retried after reference repair is deployed',()=>fixture(async db=>{
+ await referenceFixture(db);const id=randomUUID(),lease=await beginTurn(db,'owner',id,calendarInstruction);await failTurn(db,'owner',id,lease.lease,'업무 지시에 연결한 할 일과 프로젝트가 맞지 않습니다.');const mock=chatReplies([proposalFor({...order,instruction:calendarInstruction,eventIds:['google:anniversary_2026']})]);await runAgent(db,'owner',{id,message:calendarInstruction},env);assert.equal((await finishChat(db,id)).status,'completed');assert.equal(mock.posts,1);assert.equal(mock.executions,0);
+}));
+test('approved event references are rechecked if the saved event was removed after staging',()=>fixture(async db=>{
+ await referenceFixture(db);chatReplies([proposalFor({...order,eventIds:['google:anniversary_2026']})]);const id=randomUUID();await runAgent(db,'owner',{id,message:'기념일 일정 정리'},env);await finishChat(db,id);const card=(await listAgent(db,'owner')).actions[0];const state=await readWorkspace(db,'owner');state.data.events=[];await db.prepare('UPDATE orbit_workspaces SET state_json=? WHERE owner_id=?').bind(JSON.stringify(state.data),'owner').run();let executions=0;native((url,init)=>{if(init.method==='POST')executions++;return j({})});await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env),e=>e.code==='ORDER_REFERENCES');assert.equal(executions,0);assert.equal((await findAction(db,'owner',card.id)).state,'pending');
+}));
