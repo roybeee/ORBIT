@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {dispatchOrder} from './orders.ts';
 import {startPlanningAction} from '../brief/start.ts';
 import {readWorkspace,writeCommand,RevisionConflict,type Database} from '../../../db/repository.ts';
 import {dateSchema} from '../validation.ts';
@@ -21,7 +22,8 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
  const lease=await claimAction(db,owner,input.id);
  try{
   const parsed=parseAction(action.action);let revision=action.expectedRevision,result:unknown={};
-  if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
+  if(parsed.type==='agent.dispatch'){const order=await dispatchOrder(db,owner,action.id,parsed,env,action.conversationId);result={orderId:order.id};}
+  else if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
   else if(parsed.type==='proposal.generate'||parsed.type==='review.saveGenerate'){const planning=await startPlanningAction(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed},env);revision=planning.snapshot.revision;result={briefDate:planning.date};}
   else{
    if(['proposal.approve','event.upsert'].includes(parsed.type))await syncCalendar(db,owner,env,'date' in parsed?parsed.date:parsed.type==='event.upsert'?parsed.event.date:undefined);
