@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Play, Square, CheckCircle2, Timer } from 'lucide-react';
+import { Play, Square, CheckCircle2, Timer, Headphones } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -68,6 +68,7 @@ export function FocusSession({
         )}
       </div>
       <div className="focus-session-buttons">
+        <button className="secondary-button" onClick={() => window.dispatchEvent(new CustomEvent('orbit:sound-open',{detail:{goal:task.title,minutes:task.duration}}))}><Headphones size={14}/> 집중 사운드</button>
         {task.status !== 'done' &&
           (running ? (
             <button className="secondary-button" disabled={busy} onClick={() => void onStop()}>

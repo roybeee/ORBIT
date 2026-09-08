@@ -100,3 +100,9 @@ export const orderReads=sqliteTable('orbit_order_reads',{
  chars:integer('chars').notNull(),readUntil:integer('read_until').notNull().default(0),
  error:text('error').notNull().default(''),createdAt:text('created_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.orderId,table.id]})]);
+
+// Sound sessions and routines are separate from task completion and workspace revisions.
+export const soundState=sqliteTable('orbit_sound_state',{
+ ownerId:text('owner_id').primaryKey(),revision:integer('revision').notNull(),
+ stateJson:text('state_json').notNull(),updatedAt:text('updated_at').notNull(),
+});

@@ -1,0 +1,27 @@
+// Scene identities from the supplied ORBIT Sound 2.0 package.
+export const sceneModes = {
+  "deep-flow": "focus",
+  "rain-desk": "focus",
+  "forest-pages": "focus",
+  "quiet-code": "focus",
+  "first-step": "focus",
+  "night-writing": "focus",
+  "clear-dawn": "focus",
+  "deep-sea": "focus",
+  "soft-pink": "focus",
+  "warm-brown": "focus",
+  "white-space": "focus",
+  "rain-only": "focus",
+  "wind-only": "focus",
+  "shoreline": "focus",
+  "after-rain": "focus",
+  "still-room": "focus",
+  "forest-breath": "rest",
+  "slow-tide": "rest",
+  "warm-pause": "rest",
+  "open-air": "rest",
+  "moonlight": "sleep",
+  "rain-night": "sleep",
+  "sleep-forest": "sleep",
+  "last-wave": "sleep"
+} as const;

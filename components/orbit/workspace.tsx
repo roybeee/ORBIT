@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useEffect, type CSSProperties } from 'react';
+import { SoundStation } from './sound/station';
 import { DailyBriefPanel } from './brief/daily-brief';
 import { ShareIntake } from './attachments/share-intake';
 import type { StoredAttachment } from '@/lib/orbit/attachments/types';
@@ -43,6 +44,7 @@ import {
   Wand2,
   Network,
   LayoutGrid,
+  Headphones,
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -125,6 +127,7 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'calendar', label: '일정', icon: CalendarDays },
   { id: 'tasks', label: '할 일', icon: CheckCheck },
   { id: 'projects', label: '프로젝트', icon: FolderKanban },
+  { id: 'sound', label: '사운드스테이션', icon: Headphones },
   { id: 'understanding', label: '나를 이해하는 기록', icon: Sparkles },
   { id: 'wiki', label: '개인 위키', icon: BookOpen },
   { id: 'knowledge', label: '지식창고', icon: Library },
@@ -132,6 +135,7 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  sound: {title: '사운드스테이션', subtitle: '몰입할 때, 쉬어갈 때. 나의 페이스를 위한 소리.', eyebrow: 'ORBIT SOUND'},
   dashboard: {title:'Dashboard',subtitle:'목표의 현재 위치와 오늘의 다음 행동을 한눈에.',eyebrow:'MY WORKSPACE'},
   goals: {title:'나의 목표',subtitle:'원하는 삶에서 오늘의 한 걸음까지. 목표와 퀘스트를 연결합니다.',eyebrow:'MY ORBIT'},
   understanding: {title:'나를 이해하는 기록',subtitle:'흩어진 일상을 연결해, 나에게 맞는 길을 찾아갑니다.',eyebrow:'UNDERSTANDING ME'},
@@ -209,7 +213,7 @@ function AppNavigation({
             <div className="nav-section-label">WORKSPACE</div>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navigation.slice(0, 7).map((n) => (
+                {navigation.slice(0, 8).map((n) => (
                   <SidebarMenuItem key={n.id}>
                     <SidebarMenuButton className="nav-item" isActive={view === n.id} onClick={() => go(n.id)}>
                       <n.icon />
@@ -223,7 +227,7 @@ function AppNavigation({
             <div className="nav-section-label">THINK & GROW</div>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navigation.slice(7).map((n) => (
+                {navigation.slice(8).map((n) => (
                   <SidebarMenuItem key={n.id}>
                     <SidebarMenuButton className="nav-item" isActive={view === n.id} onClick={() => go(n.id)}>
                       <n.icon />
@@ -954,6 +958,7 @@ function WorkspaceContent({
             <strong>{navigation.find((n) => n.id === view)?.label}</strong>
           </div>
           <div className="top-actions">
+            <button className="sound-launch" onClick={() => navigate('sound')} aria-label="사운드스테이션 열기" title="사운드스테이션"><Headphones size={18}/></button>
             {loaded && (
               <ShareIntake demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />
             )}
@@ -1012,9 +1017,9 @@ function WorkspaceContent({
         {!demo && view !== 'agent' && <InstallBanner />}
         <main
           id="main-content"
-          className={`content ${view === 'agent' ? 'agent-content' : ''} ${!loaded ? 'is-loading' : ''}`}
+          className={`content ${view === 'agent' ? 'agent-content' : view === 'sound' ? 'sound-content' : ''} ${!loaded ? 'is-loading' : ''}`}
         >
-          <div className={`page-heading ${view === 'agent' ? 'agent-page-heading' : ''}`}>
+          <div className={`page-heading ${view === 'agent' || view === 'sound' ? 'agent-page-heading' : ''}`}>
             <div>
               <div className="eyebrow">
                 {view === 'today'
@@ -1119,6 +1124,7 @@ function WorkspaceContent({
               />
             </div>
           )}
+          <SoundStation visible={view === 'sound'} demo={demo} onOpen={() => {setDetail(null);navigate('sound')}} />
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}

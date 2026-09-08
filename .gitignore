@@ -46,3 +46,6 @@ next-env.d.ts
 # Python setup helper outputs
 __pycache__/
 *.pyc
+
+# Generated from the pinned user-supplied sound package.
+/public/sound-station/
