@@ -5,7 +5,7 @@ import {Check,ExternalLink,Link2,LoaderCircle,Unplug,CalendarDays,Mic,Orbit} fro
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import type {Connection,Provider} from '@/lib/orbit/agent/types';
 export async function agentRequest(path:string,method='GET',body?:unknown){
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),path.startsWith('/api/agent/orders')?150000:45000);
  try{
   const response=await fetch(path,{method,signal:controller.signal,credentials:'same-origin',cache:'no-store',...(body!==undefined?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
   let data;try{data=await response.json()}catch{throw new Error('연결이 중단됐습니다. 다시 불러오면 저장된 결과를 확인할 수 있습니다.')}
