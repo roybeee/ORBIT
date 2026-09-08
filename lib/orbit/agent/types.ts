@@ -1,9 +1,10 @@
 import type {StoredAttachment} from '../attachments/types';
 import type {WorkspaceAction} from '../validation';
 import type {AgentSource} from './evidence';
+import type {DispatchAction} from './orders-schema';
 export type Provider='hermes'|'plaud'|'google_calendar'|'google_mail';
 export interface Connection {provider:Provider;configured:boolean;connected:boolean;label:string;updatedAt?:string;model?:string;endpoint?:string}
-export interface AgentAction {conversationId?:string;id:string;turnId:string;title:string;reason:string;action:WorkspaceAction|GoogleEventAction;expectedRevision:number;state:'pending'|'applying'|'approved'|'deferred'|'rejected';note:string;revisitDate:string|null;result?:{url?:string;briefDate?:string};createdAt:string}
+export interface AgentAction {conversationId?:string;id:string;turnId:string;title:string;reason:string;action:WorkspaceAction|GoogleEventAction|DispatchAction;expectedRevision:number;state:'pending'|'applying'|'approved'|'deferred'|'rejected';note:string;revisitDate:string|null;result?:{url?:string;briefDate?:string;orderId?:string};createdAt:string}
 export interface GoogleEventAction {type:'google.event.create';event:{title:string;date:string;start:number;end:number;timeZone:string;description:string}}
 export interface AgentTurn {attachments?:StoredAttachment[];conversationId?:string;id:string;input:string;status:'running'|'completed'|'failed';text:string;error?:string;progress?:string;sources:AgentSource[];createdAt:string}
 export interface ActiveRun {id:string;conversationId:string}

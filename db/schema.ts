@@ -83,3 +83,12 @@ export const chiefJobs=sqliteTable('orbit_chief_jobs',{
  leaseUntil:integer('lease_until').notNull().default(0),
  configJson:text('config_json').notNull().default('{}'),
 });
+
+// Orders are independent of chat turns; owner/connection/run identities never come from a model.
+export const agentOrders=sqliteTable('orbit_agent_orders',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),
+ connectionId:text('connection_id').notNull(),requestJson:text('request_json').notNull(),
+ stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),
+ stopRequested:integer('stop_requested').notNull().default(0),
+ createdAt:text('created_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_orders_recent').on(table.ownerId,table.createdAt,table.id)]);

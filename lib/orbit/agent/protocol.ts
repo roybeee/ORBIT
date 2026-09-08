@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {orderActionSchema} from './orders-schema.ts';
 import { fileIds } from '../attachments/storage.ts';
 import { conversationIdSchema } from './conversations.ts';
 import { actionSchema, dateSchema } from '../validation.ts';
@@ -67,6 +68,8 @@ const allowed = new Set([
   'risk.close',
 ]);
 export function parseAction(value: unknown) {
+  const dispatch=orderActionSchema.safeParse(value);
+  if(dispatch.success)return dispatch.data;
   const google = googleActionSchema.safeParse(value);
   if (google.success) return google.data as GoogleEventAction;
   const parsed = actionSchema.safeParse(value);
@@ -77,6 +80,8 @@ export function parseAction(value: unknown) {
   return parsed.data;
 }
 export const contract = `Supported action JSON examples (use actual user values and IDs):
+{"type":"agent.dispatch","title":"Concrete execution order","instruction":"The exact approved scope, intended recipient if any, observable outcome and authorization limits","projectId":"actual-project-id or null","taskIds":["actual-task-id"]}
+agent.dispatch is a REAL native Hermes execution order, not a task placeholder. One card approval submits an independent run with configured native tools and delegation. Use it when the user asks to execute work or direct the development team. Preserve the user's requested recipients and scope; never expand to publishing, purchases or messaging without explicit user authorization. Separate independent work into separate orders when helpful. Include only actual existing project/task IDs; omit projectId/taskIds when no saved match. Do not pair dispatch with fabricated task.status doing/done. Receipt/status/results are visible in 실행실. The user can also use 실행실 → 새 업무 지시 to directly execute without a proposal card. Unknown agent names must be verified at execution; no self-granted access. agent_orders reads actual order receipts and results. A completed run still needs result review before a linked task is marked complete.
 {"type":"memory.upsert","memory":{"id":"new-id","statement":"user-confirmed preference or useful strategy","kind":"preference or constraint or strategy or reflection","origin":"user or records or saju","sources":[]}}
 For origin records include 1..6 sources {kind:note|task|review,id:actual-record-id,revision?:note-version}. Reference only server evidence you actually read. Origin saju must always be kind reflection. Never use old AI guesses as facts. User card approval is the confirmation; memory.upsert never silently changes personal settings.
 {"type":"quest.plan","goalId":"actual-goal-id","project":{"id":"new-project-id","name":"Goal execution","goal":"observable result","goalId":"actual-goal-id","due":"YYYY-MM-DD","color":"#5558e8","symbol":"O","priority":3},"tasks":[{"id":"quest-a","projectId":"new-project-id","title":"first concrete step","definition":"observable result","duration":20,"due":"YYYY-MM-DD","impact":3},{"id":"quest-b","projectId":"new-project-id","title":"next step","definition":"observable result","duration":30,"due":"YYYY-MM-DD","impact":3,"dependsOn":["quest-a"]}]}
