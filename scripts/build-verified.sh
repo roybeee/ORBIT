@@ -24,3 +24,7 @@ timeout \
   --kill-after="${SITES_BUILD_KILL_AFTER:-10s}" \
   "${SITES_BUILD_TIMEOUT:-3m}" \
   "${vinext}" build
+
+
+# Validate the resumable connector protocol before any build can be published.
+node --experimental-strip-types --test tests/order-research.test.mjs tests/orders.test.mjs tests/agent.test.mjs tests/calendar-delete.test.mjs

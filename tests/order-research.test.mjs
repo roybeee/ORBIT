@@ -66,3 +66,34 @@ test('Plaud permission failure is an explicit source error; wiki access still wo
 test('stop between model and pending reads performs no further provider call',()=>fixture(async f=>{
  f.replies.push(read(p('get_note',{file_id:'f2'})));const id=randomUUID();await dispatchOrder(f.db,'owner',id,action,f.env);const stopped=await advanceOrder(f.db,'owner',id,f.env,{action:'stop',id});assert.equal(stopped.status,'cancelled');assert.equal(f.calls.length,0);
 }));
+
+import {parseResearchResponse} from '../lib/orbit/agent/research-response.ts';
+test('response parser accepts one wrapped JSON object and a 16-read batch but never ambiguous objects or writes',()=>{
+ const batch={kind:'orbit.read',requests:Array.from({length:16},(_,i)=>p('get_note',{file_id:'f'+i}))};
+ assert.equal(parseResearchResponse('다음 원문을 읽습니다.\n```json\n'+JSON.stringify(batch)+'\n```').requests.length,16);
+ assert.equal(parseResearchResponse(batch).requests.length,16);
+ assert.throws(()=>parseResearchResponse(JSON.stringify(batch)+'\n'+JSON.stringify(batch)));
+ assert.throws(()=>parseResearchResponse({...batch,requests:[{tool:'wiki_write',arguments:{id:'wiki'}}]}));
+ assert.throws(()=>parseResearchResponse({...batch,requests:[p('get_note',{file_id:'f'})],execute:'delete all'}));
+ assert.throws(()=>parseResearchResponse('{"kind":"orbit.read",'));
+});
+test('separate format errors after successful reads reset the repair budget and preserve raw context',()=>fixture(async f=>{
+ f.replies.push(read({tool:'plaud_tools',arguments:{}}),{kind:'bad'},read(p('get_note',{file_id:'f2'})),{kind:'bad-again'},read(p('get_transcript',{file_id:'f2'})),report(['read-0-0','read-2-0','read-4-0'],'partial'));
+ const id=randomUUID();await dispatchOrder(f.db,'owner',id,action,f.env);const result=await f.finish(id);
+ assert.equal(result.status,'completed');assert.equal(f.posts.length,6);assert.equal(f.calls.length,2);
+ assert.ok(f.posts[2].input.includes('SCHEMA ISSUE:'));assert.ok(f.posts[2].input.includes('list_files'));assert.ok(f.posts[4].input.includes('실제 발화'));
+ assert.ok(f.posts.every(r=>r.input.includes(action.instruction)));assert.equal(new Set(f.keys).size,f.keys.length);
+}));
+test('batched read requests are sequential; omitting notes retains previous working synthesis',()=>fixture(async f=>{
+ f.replies.push({...read({tool:'plaud_tools',arguments:{}}),notes:'보존할 기한과 제외 기준'}, {kind:'orbit.read',requests:[p('get_note',{file_id:'f2'}),p('get_note',{file_id:'f3'}),p('get_note',{file_id:'f4'})]},report(['read-1-0','read-1-1','read-1-2'],'partial'));
+ const id=randomUUID();await dispatchOrder(f.db,'owner',id,action,f.env);await f.finish(id);assert.equal(f.calls.length,3);assert.ok(f.posts[2].input.includes('보존할 기한과 제외 기준'));
+}));
+test('legacy format-failed orders resume the same saved reads without a new provider read or duplicate run',()=>fixture(async f=>{
+ f.replies.push(read(p('get_note',{file_id:'f2'})),{kind:'bad'},{kind:'bad'},{kind:'bad'},{kind:'bad'},report(['read-0-0'],'partial'));
+ const id=randomUUID();await dispatchOrder(f.db,'owner',id,action,f.env);const failed=await f.finish(id);assert.equal(failed.status,'failed');assert.equal(failed.canResume,true);assert.equal(f.calls.length,1);
+ const row=await f.db.prepare('SELECT * FROM orbit_agent_orders WHERE owner_id=? AND id=?').bind('owner',id).first();const s=JSON.parse(row.state_json);delete s.research.formatStopped;delete s.research.repairBaseInput;s.research.invalid=2;s.error='연결 자료 분석 응답 형식을 읽지 못했습니다. 실제 분석 완료로 표시하지 않았습니다.';
+ await f.db.prepare('UPDATE orbit_agent_orders SET state_json=?,request_json=? WHERE owner_id=? AND id=?').bind(JSON.stringify(s),JSON.stringify(f.posts[1]),'owner',id).run();assert.equal((await listOrders(f.db,'owner'))[0].canResume,true);
+ await assert.rejects(()=>advanceOrder(f.db,'stranger',id,f.env,{action:'resume',id}));
+ const resumed=await advanceOrder(f.db,'owner',id,f.env,{action:'resume',id});assert.equal(resumed.id,id);assert.equal(resumed.status,'queued');await advanceOrder(f.db,'owner',id,f.env,{action:'resume',id});assert.equal(f.posts.length,5);
+ const finished=await f.finish(id);assert.equal(finished.status,'completed');assert.equal(f.calls.length,1);assert.equal(f.posts.length,6);assert.ok(f.posts[5].input.includes('실제 발화'));assert.ok(f.posts[5].input.includes(action.instruction));assert.equal((await readNote(f.db,'owner','wiki')).body,f.note.body);
+}));
