@@ -46,3 +46,17 @@ Hermes 독립 실행에 Orbit Google OAuth가 자동으로 전달되지 않는�
 - Google 401/403이나 갱신 실패 시 Orbit 연결 → Google Calendar에서 일정 권한으로 재인증한다.
 
 Google 공식 계약: [삭제](https://developers.google.com/workspace/calendar/api/v3/reference/events/delete), [조건부 변경](https://developers.google.com/workspace/calendar/api/guides/version-resources), [반복 회차 조회](https://developers.google.com/workspace/calendar/api/v3/reference/events/instances).
+
+
+## 연결 자료 분석 (Plaud / 개인 위키)
+
+실행 방식의 **연결 자료 분석**은 독립 Hermes 세션에 OAuth를 넘기는 방식이 아니다. Hermes가 `orbit.read` 요청을 반환하면 Orbit이 소유자의 연결로 실제 Plaud 읽기 또는 위키 읽기를 수행하고, 다음 독립 분석 단계에 결과를 전달한다. 모델 제공자 API로 전환하지 않는다.
+
+- `agent.dispatch`의 `mode:research` 또는 Plaud/개인 위키가 명시된 자동 선택 지시에서 사용한다. 개발은 `mode:native`로 지정한다.
+- Plaud 도구 스키마를 먼저 읽고 list_files/get_note/get_transcript의 실제 커서·페이지를 따른다. 긴 응답은 별도로 저장하고 18,000자씩 연속 조회한다. 응답 분할과 제공자의 다음 전사 페이지는 구별된다.
+- 위키 검색은 페이지당 24개이며, 비교할 본문은 wiki_read로 소유자 검증 후 읽는다. 위키 수정·일정 변경·외부 전송은 제공하지 않는다.
+- 단계별 중복 방지 키, 고정 요청, 원문 조회 영수증과 전달 범위를 보존한다. 원문은 비공개 R2, 조회 메타데이터는 D1에 저장한다. 사용자에게는 보고서와 출처·조회 기록을 제공한다.
+- 조회 수는 녹음 수가 아니다. 조회 영수증은 원문 전달 증거이며 의미 해석이나 제공자 페이지 전수를 자동 인증하지 않는다. 원문 오류·남은 분량·잘못된 출처는 부분 결과로 표시한다.
+- 녹음 시작일/시간대, 경계 포함·제외, 실제 대상 수, 짧은 녹음의 발화, 숫자 근거 및 내부 민감정보 구분을 지시문 그대로 분석에 유지한다. 각 회의 요약과 미결 페이지는 작업 메모로 다음 단계에 전달한다.
+- 앱이 열려 있고 화면이 활성화된 동안 조회·분석 단계가 진행된다. 닫으면 현재 Hermes 단계는 계속되지만 다음 연결 자료 조회는 대기하며 재접속 시 이어진다. 200 분석 단계 제한에 닿으면 완료로 표시하지 않는다.
+- 과거 ‘도구 없음’ 결과의 **동일 지시로 연결 자료 다시 분석**을 누르면 원래 지시를 보존한 새 분석을 준비한다. **지시하고 실행**으로 시작한다. 보고서는 Markdown으로 다운로드한다.

@@ -92,3 +92,11 @@ export const agentOrders=sqliteTable('orbit_agent_orders',{
  stopRequested:integer('stop_requested').notNull().default(0),
  createdAt:text('created_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_orders_recent').on(table.ownerId,table.createdAt,table.id)]);
+
+// Raw read responses stay in private R2; D1 tracks delivery and source receipts.
+export const orderReads=sqliteTable('orbit_order_reads',{
+ ownerId:text('owner_id').notNull(),orderId:text('order_id').notNull(),id:text('id').notNull(),
+ tool:text('tool').notNull(),argsJson:text('args_json').notNull(),objectKey:text('object_key').notNull(),
+ chars:integer('chars').notNull(),readUntil:integer('read_until').notNull().default(0),
+ error:text('error').notNull().default(''),createdAt:text('created_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.orderId,table.id]})]);
