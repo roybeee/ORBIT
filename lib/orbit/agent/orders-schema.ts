@@ -12,7 +12,7 @@ export const orderActionSchema=z.object({
 export type DispatchAction=z.infer<typeof orderActionSchema>;
 export const orderInput=z.discriminatedUnion('action',[
  z.object({action:z.literal('dispatch'),id:z.string().uuid(),order:orderActionSchema,conversationId:z.string().min(1).max(100).optional()}).strict(),
- z.object({action:z.enum(['poll','stop']),id:z.string().uuid()}).strict(),
+ z.object({action:z.enum(['poll','stop','resume']),id:z.string().uuid()}).strict(),
  z.object({action:z.literal('steer'),id:z.string().uuid(),input:z.string().trim().min(1).max(4000)}).strict(),
  z.object({action:z.literal('approval'),id:z.string().uuid(),requestId:z.string().min(1).max(200),choice:z.enum(['once','deny'])}).strict(),
 ]);
@@ -21,6 +21,7 @@ export interface WorkOrder {
  id:string;title:string;instruction:string;projectId:string|null;taskIds:string[];conversationId:string|null;
  eventIds?:string[];
  mode?:'native'|'research';
+ canResume?:boolean;
  coverage?:{reads:number;fullReads:number;errors:number;round:number;status:'collecting'|'partial'|'reported'};
  status:OrderStatus;runId:string|null;output:string;error:string;createdAt:string;updatedAt:string;
  approval:null|{id:string;description:string};
