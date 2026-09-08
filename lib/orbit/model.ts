@@ -1,6 +1,6 @@
 import type { DailyBrief } from './brief/schema';
 export type View =
-  'agent' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).

@@ -24,6 +24,7 @@ export function GoalProgress({goal,today,perform,disabled}:{goal:Goal;today:stri
 
 export function ChiefPanel({data,perform,busy,demo,onAsk,onGoals}:{data:WorkspaceData;perform:Perform;busy:boolean;demo:boolean;onAsk:(text:string)=>void;onGoals:()=>void}) {
   const [now,setNow]=useState(()=>new Date()),[settingsOpen,setSettingsOpen]=useState(false),[checkOpen,setCheckOpen]=useState(false),[blocked,setBlocked]=useState(false),[reason,setReason]=useState(''),[pending,setPending]=useState(false),[notice,setNotice]=useState(''),[syncError,setSyncError]=useState('');
+  useEffect(()=>{const open=()=>{setSettingsOpen(true);setCheckOpen(true)};window.addEventListener('orbit:coach-settings',open);return()=>window.removeEventListener('orbit:coach-settings',open)},[]);
   useEffect(()=>{const tick=()=>setNow(new Date()),timer=setInterval(tick,60000);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick)}},[]);
   useEffect(()=>{if(demo)return;let cancelled=false;const timer=setTimeout(()=>{void agentRequest('/api/agent/chief','POST',{action:'sync'}).then(()=>{if(!cancelled)setSyncError('')}).catch(()=>{if(!cancelled)setSyncError('앱 밖 예약에 최신 설정·기록을 전달하지 못했습니다. 비서실장 설정에서 예약 상태를 확인해 주세요.')})},1500);return()=>{cancelled=true;clearTimeout(timer)}},[data,demo]);
   const state=chiefOfStaff(data,now),signal=state.primary,disabled=busy||demo||pending,settings={...chiefDefaults,...data.chief?.settings};
