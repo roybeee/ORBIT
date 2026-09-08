@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import {PwaProvider} from "@/components/orbit/pwa-provider";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Orbit · 나의 운영실",
-  description: "오늘의 실행과 내일의 계획을 연결하는 개인 매니지먼트 앱",
+  title: "Orbit · 나의 페이스메이커",
+  description: "목표에 닿을 때까지 나를 살피고, 먼저 움직이는 AI 비서실장. 일과 건강, 마음과 배움까지.",
   appleWebApp: { capable: true, title: "Orbit", statusBarStyle: "default" },
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg", apple: "/icons/apple-touch-icon.png" },
 };

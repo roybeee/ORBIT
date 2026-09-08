@@ -36,6 +36,8 @@ export const agentInput = z
   })
   .strict();
 const allowed = new Set([
+  'memory.upsert',
+  'quest.plan',
   'chief.checkin',
   'care.upsert',
   'care.check',
@@ -75,6 +77,10 @@ export function parseAction(value: unknown) {
   return parsed.data;
 }
 export const contract = `Supported action JSON examples (use actual user values and IDs):
+{"type":"memory.upsert","memory":{"id":"new-id","statement":"user-confirmed preference or useful strategy","kind":"preference or constraint or strategy or reflection","origin":"user or records or saju","sources":[]}}
+For origin records include 1..6 sources {kind:note|task|review,id:actual-record-id,revision?:note-version}. Reference only server evidence you actually read. Origin saju must always be kind reflection. Never use old AI guesses as facts. User card approval is the confirmation; memory.upsert never silently changes personal settings.
+{"type":"quest.plan","goalId":"actual-goal-id","project":{"id":"new-project-id","name":"Goal execution","goal":"observable result","goalId":"actual-goal-id","due":"YYYY-MM-DD","color":"#5558e8","symbol":"O","priority":3},"tasks":[{"id":"quest-a","projectId":"new-project-id","title":"first concrete step","definition":"observable result","duration":20,"due":"YYYY-MM-DD","impact":3},{"id":"quest-b","projectId":"new-project-id","title":"next step","definition":"observable result","duration":30,"due":"YYYY-MM-DD","impact":3,"dependsOn":["quest-a"]}]}
+quest.plan accepts 1..12 new tasks, no existing ID overwrite, all projects must belong to the selected goal. Omit project when using an existing project. No scheduling, completion or focus fields. One approval saves the project and dependency chain; cycles/unknown predecessors reject the whole plan.
 {"type":"chief.checkin","energy":"low or normal or high","strain":"light or normal or heavy","note":"user-reported needs only"}
 {"type":"care.upsert","routine":{"id":"new-id","title":"a small personally chosen practice","domain":"health or mind or learning","minutes":10,"days":[1,2,3,4,5],"start":750,"active":true}}
 {"type":"care.check","id":"actual-routine-id","checked":true}

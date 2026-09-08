@@ -20,9 +20,10 @@ export function localMinute(now: Date, timeZone: string) {
 }
 export function careEvents(data: WorkspaceData, date: string): CalendarEvent[] {
   const day = new Date(date + 'T12:00:00Z').getUTCDay();
-  return (data.careRoutines ?? []).filter(r => r.active && r.days.includes(day) && (!r.goalId || !['paused', 'achieved'].includes(data.goals?.find(g => g.id === r.goalId)?.status ?? 'active'))).map(r => ({ id: `care:${r.id}:${date}`, title: r.title, date, start: r.start, end: Math.min(1440, r.start + r.minutes), kind: 'break' }));
+  return (data.careRoutines ?? []).filter(r => r.active && r.days.includes(day) && goalIsActive(data,r.goalId)).map(r => ({ id: `care:${r.id}:${date}`, title: r.title, date, start: r.start, end: Math.min(1440, r.start + r.minutes), kind: 'break' }));
 }
-export function goalAllowsWork(data:WorkspaceData,projectId:string) { const goalId=data.projects.find(p=>p.id===projectId)?.goalId; return !['paused','achieved'].includes(data.goals?.find(g=>g.id===goalId)?.status??'active'); }
+export function goalIsActive(data:WorkspaceData,goalId?:string) {const visited=new Set<string>();while(goalId){if(visited.has(goalId))return false;visited.add(goalId);const goal=data.goals?.find(g=>g.id===goalId);if(!goal)return true;if(['paused','achieved'].includes(goal.status??'active'))return false;goalId=goal.parentId;}return true;}
+export function goalAllowsWork(data:WorkspaceData,projectId:string) {return goalIsActive(data,data.projects.find(p=>p.id===projectId)?.goalId);}
 export interface ChiefSignal {
   key: string; kind: 'focus' | 'recovery' | 'rest' | 'task' | 'care' | 'followup' | 'goal' | 'checkin' | 'clear';
   title: string; reason: string; next: string; minutes?: number; taskId?: string; routineId?: string; goalId?: string;
@@ -43,7 +44,7 @@ export function chiefOfStaff(data: WorkspaceData, now = new Date()) {
   const responses = data.chief?.responses ?? [];
   const visible = (key: string) => !responses.some(r => r.key === key && Date.parse(r.until) > now.getTime());
   const projectGoal = (id: string) => goals.find(g => g.id === data.projects.find(p => p.id === id)?.goalId);
-  const goalActive = (id: string) => !['paused','achieved'].includes(projectGoal(id)?.status ?? 'active');
+  const goalActive = (id:string) => goalAllowsWork(data,id);
   const ready = data.tasks.filter(t => t.status !== 'done' && t.status !== 'waiting' && !t.blocker?.trim() && (!t.planHoldUntil || t.planHoldUntil <= today) && (t.dependsOn ?? []).every(id => data.tasks.find(d => d.id === id)?.status === 'done') && goalActive(t.projectId));
   const ranked = ready.sort((a,b) => {
     const score = (t: typeof a) => (projectGoal(t.projectId) ? 25 : 0) + (projectGoal(t.projectId)?.pace.status === 'behind' ? 25 : 0) + (t.due <= today ? 20 : 0) + (t.must ? 10 : 0) + t.impact * 3 + (t.focusDate === today ? 10 : 0);

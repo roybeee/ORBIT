@@ -11,7 +11,7 @@ export async function publishBrief(db:Database,owner:string,id:string,lease:stri
  if(current.revision!==brief.sourceRevision)throw new AgentError('분석 중 업무나 일정이 바뀌었습니다. 최신 기록으로 다시 분석해 주세요.','CONFLICT',409);
  const next=applyAction(current.data,{type:'proposal.brief',brief,energy:planning.energy});next.events=next.events.filter(e=>!e.id.startsWith('google:'));
  const now=new Date().toISOString(),revision=current.revision+1;
- const response=JSON.stringify({text:'원페이지 실행 제안을 만들었습니다. 내일 제안에서 근거와 우선순위를 검토하고 승인해 주세요.',sources:brief.evidence.slice(0,20).map(e=>({title:e.title,label:e.kind==='note'?'문서 v'+e.revision:e.kind==='plaud'?'Plaud':'분석 근거'}))});
+ const response=JSON.stringify({text:'원페이지 실행 제안을 만들었습니다. 내일 제안에서 근거와 우선순위를 검토하고 승인해 주세요.',sources:brief.evidence.slice(0,20).map(e=>({...e,scope:'excerpt',retrievedAt:now,label:e.kind==='note'?'문서 v'+e.revision:e.kind==='plaud'?'Plaud':'분석 근거'}))});
  try{
   const result=await db.batch([
    db.prepare(`INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at)

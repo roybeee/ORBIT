@@ -1,0 +1,13 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {ArrowUpRight,LoaderCircle} from 'lucide-react';
+import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
+import type {AgentSource} from '@/lib/orbit/agent/evidence';
+export type RecordTarget={kind:'task'|'project'|'note'|'event';id:string};
+export function EvidenceSheet({source,onClose,onOpen,onConversation}:{source:AgentSource;onClose:()=>void;onOpen:(target:RecordTarget)=>void;onConversation:(id:string)=>void}){
+ const [body,setBody]=useState<string|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+ useEffect(()=>{setBody(null);setError('');setLoading(false)},[source.id]);
+ async function read(){setLoading(true);setError('');try{const r=await fetch('/api/notes?id='+encodeURIComponent(source.recordId!)+'&revision='+source.revision,{cache:'no-store'}),value=await r.json();if(!r.ok)throw new Error(value.error??'근거 원문을 읽지 못했습니다.');setBody(value.body)}catch(e){setError(e instanceof Error?e.message:'원문을 읽지 못했습니다.')}finally{setLoading(false)}}
+ const current=source.recordId&&['task','project','event','note'].includes(source.kind??'')&&!source.recordId.startsWith('google-read:');
+ return <Dialog open onOpenChange={open=>{if(!open)onClose()}}><DialogContent className="evidence-dialog"><DialogHeader><DialogTitle>{source.title}</DialogTitle><DialogDescription>{source.label}{source.date?' · '+source.date.slice(0,10):''}</DialogDescription></DialogHeader><div className="evidence-meta"><span>{source.scope==='metadata'?'요약·목록을 확인한 근거':source.scope==='full'?'원문을 조회한 근거 · 아래는 발췌':'조회 결과의 발췌'}</span>{source.retrievedAt&&<time>조회 {new Date(source.retrievedAt).toLocaleString('ko-KR')}</time>}</div><blockquote className="evidence-excerpt">{source.excerpt||'이전 답변에는 발췌가 저장되어 있지 않습니다.'}</blockquote>{source.kind==='note'&&source.revision&&source.recordId&&<button className="secondary-button" disabled={loading} onClick={()=>void read()}>{loading?<LoaderCircle size={15} className="animate-spin"/>:null}당시 원문 v{source.revision} 읽기</button>}{error&&<p role="alert" className="agent-error">{error}</p>}{body!==null&&<pre className="evidence-original">{body}</pre>}<div className="evidence-actions">{current&&<button className="text-button" onClick={()=>{onOpen({kind:source.kind as RecordTarget['kind'],id:source.recordId!});onClose()}}>현재 기록 열기 <ArrowUpRight size={14}/></button>}{source.kind==='conversation'&&source.recordId&&<button className="text-button" onClick={()=>{onConversation(source.recordId!);onClose()}}>원래 대화 열기 <ArrowUpRight size={14}/></button>}</div></DialogContent></Dialog>;
+}
