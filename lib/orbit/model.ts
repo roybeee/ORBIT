@@ -59,6 +59,19 @@ export interface Goal {
   metric?: string;
   deadline?: string;
   parentId?: string;
+  domain?: 'work' | 'health' | 'mind' | 'learning' | 'life';
+  status?: 'active' | 'paused' | 'achieved';
+  progress?: { baseline: number; current: number; target: number; unit: string; startedOn: string; updatedOn: string };
+}
+export interface CareRoutine {
+  id: string; title: string; domain: 'health' | 'mind' | 'learning';
+  minutes: number; days: number[]; start: number; goalId?: string;
+  active: boolean; log: string[];
+}
+export interface ChiefState {
+  settings?: { tone: 'gentle' | 'balanced' | 'firm'; quietStart: number; quietEnd: number; pausedUntil?: string };
+  checkins?: { date: string; energy: 'low' | 'normal' | 'high'; strain: 'light' | 'normal' | 'heavy'; note: string; updatedAt: string }[];
+  responses?: { key: string; kind: 'snooze' | 'blocked' | 'recovered'; until: string; reason: string; at: string }[];
 }
 export interface Improvement {
   id: string;
@@ -210,6 +223,8 @@ export interface DailyReview {
   hasDetail?: boolean;
 }
 export interface WorkspaceData {
+  chief?: ChiefState;
+  careRoutines?: CareRoutine[];
   schemaVersion: 2 | 3;
   projects: Project[];
   tasks: Task[];

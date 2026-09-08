@@ -36,6 +36,9 @@ export const agentInput = z
   })
   .strict();
 const allowed = new Set([
+  'chief.checkin',
+  'care.upsert',
+  'care.check',
   'project.upsert',
   'task.upsert',
   'task.status',
@@ -72,6 +75,10 @@ export function parseAction(value: unknown) {
   return parsed.data;
 }
 export const contract = `Supported action JSON examples (use actual user values and IDs):
+{"type":"chief.checkin","energy":"low or normal or high","strain":"light or normal or heavy","note":"user-reported needs only"}
+{"type":"care.upsert","routine":{"id":"new-id","title":"a small personally chosen practice","domain":"health or mind or learning","minutes":10,"days":[1,2,3,4,5],"start":750,"active":true}}
+{"type":"care.check","id":"actual-routine-id","checked":true}
+Goal optional fields: domain work/health/mind/learning/life; status active/paused/achieved; progress {baseline:number,current:number,target:number,unit:string,startedOn:YYYY-MM-DD,updatedOn:YYYY-MM-DD}. Set only reported values. target must differ from baseline. achieved requires the user confirming an actual result. care.upsert preserves completion history; its time is reserved in internal proposal planning. No external calendar write occurs.
 {"type":"project.upsert","project":{"id":"new-id","name":"name","color":"#5558e8","symbol":"O","goal":"result","due":"YYYY-MM-DD","priority":3}}
 {"type":"task.upsert","task":{"id":"new-id","title":"title","projectId":"actual-project-id","status":"todo","duration":45,"due":"YYYY-MM-DD","impact":3,"focus":false,"definition":"observable done criteria"}}
 {"type":"task.status","id":"actual-task-id","status":"done"}

@@ -11,6 +11,11 @@ const {default:worker}=await import('../dist/server/index.js');
 after(()=>db.close());
 const identity=(id='owner-a')=>({'oai-authenticated-user-id':id,'oai-authenticated-user-email':id+'@example.test','oai-authenticated-user-full-name':'Test%20Owner','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
 const request=(path,init={})=>worker.fetch(new Request('https://orbit.test'+path,init),{DB:db,ASSETS:{fetch:async()=>new Response('Not found',{status:404})}},{waitUntil(){},passThroughOnException(){}});
+test('chief schedule routes require the signed-in owner and same-origin mutations',async()=>{
+ assert.equal((await request('/api/agent/chief')).status,401);
+ const cross=await request('/api/agent/chief',{method:'POST',headers:{...identity(),'content-type':'application/json',origin:'https://other.test'},body:JSON.stringify({action:'sync'})});assert.equal(cross.status,403);
+ const sync=await request('/api/agent/chief',{method:'POST',headers:{...identity(),'content-type':'application/json'},body:JSON.stringify({action:'sync'})});assert.equal(sync.status,200);assert.equal((await sync.json()).inactive,true);
+});
 test('the deployed app shell cannot be HTTP-cached and exposes an authenticated live build identifier',async()=>{
  const response=await request('/',{headers:identity()});assert.match(response.headers.get('cache-control'),/no-store/);
  assert.equal((await request('/api/version')).status,401);

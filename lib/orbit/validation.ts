@@ -75,6 +75,9 @@ export const goalSchema = z
     metric: z.string().max(120).optional(),
     deadline: dateSchema.optional(),
     parentId: id.optional(),
+    domain: z.enum(['work', 'health', 'mind', 'learning', 'life']).optional(),
+    status: z.enum(['active', 'paused', 'achieved']).optional(),
+    progress: z.object({ baseline: z.number().finite(), current: z.number().finite(), target: z.number().finite(), unit: z.string().trim().min(1).max(30), startedOn: dateSchema, updatedOn: dateSchema }).strict().refine(p => p.target !== p.baseline && p.updatedOn >= p.startedOn, '진척의 기준값·목표값과 날짜를 확인해 주세요.').optional(),
   })
   .strict();
 export const improvementSchema = z
@@ -207,6 +210,12 @@ export const reviewDetailSchema = z
   })
   .strict();
 export const actionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('chief.settings'), settings: z.object({ tone: z.enum(['gentle', 'balanced', 'firm']), quietStart: minute, quietEnd: minute, pausedUntil: z.string().datetime().optional() }).strict() }).strict(),
+  z.object({ type: z.literal('chief.checkin'), energy: z.enum(['low', 'normal', 'high']), strain: z.enum(['light', 'normal', 'heavy']), note: z.string().trim().max(500) }).strict(),
+  z.object({ type: z.literal('chief.respond'), key: z.string().min(1).max(220), kind: z.enum(['snooze', 'blocked', 'recovered']), minutes: z.number().int().min(5).max(10080), reason: z.string().trim().max(500) }).strict(),
+  z.object({ type: z.literal('care.upsert'), routine: z.object({ id, title, domain: z.enum(['health', 'mind', 'learning']), minutes: z.number().int().min(2).max(120), days: z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(a => new Set(a).size === a.length), start: minute, goalId: id.optional(), active: z.boolean() }).strict() }).strict(),
+  z.object({ type: z.literal('care.delete'), id }).strict(),
+  z.object({ type: z.literal('care.check'), id, checked: z.boolean() }).strict(),
   z.object({type:z.literal('wiki.import'),project:projectSchema,notes:z.array(noteSchema).min(1).max(100).refine(list=>new Set(list.map(n=>n.id)).size===list.length)}).strict(),
   z.object({ type: z.literal('project.upsert'), project: projectSchema }).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),

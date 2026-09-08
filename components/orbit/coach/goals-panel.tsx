@@ -1,4 +1,6 @@
 'use client';
+import { GoalProgress } from './chief-panel';
+import { domainLabels } from '@/lib/orbit/chief';
 import { useState } from 'react';
 import { Crosshair, Plus, Trash2, Flame, ShieldAlert, Star, Target } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -34,6 +36,7 @@ export function GoalsPanel({
     habits = data.habits ?? [],
     risks = data.risks ?? [],
     rules = (data.improvements ?? []).filter((i) => i.active);
+  const [domain,setDomain]=useState<NonNullable<Goal['domain']>>('work');
   const [kind, setKind] = useState<Goal['kind']>('short'),
     [sentence, setSentence] = useState(''),
     [metric, setMetric] = useState(''),
@@ -105,8 +108,10 @@ export function GoalsPanel({
                 .map((g) => (
                   <div key={g.id} className="goal-row">
                     <span className="status status-blue">{goalKindLabel[g.kind]}</span>
-                    <span className="goal-sentence">
+                    <div className="goal-sentence">
                       <strong>{g.sentence}</strong>
+                      <small>{domainLabels[g.domain??'work']} · {g.status==='achieved'?'달성':g.status==='paused'?'보류':'진행 중'}{g.progress&&` · ${g.progress.current} / ${g.progress.target} ${g.progress.unit}`}</small>
+                      <GoalProgress goal={g} today={today} perform={perform} disabled={disabled}/>
                       <small>
                         {g.metric && `${g.metric} · `}
                         {g.deadline ?? '기한 미정'}
@@ -115,7 +120,7 @@ export function GoalsPanel({
                         {' · 프로젝트 '}
                         {data.projects.filter((p) => p.goalId === g.id).length}개
                       </small>
-                    </span>
+                    </div>
                     <button
                       className="icon-button"
                       aria-label="목표 삭제"
@@ -138,6 +143,7 @@ export function GoalsPanel({
                     goal: {
                       id: crypto.randomUUID(),
                       kind,
+                      domain,
                       sentence: sentence.trim(),
                       ...(metric.trim() ? { metric: metric.trim() } : {}),
                       ...(deadline ? { deadline } : {}),
@@ -153,6 +159,7 @@ export function GoalsPanel({
                 }
               }}
             >
+              <label>목표 분야<select className="form-field" value={domain} onChange={e=>setDomain(e.target.value as NonNullable<Goal['domain']>)}>{Object.entries(domainLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
               <div className="field-grid">
                 <div>
                   <label className="form-label">종류</label>

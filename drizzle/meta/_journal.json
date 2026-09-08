@@ -85,6 +85,13 @@
       "when": 1788796738532,
       "tag": "0011_aromatic_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788826947338,
+      "tag": "0012_equal_grandmaster",
+      "breakpoints": true
     }
   ]
 }
