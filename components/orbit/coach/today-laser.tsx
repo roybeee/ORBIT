@@ -31,7 +31,7 @@ export function TodayLaser({
   const candidate = domino
     ? data.tasks
         .filter(
-          (t) => t.projectId === domino.id && t.status !== 'done' && t.status !== 'waiting' && !t.laserDate,
+          (t) => t.projectId === domino.id && t.status !== 'done' && t.status !== 'waiting' && !t.blocker?.trim() && (!t.planHoldUntil || t.planHoldUntil <= today) && (t.dependsOn??[]).every(id=>data.tasks.find(d=>d.id===id)?.status==='done') && !t.laserDate,
         )
         .sort(
           (a, b) =>

@@ -40,14 +40,17 @@ export function guessCognition(title: string): Cognition {
 export function coachTask(draft: TaskDraft, ctx: CoachContext): CoachCheck[] {
   const checks: CoachCheck[] = [];
   const definition = draft.definition ?? '';
+  const goal=ctx.goals.find(g=>g.id===ctx.projects.find(p=>p.id===draft.projectId)?.goalId);
+  const personal=goal?.domain && goal.domain!=='work';
   if (!definition.trim())
     checks.push({
       id: 'definition',
       level: 'warn',
       title: '완료 조건이 비어 있습니다',
       detail:
-        '무엇이 상대방 손에 넘어가면 끝난 것인지 한 줄로 적어 주세요. 예: 제안서 PDF를 김 대표에게 발송',
+        personal ? '스스로 확인할 수 있는 완료 조건을 적어 주세요. 예: 10분 걷고 실천 기록 남기기' : '무엇이 상대방 손에 넘어가면 끝난 것인지 한 줄로 적어 주세요. 예: 제안서 PDF를 김 대표에게 발송',
     });
+  else if (personal) checks.push({id:'definition',level:'ok',title:'개인 목표의 완료 조건이 있습니다',detail:'실제 실천이나 결과물을 직접 확인한 뒤 완료로 기록하세요.'});
   else if (handoffLike(definition))
     checks.push({
       id: 'definition',

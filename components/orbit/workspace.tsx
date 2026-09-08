@@ -1098,6 +1098,9 @@ function WorkspaceContent({
           {loaded && (
             <div hidden={view !== 'agent'}>
               <AgentWorkspace
+                perform={perform}
+                busy={busy || hasPending}
+                onGoals={() => setBrainyOpen(true)}
                 demo={demo}
                 displayName={displayName}
                 snapshot={snapshot}
@@ -1323,7 +1326,7 @@ function WorkspaceContent({
                 </section>
                 <div className="tiny-foot">
                   <span>내 속도에 맞춘 하루</span>
-                  <span>Orbit v0.6 · BRAINY</span>
+                  <span>Orbit v0.7 · Chief of Staff</span>
                 </div>
               </aside>
             </div>

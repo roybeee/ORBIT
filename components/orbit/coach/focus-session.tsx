@@ -167,7 +167,7 @@ export function RecordDialog({
               <span>
                 완료 조건을 충족했습니다 — <em>{task.definition}</em>
                 {!handoffLike(task.definition) && (
-                  <small>결과물이 상대방 손에 넘어갔는지도 확인해 주세요.</small>
+                  <small>업무는 필요한 전달까지, 개인 목표는 실제 실천·결과까지 확인해 주세요.</small>
                 )}
               </span>
             </label>

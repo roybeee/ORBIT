@@ -1,3 +1,4 @@
+import {careEvents,goalAllowsWork} from './chief.ts';
 import { wikiMatches, wikiLinks } from './wiki/relations.ts';
 import { automaticProject, normalize } from './classify.ts';
 import { planFromBrief } from './brief/planning.ts';
@@ -22,6 +23,8 @@ export function validateLinks(data: WorkspaceData) {
   const taskIds = new Set(data.tasks.map((t) => t.id));
   const noteIds = new Set(data.notes.map((n) => n.id));
   const goalIds = new Set((data.goals ?? []).map((g) => g.id));
+  if ((data.careRoutines ?? []).length > 12) fail('돌봄·학습 루틴은 12개까지 등록할 수 있습니다.');
+  for (const r of data.careRoutines ?? []) if (r.goalId && !goalIds.has(r.goalId)) fail('루틴의 목표를 확인해 주세요.');
   for (const t of data.tasks) {
     if (!projectIds.has(t.projectId)) fail('연결할 프로젝트가 없습니다.');
     if (t.noteId && !noteIds.has(t.noteId)) fail('연결할 기록이 없습니다.');
@@ -112,6 +115,41 @@ export function applyAction(
       fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.');
   };
   switch (action.type) {
+    case 'chief.settings':
+      data.chief = { ...data.chief, settings: action.settings };
+      break;
+    case 'chief.checkin': {
+      const checkins = (data.chief?.checkins ?? []).filter(c => c.date !== today);
+      checkins.push({ date: today, energy: action.energy, strain: action.strain, note: action.note, updatedAt: now.toISOString() });
+      data.chief = { ...data.chief, checkins: checkins.sort((a,b) => a.date.localeCompare(b.date)).slice(-90) };
+      break;
+    }
+    case 'chief.respond': {
+      if(action.kind==='blocked' && /^(task|followup):/.test(action.key)) {
+        const id=action.key.replace(/^(task|followup):/,'');
+        const blocked=task(id);
+        if(blocked.status==='done') fail('이미 완료된 할 일입니다.');
+        if(!action.reason.trim()) fail('막힌 이유를 알려주세요.');
+        finishSession(blocked); blocked.status='waiting'; blocked.blocker=action.reason; blocked.checkDate=today;
+      }
+      const responses = (data.chief?.responses ?? []).filter(r => r.key !== action.key && Date.parse(r.until) > now.getTime());
+      responses.push({ key: action.key, kind: action.kind, reason: action.reason, at: now.toISOString(), until: new Date(now.getTime() + action.minutes * 60000).toISOString() });
+      data.chief = { ...data.chief, responses: responses.slice(-100) };
+      break;
+    }
+    case 'care.upsert':
+      data.careRoutines = replace(data.careRoutines ?? [], { ...action.routine, log: data.careRoutines?.find(r => r.id === action.routine.id)?.log ?? [] });
+      break;
+    case 'care.delete':
+      data.careRoutines = data.careRoutines?.filter(r => r.id !== action.id);
+      break;
+    case 'care.check': {
+      const routine = data.careRoutines?.find(r => r.id === action.id) ?? fail('루틴을 찾을 수 없습니다.');
+      routine.log = routine.log.filter(d => d !== today);
+      if (action.checked) routine.log.push(today);
+      routine.log = routine.log.sort().slice(-400);
+      break;
+    }
     case 'project.upsert':
       data.projects = replace(data.projects, action.project);
       break;
@@ -136,11 +174,12 @@ export function applyAction(
       }
       break;
     case 'goal.upsert':
-      data.goals = replace(data.goals ?? [], action.goal);
+      data.goals = replace(data.goals ?? [], { ...data.goals?.find(g => g.id === action.goal.id), ...action.goal });
       break;
     case 'goal.delete':
       if (
         data.projects.some((p) => p.goalId === action.id) ||
+        data.careRoutines?.some(r => r.goalId === action.id) ||
         (data.goals ?? []).some((g) => g.parentId === action.id)
       )
         fail('이 목표에 연결된 프로젝트나 하위 목표를 먼저 정리해 주세요.');
@@ -192,6 +231,7 @@ export function applyAction(
       t.completedOn = action.status === 'done' ? today : undefined;
       if (action.status === 'done') finishSession(t);
       if (action.status !== 'done') delete t.outcome;
+      if (action.status === 'doing' || action.status === 'todo') { delete t.blocker; delete t.checkDate; }
       break;
     }
     case 'task.focus': {
@@ -445,8 +485,8 @@ export function applyAction(
       const date = addDays(action.review.date, 1);
       saveProposal(
         generateProposal(
-          data.tasks,
-          data.events,
+          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)),
+          [...data.events,...careEvents(data,date)],
           date,
           action.review.energy,
           data.proposals.find((p) => p.date === date),
@@ -462,8 +502,8 @@ export function applyAction(
     case 'proposal.generate':
       saveProposal(
         generateProposal(
-          data.tasks,
-          data.events,
+          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)),
+          [...data.events,...careEvents(data,action.date)],
           action.date,
           action.energy,
           data.proposals.find((p) => p.date === action.date),
@@ -476,6 +516,8 @@ export function applyAction(
       const p = proposal(action.date);
       if (p.date < today) fail('지난 날짜의 제안은 승인할 수 없습니다.');
       const item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목을 찾을 수 없습니다.');
+      const target = data.tasks.find(t=>t.id===item.taskId) ?? item.draftTask;
+      if(item.state!=='approved' && target && !goalAllowsWork(data,target.projectId)) fail('보류하거나 달성한 목표의 작업입니다. 목표 상태를 먼저 확인해 주세요.');
       if (item.draftTask && !data.tasks.some((t) => t.id === item.taskId)) {
         data.tasks.push({ ...item.draftTask });
       }
@@ -484,6 +526,7 @@ export function applyAction(
       ).length;
       if (item.state !== 'approved' && count >= data.preferences.focusLimit)
         fail('이미 지정한 핵심 결과물이 있습니다. 먼저 계획을 조정해 주세요.');
+      if (item.state !== 'approved' && careEvents(data,p.date).some(e => overlaps(e,item))) fail('등록한 돌봄·학습 시간과 겹칩니다. 제안을 다시 만들거나 루틴 시간을 조정해 주세요.');
       const out = approveProposalItem(p, action.itemId, data.tasks, data.events);
       if (out.error) fail(out.error);
       saveProposal(out.proposal);

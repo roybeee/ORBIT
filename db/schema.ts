@@ -77,3 +77,9 @@ export const attachments=sqliteTable('orbit_attachments',{
 export const reviews=sqliteTable('orbit_reviews',{
  ownerId:text('owner_id').notNull(),date:text('date').notNull(),reviewJson:text('review_json').notNull(),updatedAt:text('updated_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.date]})]);
+// Owner-scoped lease and receipt for external Hermes schedules (not the chat run queue).
+export const chiefJobs=sqliteTable('orbit_chief_jobs',{
+ ownerId:text('owner_id').primaryKey(),
+ leaseUntil:integer('lease_until').notNull().default(0),
+ configJson:text('config_json').notNull().default('{}'),
+});
