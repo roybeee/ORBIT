@@ -13,6 +13,7 @@ export async function fetchJson(url:string,init:RequestInit={},timeout=20000):Pr
   const response=await fetch(url,{...init,cache:'no-store',signal:controller.signal,redirect:'manual'});
   if(response.status>=300&&response.status<400)throw new AgentError('연결 서비스가 다른 주소로 이동했습니다. 연결 주소를 확인해 주세요.','UPSTREAM_REDIRECT',502);
   const text=await response.text();if(text.length>2000000)throw new AgentError('연결 응답이 너무 큽니다. 범위를 줄여 주세요.','UPSTREAM',502);
+  if(response.status===204&&!text)return {response,data:{}};
   let data;try{data=JSON.parse(text)}catch{throw new AgentError('연결 서비스가 올바르게 응답하지 않았습니다.','UPSTREAM',502)}if(!data||typeof data!=='object')throw new AgentError('연결 서비스의 응답 형식을 확인할 수 없습니다.','UPSTREAM',502);return{response,data};
  }catch(error){if(error instanceof AgentError)throw error;console.error('Orbit upstream request failed',{host:new URL(url).hostname,kind:error instanceof Error?error.name:'unknown'});throw new AgentError(controller.signal.aborted?'연결 시간이 초과됐습니다. 잠시 후 다시 연결해 주세요.':'연결 서비스에 도달하지 못했습니다. 잠시 후 다시 시도해 주세요.','UPSTREAM_NETWORK',502)}finally{clearTimeout(timer)}
 }
