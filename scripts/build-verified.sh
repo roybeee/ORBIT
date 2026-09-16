@@ -19,6 +19,7 @@ if [[ ! -x "${vinext}" ]]; then
 fi
 
 node scripts/port-sound.mjs
+node scripts/package-aside.mjs
 
 echo "Running bounded vinext build..."
 timeout \
@@ -29,4 +30,4 @@ timeout \
 
 
 # Validate the resumable connector protocol before any build can be published.
-node --experimental-strip-types --test tests/order-research.test.mjs tests/orders.test.mjs tests/agent.test.mjs tests/calendar-delete.test.mjs tests/sound.test.mjs
+node --experimental-strip-types --test tests/order-research.test.mjs tests/orders.test.mjs tests/agent.test.mjs tests/calendar-delete.test.mjs tests/sound.test.mjs tests/aside.test.mjs tests/aside-bridge.test.mjs

@@ -106,3 +106,9 @@ export const soundState=sqliteTable('orbit_sound_state',{
  ownerId:text('owner_id').primaryKey(),revision:integer('revision').notNull(),
  stateJson:text('state_json').notNull(),updatedAt:text('updated_at').notNull(),
 });
+
+// A claimed job stays bound to its original PC/run; disconnects never requeue it.
+export const asideJobs=sqliteTable('orbit_aside_jobs',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),status:text('status').notNull(),
+ jobJson:text('job_json').notNull(),version:integer('version').notNull().default(0),createdAt:text('created_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_aside_recent').on(table.ownerId,table.createdAt),uniqueIndex('idx_orbit_aside_active').on(table.ownerId).where(sql`${table.status} IN ('running','stop_requested','needs_attention')`)]);

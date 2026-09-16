@@ -75,6 +75,7 @@ import {WorkspaceDashboard} from './dashboard';
 import {GoalDashboard} from './coach/goal-dashboard';
 import {Understanding} from './coach/understanding';
 import { AgentWorkspace } from '@/components/orbit/agent/chat';
+import { AsidePanel } from '@/components/orbit/aside/panel';
 import { agentRequest } from '@/components/orbit/agent/connections';
 import { useWorkspace } from '@/lib/orbit/use-workspace';
 import { TaskCoach } from '@/components/orbit/coach/task-coach';
@@ -122,6 +123,7 @@ import {
 const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
   { id: 'agent', label: 'AI 에이전트', icon: MessagesSquare },
+  { id: 'aside', label: 'ASIDE 실행', icon: Network },
   { id: 'goals', label: '나의 목표', icon: Target },
   { id: 'today', label: '오늘', icon: Sun },
   { id: 'calendar', label: '일정', icon: CalendarDays },
@@ -135,6 +137,7 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  aside: {title:'ASIDE 실행',subtitle:'로그인된 웹 업무를 맡기고, 결과를 프로젝트에 연결합니다.',eyebrow:'BROWSER WORKSPACE'},
   sound: {title: '사운드스테이션', subtitle: '몰입할 때, 쉬어갈 때. 나의 페이스를 위한 소리.', eyebrow: 'ORBIT SOUND'},
   dashboard: {title:'Dashboard',subtitle:'목표의 현재 위치와 오늘의 다음 행동을 한눈에.',eyebrow:'MY WORKSPACE'},
   goals: {title:'나의 목표',subtitle:'원하는 삶에서 오늘의 한 걸음까지. 목표와 퀘스트를 연결합니다.',eyebrow:'MY ORBIT'},
@@ -1124,6 +1127,7 @@ function WorkspaceContent({
               />
             </div>
           )}
+          {loaded && <AsidePanel visible={view==='aside'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           <SoundStation visible={view === 'sound'} demo={demo} onOpen={() => {setDetail(null);navigate('sound')}} />
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
