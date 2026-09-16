@@ -49,7 +49,7 @@ export async function startOAuth(db:Database,owner:string,provider:'plaud'|'goog
  if(provider==='plaud'&&!config?.clientId){
   const {response,data}=await fetchJson(PLAUD.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_name:'Orbit · Personal Manager',redirect_uris:[redirectUri],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'})});
   if(!response.ok||typeof data.client_id!=='string')throw new AgentError('Plaud 연결을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.','CONNECT',502);
-  config={clientId:data.client_id,...(data.client_secret?{clientSecret:data.client_secret}:{})};await saveConnection(db,owner,provider,config,{...publicState,connected:false},keyOf(env));
+  config={clientId:data.client_id,...(data.client_secret?{clientSecret:data.client_secret}:{})};await saveConnection(db,owner,provider,config,{connected:false},keyOf(env));
  }
  const state=crypto.randomUUID()+crypto.randomUUID(),verifier=crypto.randomUUID()+crypto.randomUUID();const challenge=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
  const encrypted=await encrypt({verifier,redirectUri,config},keyOf(env),`${owner}:oauth:${state}`);
