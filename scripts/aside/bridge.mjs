@@ -71,7 +71,7 @@ export async function createBridge({directory,cli,account,port=43127,origin=ORIG
       if(path==='/runs'){
         if(!ready)throw fail(diagnostic,503);
         if(input.account!==account)throw fail('ASIDE 계정이 다릅니다. 기존 실행 계정으로 연결해 주세요.',409);
-        if(typeof input.prompt!=='string'||input.prompt.length<10||input.prompt.length>20000)throw fail('업무 내용이 올바르지 않습니다.');
+        if(typeof input.prompt!=='string'||input.prompt.length<10||input.prompt.length>28000)throw fail('업무 내용이 올바르지 않습니다.');
         const fingerprint=createHash('sha256').update(JSON.stringify({protocol:1,account,cli,prompt:input.prompt})).digest('hex');
         const old=jobs.get(input.runId);
         if(old){if(old.fingerprint&&old.fingerprint!==fingerprint)throw fail('같은 실행 ID의 내용이 다릅니다.',409);return send(publicRun(old));}

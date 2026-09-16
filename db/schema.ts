@@ -112,3 +112,7 @@ export const asideJobs=sqliteTable('orbit_aside_jobs',{
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),status:text('status').notNull(),
  jobJson:text('job_json').notNull(),version:integer('version').notNull().default(0),createdAt:text('created_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_aside_recent').on(table.ownerId,table.createdAt),uniqueIndex('idx_orbit_aside_active').on(table.ownerId).where(sql`${table.status} IN ('running','stop_requested','needs_attention')`)]);
+
+export const automationConnections=sqliteTable('orbit_automation_connections',{
+ ownerId:text('owner_id').primaryKey(),secretJson:text('secret_json').notNull(),updatedAt:text('updated_at').notNull(),
+});

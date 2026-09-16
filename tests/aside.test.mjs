@@ -3,7 +3,22 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createDatabase} from './sqlite-d1.mjs';
 import {asideInput,changeAsideJob,listAsideJobs} from '../lib/orbit/aside/jobs.ts';
+import {asidePrompt} from '../lib/orbit/aside/types.ts';
 const enqueue=(id=randomUUID())=>({action:'enqueue',id,title:'Read reports',instruction:'Read the public reports and list source URLs.',workflow:'research',projectId:''});
+test('external actions cannot dispatch before exact one-time owner approval',async()=>{
+ const db=createDatabase();try{
+  const input={...enqueue(),operation:{kind:'payment',destination:'https://example.com/order',target:'Order #123',content:'Pay for this exact order only',amountKrw:11000}};
+  const job=await changeAsideJob(db,'a',asideInput.parse(input));assert.equal(job.status,'awaiting_approval');assert.match(asidePrompt(job),/실행하지 말고 제안/);
+  await assert.rejects(changeAsideJob(db,'a',{action:'claim',id:job.id,bridgeId:randomUUID(),account:'account'}),{status:409});
+  await assert.rejects(changeAsideJob(db,'b',{action:'approve',id:job.id,digest:job.approvalDigest}),{status:404});
+  await assert.rejects(changeAsideJob(db,'a',{action:'approve',id:job.id,digest:'0'.repeat(64)}),{status:409});
+  await assert.rejects(changeAsideJob(db,'a',{...input,operation:{...input.operation,amountKrw:22000}}),{status:409});
+  const approved=await changeAsideJob(db,'a',{action:'approve',id:job.id,digest:job.approvalDigest});assert.equal(approved.status,'queued');assert.match(asidePrompt(approved),/11000/);assert.match(asidePrompt(approved),/다른 수신자/);
+  assert.equal((await changeAsideJob(db,'a',{action:'approve',id:job.id,digest:job.approvalDigest})).approvedAt,approved.approvedAt);
+  const claimed=await changeAsideJob(db,'a',{action:'claim',id:job.id,bridgeId:randomUUID(),account:'account'});assert.equal(claimed.status,'running');
+  assert.equal(asideInput.safeParse({...input,operation:{...input.operation,amountKrw:undefined}}).success,false);
+ }finally{db.close()}
+});
 test('ASIDE ownership, immutable inputs, project ownership, capacity and idempotency',async()=>{
  const db=createDatabase();try{
   const input=enqueue(),first=await changeAsideJob(db,'a',input);

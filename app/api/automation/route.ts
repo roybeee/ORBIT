@@ -1,0 +1,7 @@
+import {env} from 'cloudflare:workers';
+import {getDatabase} from '@/db/storage';
+import {owner,body,json,failure,AgentError} from '@/lib/orbit/agent/http';
+import {automationInput,automationState,automationDetail,changeAutomation} from '@/lib/orbit/automation/connection';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){try{const user=await owner(),params=new URL(request.url).searchParams,storeId=params.get('storeId'),month=params.get('month'),runId=params.get('runId'),routineId=params.get('routineId');if(runId||routineId){const detailId=runId||routineId!;if((runId&&routineId)||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(detailId))throw new AgentError('실행·예약 식별자를 확인해 주세요.');return json(await automationDetail(getDatabase(),user.id,env,runId?'runs':'routines',detailId))}if((storeId||month)&&(!storeId||storeId.length>100||!month||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)))throw new AgentError('매장과 정산월을 확인해 주세요.');return json(await automationState(getDatabase(),user.id,env,storeId&&month?{storeId,month}:undefined))}catch(error){return failure(error)}}
+export async function POST(request:Request){try{const user=await owner(request),parsed=automationInput.safeParse(await body(request,600000));if(!parsed.success)throw new AgentError('자동화 입력을 확인해 주세요. 날짜·금액·필수 항목이 올바르지 않습니다.');return json(await changeAutomation(getDatabase(),user.id,env,parsed.data))}catch(error){return failure(error)}}
