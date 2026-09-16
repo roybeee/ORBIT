@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,6 +12,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {readDraft,saveDraft,clearDraft} from '@/lib/orbit/device-drafts';
 import { agentRequest } from '@/components/orbit/agent/connections';
 import { needsFeedback } from '@/lib/orbit/coach';
 import { habitStreak } from '@/lib/orbit/derived';
@@ -62,12 +63,13 @@ export function plannedItems(data: WorkspaceData, date: string): { task: Task; s
     else if (t.unplanned && t.due === date) rows.push({ task: t, source: '계획에 없던 일 +', order: 3 });
     else if (t.due === date && t.status !== 'done') rows.push({ task: t, source: '오늘 마감', order: 4 });
   }
-  return rows.sort((a, b) => a.order - b.order).slice(0, 12);
+  return rows.sort((a, b) => a.order - b.order);
 }
 // Evening PAFI companion: walks through outcomes → feedback → energy/habits → small wins,
 // then saves one review (detail rows included) and generates tomorrow's proposal.
 export function ReviewWizard({
   data,
+  ownerId,
   reviewDate,
   today,
   busy,
@@ -75,6 +77,7 @@ export function ReviewWizard({
   onSave,
 }: {
   data: WorkspaceData;
+  ownerId: string;
   reviewDate: string;
   today: string;
   busy: boolean;
@@ -94,9 +97,9 @@ export function ReviewWizard({
       taskId: task.id,
       title: task.title,
       estimate: task.duration,
-      outcome: task.outcome ?? (task.status === 'done' ? 'done' : undefined),
-      actual: task.actualMinutes ? String(task.actualMinutes) : '',
-      reason: task.outcomeReason ?? 'time',
+      outcome: task.outcomeOn === reviewDate ? task.outcome : task.completedOn === reviewDate ? 'done' : undefined,
+      actual: task.outcomeOn === reviewDate && task.actualMinutes !== undefined ? String(task.actualMinutes) : '',
+      reason: task.outcomeOn===reviewDate?task.outcomeReason??'other':'other',
       source,
     })),
   );
@@ -120,16 +123,23 @@ export function ReviewWizard({
   const [gratitude, setGratitude] = useState<string[]>(['', '', '']);
   const [win, setWin] = useState(existing?.win ?? ''),
     [block, setBlock] = useState(existing?.block ?? '');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!demo && !!existing?.hasDetail);
+  const [ready,setReady]=useState(false),[quick,setQuick]=useState(true),[draftError,setDraftError]=useState('');
+  const dirty=useRef(false);
+  const [conflict,setConflict]=useState<any>(null);
+  const savedSleep=useRef<number|undefined>(undefined);
+  const hydrate=(d:any)=>{setItems(current=>current.map(i=>({...i,...d.items.find((v:any)=>v.taskId===i.taskId)})));setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);savedSleep.current=d.savedSleep;};
   // Saved detail rows are fetched once; every setState below happens after the network round trip.
   useEffect(() => {
-    if (demo || !existing?.hasDetail) return;
+    const draft=!demo&&readDraft<any>(ownerId,'review',reviewDate);
+    if(draft&&Array.isArray(draft.items)&&draft.feedback&&draft.dayRule&&Array.isArray(draft.habitChecks)&&Array.isArray(draft.smallWins)&&Array.isArray(draft.gratitude)&&['bed','wake','exercise','meals','mood','energy','win','block'].every(k=>typeof draft[k]==='string')){if(draft.baseVersion===(existing?.updatedAt??'')){hydrate(draft);dirty.current=true;setLoading(false);setReady(true);return;}setConflict(draft);}
+    if (demo || !existing?.hasDetail) {setReady(true);return;}
     let active = true;
     const timer = setTimeout(() => setLoading(true), 0);
     void agentRequest('/api/reviews?date=' + reviewDate)
       .then((r: { detail: ReviewDetail | null }) => {
-        if (!active || !r.detail) return;
-        const d = r.detail;
+        if(!active)return;if(!r.detail){setDraftError('저장된 회고 상세를 확인하지 못했습니다. 다시 열어 주세요.');return;}
+        const d = r.detail; savedSleep.current=d.energy.sleepMinutes;
         setItems((current) =>
           current.map((i) => {
             const saved = d.items.find((x) => x.taskId === i.taskId);
@@ -164,9 +174,9 @@ export function ReviewWizard({
         setMood(d.energy.mood ?? '');
         setHabitChecks(d.habitChecks);
         setSmallWins([...d.smallWins, '', '', ''].slice(0, Math.max(3, d.smallWins.length)));
-        setGratitude([...d.gratitude, '', '', ''].slice(0, 3));
+        setGratitude([...d.gratitude, '', '', ''].slice(0, 3));setReady(true);
       })
-      .catch(() => {})
+      .catch(() => {if(active)setDraftError('기존 회고를 불러오지 못했습니다. 연결 후 다시 열어 주세요.');})
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -175,10 +185,11 @@ export function ReviewWizard({
       clearTimeout(timer);
     };
   }, [reviewDate, demo, existing?.hasDetail]);
+  useEffect(()=>{if(!ready||demo||!dirty.current||conflict)return;try{saveDraft(ownerId,'review',reviewDate,{baseVersion:existing?.updatedAt??'',items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep:savedSleep.current});setDraftError('');}catch{setDraftError('기기 임시 저장에 실패했습니다. 입력을 복사해 보관해 주세요.');}},[ready,demo,ownerId,reviewDate,items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step]);
   const sleepMinutes = (() => {
     const b = toMinutes(bed),
       w = toMinutes(wake);
-    if (b === null || w === null) return undefined;
+    if (b === null || w === null) return savedSleep.current;
     return (w - b + 1440) % 1440 || undefined;
   })();
   const undecided = items.filter((i) => !i.outcome).length;
@@ -190,12 +201,13 @@ export function ReviewWizard({
     ? Math.round((items.filter((i) => i.outcome === 'done').length / items.length) * 100)
     : null;
   const update = (taskId: string, patch: Partial<ItemDraft>) =>
-    setItems((list) => list.map((i) => (i.taskId === taskId ? { ...i, ...patch } : i)));
+    {dirty.current=true;setItems((list) => list.map((i) => (i.taskId === taskId ? { ...i, ...patch } : i)));}
   const fb = (taskId: string) =>
     feedback[taskId] ?? { cause: '', alternative: '', rule: '', kind: 'other' as ImprovementKind };
   const setFb = (taskId: string, patch: Partial<FeedbackDraft>) =>
     setFeedback((f) => ({ ...f, [taskId]: { ...fb(taskId), ...patch } }));
   const save = async () => {
+    if(!ready||loading||conflict)return false;if(items.filter(i=>i.outcome).length>100){setDraftError('한 번에 최대 100개 결과를 저장할 수 있습니다. 일부 결과 선택을 해제해 주세요.');return false;}
     const detail: ReviewDetail = {
       date: reviewDate,
       items: items
@@ -245,12 +257,15 @@ export function ReviewWizard({
         .slice(0, 3),
       habitChecks: habitChecks.filter((id) => habits.some((h) => h.id === id)).slice(0, 3),
     };
-    return onSave({ date: reviewDate, win, block, energy }, detail);
+    const ok=await onSave({date:reviewDate,win,block,energy},detail);if(ok&&!demo)clearDraft(ownerId,'review',reviewDate);return ok;
   };
   const stepIcon = [ClipboardCheck, MessageCircleQuestion, Moon, HeartHandshake][step];
   const Icon = stepIcon;
+  if(conflict)return <div className="review-wizard"><p>다른 기기에서 저장된 회고와 이 기기의 초안이 다릅니다.</p><p>기기 초안: {conflict.win||'(성과 미입력)'} / {conflict.block||'(막힌 점 미입력)'}</p><button className="primary-button" disabled={!ready} onClick={()=>{hydrate(conflict);dirty.current=true;setConflict(null);setReady(true);}}>기기 초안을 이어서 검토</button><button className="secondary-button" onClick={()=>{clearDraft(ownerId,'review',reviewDate);setConflict(null);dirty.current=false;}}>서버의 최신 회고 사용</button></div>;
+  if(!ready)return <div className="review-wizard" role="status">{draftError||'저장된 회고를 확인하고 있습니다…'}</div>;
+  if(quick)return <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><h3>1분 회고</h3><p className="muted">확인한 결과와 한 줄만 남겨도 내일 제안을 준비합니다. 선택하지 않은 결과는 그대로 유지합니다.</p>{draftError&&<p role="alert">{draftError}</p>}<div className="wizard-body">{items.map(i=><div className="wizard-item" key={i.taskId}><strong>{i.title}</strong><div className="outcome-buttons" role="group" aria-label={i.title+' 결과'}>{(Object.keys(outcomeLabel) as Outcome[]).map(o=><button type="button" key={o} className={i.outcome===o?'active outcome-'+o:''} onClick={()=>update(i.taskId,{outcome:i.outcome===o?undefined:o})}>{outcomeLabel[o]}</button>)}</div></div>)}<label>오늘의 성과<input className="form-field" maxLength={500} value={win} onChange={e=>setWin(e.target.value)} placeholder="작은 진전도 좋아요"/></label><label>막힌 점 · 내일 이어갈 일<input className="form-field" maxLength={500} value={block} onChange={e=>setBlock(e.target.value)}/></label><label>지금 에너지<select className="form-field" value={energy} onChange={e=>setEnergy(e.target.value as Proposal['energy'])}><option value="low">낮음 · 회복 우선</option><option value="normal">보통</option><option value="high">높음</option></select></label><p className="muted">기기 임시 보관 중 · 서버 저장은 아래 버튼으로 확인합니다.</p><div className="order-actions"><button className="primary-button" disabled={busy||loading} onClick={()=>void save()}>확인한 결과 저장 · 내일 제안</button><button className="secondary-button" onClick={()=>setQuick(false)}>자세히 회고하기</button></div></div></div>;
   return (
-    <div className="review-wizard">
+    <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><button className="text-button" onClick={()=>setQuick(true)}>1분 회고로 돌아가기</button>{draftError&&<p role="alert">{draftError}</p>}
       <ol className="wizard-steps" aria-label="회고 단계">
         {STEPS.map((s, i) => (
           <li key={s} className={i === step ? 'active' : i < step ? 'done' : ''}>

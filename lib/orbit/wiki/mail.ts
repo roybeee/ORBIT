@@ -9,6 +9,7 @@ export function mailText(payload:any):string {
  walk(payload);return pieces.join('\n').slice(0,80000);
 }
 export async function syncWikiMail(db:Database,owner:string,env:Runtime) {
+ const deadline=Date.now()+50000;
  const row=await db.prepare("SELECT public_json FROM orbit_integrations WHERE owner_id=? AND provider='google_mail'").bind(owner).first<{public_json:string}>();
  const state=row?JSON.parse(row.public_json):{};if(!state.connected)return {connected:false,count:0};
  if(Date.now()-(state.wikiSyncAt??0)<60000)return {connected:true,count:0,more:!!state.wikiPage};
@@ -21,6 +22,7 @@ export async function syncWikiMail(db:Database,owner:string,env:Runtime) {
  for(const item of listed.data.messages??[]) {
   if(typeof item.id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(item.id))continue;
   let snapshot=await readWorkspace(db,owner);const id='gmail:'+item.id;if(snapshot.data.notes.some(n=>n.id===id))continue;
+  if(Date.now()>deadline)throw new AgentError('메일 수집을 나누어 진행합니다. 다음 주기에 이어서 확인합니다.','MAIL',504);
   const detail=await fetchJson(base+'/'+encodeURIComponent(item.id)+'?format=full',{headers});if(!detail.response.ok)throw new AgentError('메일 원문을 가져오지 못했습니다. 다음 동기화에서 재시도합니다.','MAIL',502);
   const m=detail.data,header=(key:string)=>String(m.payload?.headers?.find((h:any)=>String(h.name).toLowerCase()===key)?.value??'').slice(0,2000);
   const title=(header('subject')||'제목 없는 메일').slice(0,160),text=mailText(m.payload),day=Number.isFinite(Number(m.internalDate))?todayInZone(snapshot.data.preferences.timeZone,new Date(Number(m.internalDate))):todayInZone(snapshot.data.preferences.timeZone);

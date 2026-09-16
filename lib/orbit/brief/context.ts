@@ -1,3 +1,4 @@
+import {sourceStatuses} from '../source-status.ts';
 import {personalContext} from '../pacemaker.ts';
 import {chiefOfStaff,careEvents} from '../chief.ts';
 import {type Database} from '../../../db/repository.ts';
@@ -56,7 +57,8 @@ export async function collectPlanningContext(db:Database,owner:string,snapshot:W
  const {results:turns}=await db.prepare("SELECT id,conversation_id,input,response_json,created_at FROM orbit_agent_turns WHERE owner_id=? AND status='completed' AND substr(created_at,1,10)<=? ORDER BY created_at DESC LIMIT ?").bind(owner,cutoff,budget.conversations+1).all<{id:string;conversation_id:string;input:string;response_json:string;created_at:string}>();
  let conversations=turns.slice(0,budget.conversations).map(t=>({user:t.input.slice(0,budget.conversationChars),answer:String(JSON.parse(t.response_json).text??'').slice(0,budget.conversationChars),evidence:add('conversation',t.conversation_id,'대화 '+t.created_at.slice(0,10),{id:'conversation:'+t.id,date:t.created_at.slice(0,10),excerpt:'사용자: '+t.input.slice(0,budget.conversationChars)+'\nAI 답변 (사용자 사실 아님): '+String(JSON.parse(t.response_json).text??'').slice(0,budget.conversationChars)})}));
  if(turns.length>budget.conversations)warnings.push(`대화는 최근 완료된 ${budget.conversations}건을 참고했습니다. 업무·프로젝트·회고는 현재 기록을 포함합니다.`);
- const google=connected.find(c=>c.provider==='google_calendar')?.connected?'Google 기본 캘린더 · 조회된 기간의 일정':'Google 미연결 · Orbit에 저장한 일정만 검토';
+ const receipt=(await sourceStatuses(db,owner)).find(s=>s.provider==='google_calendar');
+ const google=receipt?`Google 선택 캘린더 ${receipt.targets?.length??1}개 · ${receipt.state==='ok'?'조회 성공':'최신 확인 실패/부분 범위'} · 마지막 성공 ${receipt.succeededAt??'없음'} · ${receipt.from??'?'} ~ ${receipt.to??'?'} · ${receipt.detail}`:'Google 조회 기록 없음 · 연결 상태만으로 최신임을 확인할 수 없음';
  let plaudCatalog:unknown=[],plaudAvailable=false,plaud='Plaud 미연결 · Orbit에 저장한 회의록만 검토';
  if(connected.find(c=>c.provider==='plaud')?.connected){try{plaudCatalog=await plaudTools(db,owner,env);plaudAvailable=true;plaud='Plaud 연결됨 · 아직 회의 기록 조회 전';}catch{plaud='Plaud 조회 실패 · Orbit 기록으로 분석';warnings.push('Plaud 회의록을 불러오지 못했습니다.')}}
  if(size(plaudCatalog)>20000){plaudCatalog=(plaudCatalog as {name?:string}[]).map(t=>({name:t.name,note:'schema omitted; call plaud_tools for the full input schema'}));}

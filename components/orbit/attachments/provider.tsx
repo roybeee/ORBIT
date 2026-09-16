@@ -1,4 +1,5 @@
 'use client';
+import {requestOwnerHeaders} from '@/lib/orbit/request-owner';
 import {createContext,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
 import {toast} from 'sonner';
 import {agentRequest} from '../agent/connections';
@@ -10,7 +11,7 @@ export {FILE_ACCEPT};
 export interface UploadItem {id:string;name:string;size:number;mime:string;file?:File;stored?:StoredAttachment;progress:number;status:'queued'|'uploading'|'processing'|'ready'|'error';error?:string}
 interface UploadStore {items:Record<string,UploadItem[]>;add:(scope:string,files:File[],ids?:string[])=>void;adopt:(scope:string,files:StoredAttachment[])=>boolean;remove:(scope:string,id:string)=>void;clear:(scope:string,ids:string[])=>void;retry:(scope:string,id:string)=>void;transfer:(from:string,to:string)=>boolean;registerShare:(scope:string,id:string,fileIds:string[])=>void;completeShare:(scope:string,committedIds:string[])=>Promise<void>}
 const Context=createContext<UploadStore|null>(null);
-function put(url:string,file:Blob,progress:(n:number)=>void){return new Promise<StoredAttachment>((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('PUT',url);xhr.setRequestHeader('Content-Type',file.type||'application/octet-stream');xhr.timeout=240000;xhr.upload.onprogress=e=>{if(e.lengthComputable)progress(Math.round(e.loaded/e.total*88))};xhr.onload=()=>{try{const data=JSON.parse(xhr.responseText);if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(new Error(data.error??'파일 업로드를 확인하지 못했습니다.'))}catch{reject(new Error('로그인과 연결 상태를 확인해 주세요.'))}};xhr.onerror=xhr.ontimeout=()=>reject(new Error('전송이 끊겼습니다. 다시 시도하면 이어서 확인합니다.'));xhr.send(file)})}
+function put(url:string,file:Blob,progress:(n:number)=>void){return new Promise<StoredAttachment>((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('PUT',url);for(const [key,value] of Object.entries(requestOwnerHeaders()))xhr.setRequestHeader(key,value);xhr.setRequestHeader('Content-Type',file.type||'application/octet-stream');xhr.timeout=240000;xhr.upload.onprogress=e=>{if(e.lengthComputable)progress(Math.round(e.loaded/e.total*88))};xhr.onload=()=>{try{const data=JSON.parse(xhr.responseText);if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(new Error(data.error??'파일 업로드를 확인하지 못했습니다.'))}catch{reject(new Error('로그인과 연결 상태를 확인해 주세요.'))}};xhr.onerror=xhr.ontimeout=()=>reject(new Error('전송이 끊겼습니다. 다시 시도하면 이어서 확인합니다.'));xhr.send(file)})}
 export function AttachmentProvider({children}:{children:ReactNode}){
  const [items,setItems]=useState<Record<string,UploadItem[]>>({}),ref=useRef(items),mounted=useRef(true),jobs=useRef<Array<()=>Promise<void>>>([]),running=useRef(0),destinations=useRef(new Map<string,string>()),shareIds=useRef(new ShareHandoffs());
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);

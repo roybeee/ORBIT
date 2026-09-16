@@ -1,7 +1,10 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {readDraft,saveDraft,clearDraft} from './device-drafts';
+import {requestOwnerHeaders} from './request-owner';
 import { toast } from 'sonner';
 import { emptyWorkspace, type WorkspaceSnapshot } from './model';
+import {commandSchema} from './validation';
 import type { WorkspaceAction } from './validation';
 import { applyAction, DomainError } from './reducer';
 import {
@@ -57,7 +60,7 @@ interface Failure {
   message: string;
   code: string;
 }
-export function useWorkspace(demo: boolean) {
+export function useWorkspace(demo: boolean, ownerId = '') {
   const [snapshot, setSnapshot] = useState(() => initial(demo));
   const snapshotRef = useRef(snapshot);
   const [loaded, setLoaded] = useState(demo),
@@ -86,13 +89,13 @@ export function useWorkspace(demo: boolean) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
       try {
-        const r = await fetch('/api/workspace', { cache: 'no-store', signal: controller.signal });
+        const r = await fetch('/api/workspace', { headers:requestOwnerHeaders(), cache: 'no-store', signal: controller.signal });
         const body = await r.json();
         if (!r.ok) throw { message: body.error, code: body.code };
         if (automatic && pauseRef.current) return;
         publish(body);
         setLoaded(true);
-        setFailure(null);
+        if(!pending.current)setFailure(null);
       } catch (e) {
         const err = e as Failure;
         setFailure({
@@ -105,10 +108,14 @@ export function useWorkspace(demo: boolean) {
         if (mounted.current) setBusy(false);
       }
     },
-    [demo, publish],
+    [demo, publish, ownerId],
   );
   useEffect(() => {
     mounted.current = true;
+    if (!demo && ownerId) {
+      const restored=commandSchema.safeParse(readDraft(ownerId,'command'));pending.current=restored.success?restored.data:null;
+      if(pending.current)setFailure({code:'PENDING',message:'서버 저장이 확인되지 않은 입력이 있습니다. 같은 요청으로 저장 결과를 확인해 주세요.'});
+    }
     void load();
     return () => {
       mounted.current = false;
@@ -116,9 +123,11 @@ export function useWorkspace(demo: boolean) {
   }, [load]);
   const send = useCallback(
     async (command: NonNullable<typeof pending.current>): Promise<boolean> => {
+      if(busyRef.current){toast('저장 중입니다. 잠시 기다려 주세요.');return false;}
+      if(!demo && ownerId){try{saveDraft(ownerId,'command','',command);pending.current=command;}catch{setFailure({code:'DRAFT',message:'기기 임시 저장 공간을 사용할 수 없습니다. 입력을 복사한 뒤 다시 시도해 주세요.'});return false;}}
       if (!demo && !navigator.onLine) {
         setOnline(false);
-        toast.error('인터넷 연결 후 다시 저장해 주세요. 입력 내용은 이 화면에 남아 있습니다.');
+        setFailure({code:'OFFLINE',message:'입력을 이 기기에 임시 보관했습니다. 인터넷 연결 후 저장 결과 확인을 눌러 주세요.'});toast('이 기기에 임시 보관했습니다. 서버에는 아직 저장되지 않았습니다.');
         return false;
       }
       if (busyRef.current) {
@@ -150,7 +159,7 @@ export function useWorkspace(demo: boolean) {
           try {
             const r = await fetch('/api/workspace', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...requestOwnerHeaders() },
               body: JSON.stringify(command),
               signal: controller.signal,
             });
@@ -162,6 +171,7 @@ export function useWorkspace(demo: boolean) {
           }
         }
         pending.current = null;
+        if(!demo)clearDraft(ownerId,'command');
         setFailure(null);
         return true;
       } catch (e) {
@@ -171,7 +181,7 @@ export function useWorkspace(demo: boolean) {
           message: err.message || '저장을 확인하지 못했습니다. 다시 저장해 주세요.',
           code: err.code || (e instanceof DomainError ? 'INPUT' : 'NETWORK'),
         };
-        if (failure.code === 'INPUT') pending.current = null;
+        if (failure.code === 'INPUT') {pending.current = null;clearDraft(ownerId,'command');}
         setFailure(failure);
         toast.error(failure.message);
         return false;
@@ -180,7 +190,7 @@ export function useWorkspace(demo: boolean) {
         if (mounted.current) setBusy(false);
       }
     },
-    [demo, publish],
+    [demo, publish, ownerId],
   );
   const mutate = useCallback(
     async (action: WorkspaceAction) => {
@@ -206,9 +216,11 @@ export function useWorkspace(demo: boolean) {
     return false;
   }, [send, load]);
   const discardRequestAndRefresh = useCallback(async () => {
+    if(pending.current){try{saveDraft(ownerId,'recovered-command','',pending.current);}catch{toast.error('임시 요청 보관에 실패했습니다. 저장 결과 확인으로 다시 시도해 주세요.');return;}}
     pending.current = null;
+    clearDraft(ownerId,'command');
     await load();
-  }, [load]);
+  }, [load,ownerId]);
   useEffect(() => {
     if (demo) return;
     setOnline(navigator.onLine);
@@ -238,7 +250,7 @@ export function useWorkspace(demo: boolean) {
       window.removeEventListener('offline', connection);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [demo, load]);
+  }, [demo, load, ownerId]);
   const pauseRefresh = useCallback((value: boolean) => {
     pauseRef.current = value;
   }, []);
@@ -251,7 +263,8 @@ export function useWorkspace(demo: boolean) {
     mutate,
     retry,
     pauseRefresh,
-    refresh: discardRequestAndRefresh,
+    refresh: load,
+    discardRequestAndRefresh,
     hasPending: !!pending.current,
   };
 }

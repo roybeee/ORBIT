@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useEffect, type CSSProperties } from 'react';
+import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import { SoundStation } from './sound/station';
 import { DailyBriefPanel } from './brief/daily-brief';
 import { ShareIntake } from './attachments/share-intake';
@@ -78,6 +78,8 @@ import { AgentWorkspace } from '@/components/orbit/agent/chat';
 import { AsidePanel } from '@/components/orbit/aside/panel';
 import { AutomationPanel } from '@/components/orbit/automation/panel';
 import { agentRequest } from '@/components/orbit/agent/connections';
+import {readDraft,saveDraft,clearDraft} from '@/lib/orbit/device-drafts';
+import { setRequestOwner } from '@/lib/orbit/request-owner';
 import { useWorkspace } from '@/lib/orbit/use-workspace';
 import { TaskCoach } from '@/components/orbit/coach/task-coach';
 import { FocusSession, type RecordInput } from '@/components/orbit/coach/focus-session';
@@ -351,12 +353,14 @@ function Choice({
 function WorkspaceContent({
   demo = false,
   displayName = '황인범',
+  ownerId = '',
 }: {
   demo?: boolean;
   displayName?: string;
+  ownerId?: string;
 }) {
-  const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, hasPending, pauseRefresh } =
-    useWorkspace(demo);
+  const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh } =
+    useWorkspace(demo, ownerId);
   const data = snapshot.data,
     preferences = data.preferences;
   const { tasks, projects, notes, events } = data;
@@ -386,6 +390,8 @@ function WorkspaceContent({
   const [create, setCreate] = useState<
     'task' | 'meeting' | 'wiki' | 'knowledge' | 'project' | 'event' | null
   >(null);
+  const createId=useRef('');
+  const [formDraftError,setFormDraftError]=useState('');
   const [editingNoteRevision, setEditingNoteRevision] = useState<number | undefined>(),
     [exporting, setExporting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null),
@@ -406,6 +412,7 @@ function WorkspaceContent({
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('graph');
+  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched]);
   const [energy, setEnergy] = useState<Proposal['energy']>('normal'),
     [reviewDate, setReviewDate] = useState(TODAY);
   const [deferId, setDeferId] = useState<string | null>(null),
@@ -514,6 +521,7 @@ function WorkspaceContent({
       kind = 'project';
       toast('먼저 첫 프로젝트를 만들어 주세요.');
     }
+    createId.current=crypto.randomUUID();
     setEditingId(null);
     setEditingNoteRevision(undefined);
     setNewTitle('');
@@ -538,6 +546,10 @@ function WorkspaceContent({
     setNewMust(false);
     setNewKeywords('');
     setProjectTouched(false);
+    const restored=!demo&&readDraft<any>(ownerId,'form',kind);
+    if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
+      createId.current=restored.id;setNewTitle(restored.newTitle);setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
+    }
     setCreate(kind);
   };
   const saveReview = async (
@@ -632,7 +644,7 @@ function WorkspaceContent({
     event.preventDefault();
     if (!newTitle.trim()) return;
     if (create === 'event' && !editingId && eventUploads.busy) return;
-    const id = editingId ?? crypto.randomUUID();
+    const id = editingId ?? (createId.current ||= crypto.randomUUID());
     let action: WorkspaceAction;
     if (create === 'task') {
       if (!taskProject) { toast.error('연결할 프로젝트를 선택해 주세요.'); return; }
@@ -729,6 +741,7 @@ function WorkspaceContent({
         setCalendarDate(newDate);
         navigate('calendar');
       }
+      if(!editingId&&create)clearDraft(ownerId,'form',create);
       setCreate(null);
     }
   };
@@ -966,7 +979,7 @@ function WorkspaceContent({
           <div className="top-actions">
             <button className="sound-launch" onClick={() => navigate('sound')} aria-label="사운드스테이션 열기" title="사운드스테이션"><Headphones size={18}/></button>
             {loaded && (
-              <ShareIntake demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />
+              <ShareIntake ownerId={ownerId} demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />
             )}
             <span className="quiet">한 걸음씩, 분명한 방향으로.</span>
             <button
@@ -1118,6 +1131,7 @@ function WorkspaceContent({
           {loaded && (
             <div hidden={view !== 'agent'}>
               <AgentWorkspace
+                ownerId={ownerId}
                 perform={perform}
                 onOpenRecord={setDetail}
                 busy={busy || hasPending}
@@ -1661,6 +1675,7 @@ function WorkspaceContent({
                   />
                 </div>
                 <ReviewWizard
+                  ownerId={ownerId}
                   key={`${reviewDate}:${data.reviews.find((r) => r.date === reviewDate)?.updatedAt ?? ''}:${loaded}`}
                   data={data}
                   reviewDate={reviewDate}
@@ -2155,7 +2170,7 @@ function WorkspaceContent({
                 : '연결된 프로젝트와 함께 내 워크스페이스에 저장합니다.'}
             </DialogDescription>
           </DialogHeader>
-          <form className="dialog-form" onSubmit={submitCreate}>
+          <form className="dialog-form" onSubmit={submitCreate}>{formDraftError&&<p role="alert">{formDraftError}</p>}{!editingId&&<p className="form-hint">작성 중인 내용은 이 기기에 임시 보관됩니다. 저장을 눌러 서버 반영을 확인하세요.</p>}
             <label className="form-label" htmlFor="new-title">
               {create === 'task' ? '무엇을 끝내야 하나요?' : '제목'}
             </label>
@@ -2693,12 +2708,12 @@ function WorkspaceContent({
           <AlertDialogHeader>
             <AlertDialogTitle>저장 결과를 다시 확인할까요?</AlertDialogTitle>
             <AlertDialogDescription>
-              서버의 최신 내용을 불러옵니다. 작성 중인 폼은 유지되며, 실패한 요청의 자동 재시도는 해제됩니다.
+              서버의 최신 내용을 불러오고 현재 재시도 대기를 해제합니다. 미확인 요청은 이 기기의 복구 기록에 남습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void refresh()}>최신 내용 불러오기</AlertDialogAction>
+            <AlertDialogAction onClick={() => void discardRequestAndRefresh()}>최신 내용 불러오기</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2726,9 +2741,10 @@ function WorkspaceContent({
   );
 }
 
-export default function Workspace(props: { demo?: boolean; displayName?: string }) {
+export default function Workspace(props: { demo?: boolean; displayName?: string; ownerId?: string }) {
+  setRequestOwner(props.ownerId ?? '');
   return (
-    <AttachmentProvider>
+    <AttachmentProvider key={props.ownerId??'demo'}>
       <WorkspaceContent {...props} />
     </AttachmentProvider>
   );

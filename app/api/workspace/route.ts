@@ -10,12 +10,14 @@ import {AgentError} from '@/lib/orbit/agent/errors';
 import {addDays} from '@/lib/orbit/dates';
 export const dynamic='force-dynamic';
 const response=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
-export async function GET(){
+export async function GET(request:Request){
  const user=await getChatGPTUser();if(!user)return response({error:'로그인이 필요합니다.',code:'AUTH'},401);
+ const expected=request.headers.get('x-orbit-owner');if(expected&&expected!==user.id)return response({error:'로그인 계정이 변경되었습니다. 이전 계정의 입력은 임시 보관함에 유지됩니다.',code:'SESSION_CHANGED'},409);
  try{return response(await readWorkspace(getDatabase(),user.id))}catch{console.error('Orbit workspace read unavailable');return response({error:'저장된 내용을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',code:'STORAGE'},503)}
 }
 export async function POST(request:Request){
  const user=await getChatGPTUser();if(!user)return response({error:'로그인이 필요합니다.',code:'AUTH'},401);
+ const expected=request.headers.get('x-orbit-owner');if(expected&&expected!==user.id)return response({error:'로그인 계정이 변경되었습니다. 이전 계정의 입력은 임시 보관함에 유지됩니다.',code:'SESSION_CHANGED'},409);
  const origin=request.headers.get('origin');
  if((origin&&origin!==new URL(request.url).origin)||request.headers.get('sec-fetch-site')==='cross-site')return response({error:'요청 출처를 확인할 수 없습니다.',code:'ORIGIN'},403);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return response({error:'요청 형식이 올바르지 않습니다.',code:'INPUT'},415);

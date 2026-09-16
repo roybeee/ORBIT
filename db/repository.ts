@@ -54,7 +54,7 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
   if (external?.time_zone === data.preferences.timeZone)
     data.events = [
       ...data.events.filter((e) => !e.id.startsWith('google:')),
-      ...JSON.parse(external.events_json),
+      ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>local.id===e.google?.orbitEventId&&local.date===e.date&&local.start===e.start&&local.end===e.end)),
     ];
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
@@ -267,12 +267,13 @@ export async function writeCommand(
   const attachmentTarget =
     action.type === 'event.upsert' ? action.event.id : action.type === 'event.attach' ? action.id : '';
   if (attachmentIds) await filesByIds(db, ownerId, attachmentIds);
+  const exportGate="NOT EXISTS(SELECT 1 FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.status')='publishing' AND json_extract(state_json,'$.leaseUntil')>?)";
   const update = db
     .prepare(
       `INSERT INTO orbit_workspaces (owner_id, revision, state_json, mutation_id, updated_at)
- SELECT ?, ?, ?, ?, ? WHERE ${attachmentGate(attachmentIds ?? [])}
+ SELECT ?, ?, ?, ?, ? WHERE ${exportGate} AND ${attachmentGate(attachmentIds ?? [])}
  ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision, state_json=excluded.state_json, mutation_id=excluded.mutation_id, updated_at=excluded.updated_at
- WHERE orbit_workspaces.revision = ? AND ${attachmentGate(attachmentIds ?? [])}`,
+ WHERE orbit_workspaces.revision = ? AND ${exportGate} AND ${attachmentGate(attachmentIds ?? [])}`,
     )
     .bind(
       ownerId,
@@ -280,8 +281,10 @@ export async function writeCommand(
       JSON.stringify(next),
       command.operationId,
       timestamp,
+      ownerId,Date.now(),
       ...attachmentGateValues(ownerId, attachmentIds ?? [], 'event', attachmentTarget),
       command.expectedRevision,
+      ownerId,Date.now(),
       ...attachmentGateValues(ownerId, attachmentIds ?? [], 'event', attachmentTarget),
     );
   const gate =

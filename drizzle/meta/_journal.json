@@ -127,6 +127,13 @@
       "when": 1789596968866,
       "tag": "0017_good_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1789602084330,
+      "tag": "0018_jazzy_hawkeye",
+      "breakpoints": true
     }
   ]
 }

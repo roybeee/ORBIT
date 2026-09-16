@@ -183,7 +183,7 @@ export const reviewDetailSchema = z
           })
           .strict(),
       )
-      .max(12),
+      .max(100),
     feedback: z
       .array(
         z

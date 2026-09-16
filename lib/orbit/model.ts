@@ -131,6 +131,7 @@ export interface NoteRevision {
   updatedAt: string;
 }
 export interface CalendarEvent {
+  google?:{calendarId:string;eventId:string;orbitEventId?:string};
   id: string;
   title: string;
   date: string;

@@ -116,3 +116,23 @@ export const asideJobs=sqliteTable('orbit_aside_jobs',{
 export const automationConnections=sqliteTable('orbit_automation_connections',{
  ownerId:text('owner_id').primaryKey(),secretJson:text('secret_json').notNull(),updatedAt:text('updated_at').notNull(),
 });
+
+// Collection receipts survive OAuth refreshes; connection credentials are not freshness proof.
+export const sourceStatus=sqliteTable('orbit_source_status',{
+ ownerId:text('owner_id').notNull(),provider:text('provider').notNull(),stateJson:text('state_json').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.provider]})]);
+export const calendarSettings=sqliteTable('orbit_calendar_settings',{
+ ownerId:text('owner_id').primaryKey(),selectedJson:text('selected_json').notNull(),updatedAt:text('updated_at').notNull(),
+});
+export const calendarExports=sqliteTable('orbit_calendar_exports',{
+ ownerId:text('owner_id').notNull(),eventId:text('event_id').notNull(),stateJson:text('state_json').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.eventId]})]);
+export const dailyRuntime=sqliteTable('orbit_daily_runtime',{
+ ownerId:text('owner_id').primaryKey(),configJson:text('config_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),lastTick:text('last_tick'),
+});
+export const dailyRuns=sqliteTable('orbit_daily_runs',{
+ ownerId:text('owner_id').notNull(),date:text('date').notNull(),stateJson:text('state_json').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.date]})]);
+export const orderReviews=sqliteTable('orbit_order_reviews',{
+ ownerId:text('owner_id').notNull(),orderId:text('order_id').notNull(),reviewJson:text('review_json').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.orderId]})]);

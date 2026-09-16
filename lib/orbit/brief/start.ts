@@ -17,7 +17,8 @@ export async function startPlanningAction(db:Database,owner:string,command:{oper
  const {action}=command,planning=action.type==='proposal.generate'?{date:action.date,energy:action.energy}:{date:addDays(action.review.date,1),energy:action.review.energy};
  const existing=await db.prepare('SELECT id FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,command.operationId).first();
  if(!existing){
-  try{await syncCalendar(db,owner,env,planning.date)}catch{}
+  // Save reviews before collection; stale schedule approvals must still be invalidated.
+  if(action.type==='proposal.generate')try{await syncCalendar(db,owner,env,planning.date)}catch{}
   // The PAFI review detail (outcomes, rules, habits, stats) is saved before any analysis starts.
   if(action.type==='review.saveGenerate')await writeCommand(db,owner,{...command,action:{type:'review.save',review:action.review,...(action.detail?{detail:action.detail}:{})}});
   else if((await readWorkspace(db,owner)).revision!==command.expectedRevision)throw new RevisionConflict('제안 이후 업무나 일정이 바뀌었습니다. 최신 내용으로 다시 제안해 주세요.');

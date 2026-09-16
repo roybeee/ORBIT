@@ -51,7 +51,7 @@ self.addEventListener('fetch',event=>{
 // workspace data. Stage before auth navigation; upload only after user review.
 async function stageShare(record){
  const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('orbit-share-drafts',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('shares'))r.result.createObjectStore('shares',{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
- try{await new Promise((resolve,reject)=>{const tx=db.transaction('shares','readwrite'),store=tx.objectStore('shares'),all=store.getAll();all.onsuccess=()=>{let count=0;for(const item of all.result){if(Date.now()-item.createdAt>86400000)store.delete(item.id);else count++;}if(count>=10){tx.abort();return}store.put(record);};tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error||new Error('share queue full'));});}finally{db.close();}
+ try{await new Promise((resolve,reject)=>{const tx=db.transaction('shares','readwrite'),store=tx.objectStore('shares'),all=store.getAll();all.onsuccess=()=>{const count=all.result.length;if(count>=10){tx.abort();return}store.put(record);};tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error||new Error('share queue full'));});}finally{db.close();}
 }
 async function receiveShare(request){
  try{

@@ -1,3 +1,4 @@
+import {recordSource} from '../source-status.ts';
 import type {Database} from '../../../db/repository.ts';
 import {AgentError} from './errors.ts';
 import {accessToken,PLAUD,type Runtime} from './integrations.ts';
@@ -36,7 +37,7 @@ async function session(db:Database,owner:string,env:Runtime){
  return {rpc,list};
 }
 export async function plaudTools(db:Database,owner:string,env:Runtime){const client=await session(db,owner,env);return (await client.list()).map(t=>({name:t.name,description:t.description?.slice(0,2000),inputSchema:t.inputSchema}))}
-export async function plaudRead(db:Database,owner:string,env:Runtime,name:string,args:Record<string,unknown>){
+async function plaudReadInternal(db:Database,owner:string,env:Runtime,name:string,args:Record<string,unknown>){
  const client=await session(db,owner,env),catalog=await client.list();
  if(!catalog.some(t=>t.name===name))throw new AgentError('Plaud의 확인된 읽기 도구만 사용할 수 있습니다.','PLAUD_READ_ONLY',422);
  const data=await client.rpc('tools/call',{name,arguments:args});
@@ -44,3 +45,5 @@ export async function plaudRead(db:Database,owner:string,env:Runtime,name:string
  // No embedded resources, executable instructions, audio downloads or arbitrary URL fetches.
  return {content:(data.content??[]).filter((c:any)=>c.type==='text').map((c:any)=>({type:'text',text:c.text})),...(data.structuredContent?{structuredContent:data.structuredContent}:{})};
 }
+
+export async function plaudRead(db:Database,owner:string,env:Runtime,name:string,args:Record<string,unknown>){try{const result=await plaudReadInternal(db,owner,env,name,args);await recordSource(db,owner,'plaud',{state:'ok',detail:'요청한 자료 조회 성공 · '+name+' · 전체 보관함 수집 아님'});return result;}catch(error){await recordSource(db,owner,'plaud',{state:'error',detail:'Plaud 자료 조회 실패 · 원문 범위와 연결 권한 확인 필요'});throw error;}}

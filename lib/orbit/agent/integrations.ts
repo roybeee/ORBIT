@@ -32,8 +32,9 @@ export async function accessToken(db:Database,owner:string,provider:'plaud'|'goo
   const latest=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));if(latest?.accessToken&&latest.expiresAt&&latest.expiresAt>Date.now()+60000)return latest.accessToken;
   const form=new URLSearchParams({grant_type:'refresh_token',refresh_token:config.refreshToken,client_id:config.clientId});if(config.clientSecret)form.set('client_secret',config.clientSecret);if(provider==='plaud')form.set('resource',PLAUD.server);
   const {response,data}=await fetchJson(provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
-  if(!response.ok||typeof data.access_token!=='string'){await saveConnection(db,owner,provider,config,{connected:false},keyOf(env));throw new AgentError('연결을 갱신하지 못했습니다. 다시 연결해 주세요.','RECONNECT',409)}
-  const next={...config,accessToken:data.access_token,refreshToken:data.refresh_token??config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000};await saveConnection(db,owner,provider,next,{connected:true},keyOf(env));return next.accessToken;
+  const publicRow=await db.prepare('SELECT public_json FROM orbit_integrations WHERE owner_id=? AND provider=?').bind(owner,provider).first<{public_json:string}>();const publicState=publicRow?JSON.parse(publicRow.public_json):{};
+  if(!response.ok||typeof data.access_token!=='string'){await saveConnection(db,owner,provider,config,{...publicState,connected:false},keyOf(env));throw new AgentError('연결을 갱신하지 못했습니다. 다시 연결해 주세요.','RECONNECT',409)}
+  const next={...config,accessToken:data.access_token,refreshToken:data.refresh_token??config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000};await saveConnection(db,owner,provider,next,{...publicState,connected:true},keyOf(env));return next.accessToken;
  }finally{await db.prepare('UPDATE orbit_integrations SET refresh_until=0 WHERE owner_id=? AND provider=? AND refresh_until=?').bind(owner,provider,lease).run()}
 
 }
@@ -48,7 +49,7 @@ export async function startOAuth(db:Database,owner:string,provider:'plaud'|'goog
  if(provider==='plaud'&&!config?.clientId){
   const {response,data}=await fetchJson(PLAUD.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_name:'Orbit · Personal Manager',redirect_uris:[redirectUri],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'})});
   if(!response.ok||typeof data.client_id!=='string')throw new AgentError('Plaud 연결을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.','CONNECT',502);
-  config={clientId:data.client_id,...(data.client_secret?{clientSecret:data.client_secret}:{})};await saveConnection(db,owner,provider,config,{connected:false},keyOf(env));
+  config={clientId:data.client_id,...(data.client_secret?{clientSecret:data.client_secret}:{})};await saveConnection(db,owner,provider,config,{...publicState,connected:false},keyOf(env));
  }
  const state=crypto.randomUUID()+crypto.randomUUID(),verifier=crypto.randomUUID()+crypto.randomUUID();const challenge=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
  const encrypted=await encrypt({verifier,redirectUri,config},keyOf(env),`${owner}:oauth:${state}`);

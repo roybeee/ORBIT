@@ -1,4 +1,4 @@
-import type {Database} from '../../../db/repository.ts';
+import {readWorkspace,type Database} from '../../../db/repository.ts';
 import {accessToken,fetchJson,type Runtime} from './integrations.ts';
 import {AgentError} from './errors.ts';
 import type {GoogleSeriesDeleteAction} from './types.ts';
@@ -22,7 +22,9 @@ function master(event:Record<string,any>,title:string){
  if(!validId(event.id)||event.status==='cancelled'||event.recurringEventId||!Array.isArray(event.recurrence)||!event.recurrence.length||event.summary!==title||typeof event.etag!=='string'||typeof event.iCalUID!=='string')throw new AgentError('제목과 반복 시리즈를 확실히 확인하지 못해 삭제하지 않았습니다. 대상 일정의 정확한 제목과 ID를 확인해 주세요.','CALENDAR_TARGET',409);
 }
 // Owner Google credentials stay on Orbit's server, never in Hermes context or logs.
-export async function inspectCalendarSeries(db:Database,owner:string,env:Runtime,eventId:string){
+export async function inspectCalendarSeries(db:Database,owner:string,env:Runtime,eventId:string,sourceCalendarId?:string){
+ if(sourceCalendarId&&sourceCalendarId!=='primary')throw new AgentError('보조 캘린더는 조회만 지원합니다. Google에서 해당 캘린더를 열어 수정해 주세요.','CALENDAR_TARGET',409);
+ const rows=(await readWorkspace(db,owner)).data.events.filter(e=>e.google?.eventId===eventId);if(rows.some(e=>e.google?.calendarId!=='primary'))throw new AgentError('기본·보조 캘린더의 원본 구분이 필요합니다. Google에서 대상 캘린더를 확인해 주세요.','CALENDAR_TARGET',409);
  if(!validId(eventId))throw new AgentError('Google 일정 ID를 확인해 주세요.');
  const token=await accessToken(db,owner,'google_calendar',env),calendarId=await calendar(token),target=await get(token,calendarId,eventId);check(target.response);
  if(target.data.id!==eventId||target.data.status==='cancelled')throw new AgentError('활성 대상 일정을 확인하지 못했습니다.','CALENDAR_TARGET',409);
@@ -33,7 +35,7 @@ export async function inspectCalendarSeries(db:Database,owner:string,env:Runtime
  return {calendarId,seriesId,etag:series.data.etag as string,iCalUID:series.data.iCalUID as string,title:series.data.summary as string};
 }
 export async function prepareSeriesDeletion(db:Database,owner:string,env:Runtime,action:GoogleSeriesDeleteAction){
- const verified=await inspectCalendarSeries(db,owner,env,action.eventId);
+ const verified=await inspectCalendarSeries(db,owner,env,action.eventId,action.calendarId);
  if(verified.title!==action.expectedTitle)throw new AgentError('요청한 제목과 Google 일정의 실제 제목이 달라 삭제하지 않았습니다.','CALENDAR_TARGET',409);
  return {...action,verified};
 }
