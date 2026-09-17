@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {FollowupPanel} from './phase2/followup';
 import {LearningPanel} from './phase2/learning';
 import {BackupPanel} from './phase2/backup';
@@ -129,7 +130,7 @@ import {
   type ReviewDetail,
 } from '@/lib/orbit/model';
 const navigation: { id: View; label: string; icon: typeof Sun }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
+  { id: 'dashboard', label: '나의 우주', icon: LayoutGrid },
   { id: 'agent', label: 'AI 에이전트', icon: MessagesSquare },
   { id: 'aside', label: 'ASIDE 실행', icon: Network },
   { id: 'automation', label: '서버 자동화', icon: Clock3 },
@@ -161,7 +162,7 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
   automation: {title:'서버 자동화',subtitle:'예약 실행부터 승인과 ODA 반영까지.',eyebrow:'AUTOMATION'},
   aside: {title:'ASIDE 실행',subtitle:'로그인된 웹 업무를 맡기고, 결과를 프로젝트에 연결합니다.',eyebrow:'BROWSER WORKSPACE'},
   sound: {title: '사운드스테이션', subtitle: '몰입할 때, 쉬어갈 때. 나의 페이스를 위한 소리.', eyebrow: 'ORBIT SOUND'},
-  dashboard: {title:'Dashboard',subtitle:'목표의 현재 위치와 오늘의 다음 행동을 한눈에.',eyebrow:'MY WORKSPACE'},
+  dashboard: {title:'나의 우주',subtitle:'프로젝트와 지식, 매일의 실행이 연결되어 성과로 확장됩니다.',eyebrow:'ORBIT / GALAXY'},
   goals: {title:'나의 목표',subtitle:'원하는 삶에서 오늘의 한 걸음까지. 목표와 퀘스트를 연결합니다.',eyebrow:'MY ORBIT'},
   understanding: {title:'나를 이해하는 기록',subtitle:'흩어진 일상을 연결해, 나에게 맞는 길을 찾아갑니다.',eyebrow:'UNDERSTANDING ME'},
   agent: { title: 'Orbit 에이전트', subtitle: '대화에서 실행까지.', eyebrow: 'ORBIT AGENT' },
@@ -224,13 +225,13 @@ function AppNavigation({
             <span className="brand-mark">
               <Orbit size={25} />
             </span>
-            orbit<small>OS</small>
+            ORBIT<small>GALAXY</small>
           </div>
           <div className="workspace-switch">
             <span className="workspace-icon">
               <Layers size={17} />
             </span>
-            <span>나의 워크스페이스</span>
+            <span>나의 우주</span>
           </div>
         </SidebarHeader>
         <SidebarContent className="gap-0">
@@ -281,7 +282,7 @@ function AppNavigation({
             <div className="avatar">IH</div>
             <div>
               <strong>{displayName}</strong>
-              <small>Personal workspace</small>
+              <small>My personal universe</small>
             </div>
             <button className="settings-link" aria-label="설정 열기" onClick={onSettings}>
               <Settings2 size={18} />
@@ -292,7 +293,7 @@ function AppNavigation({
       <nav className="mobile-nav" aria-label="주요 화면">
         {[
           { id: 'agent' as View, label: '대화', icon: MessagesSquare },
-          { id: 'dashboard' as View, label: 'Dashboard', icon: LayoutGrid },
+          { id: 'dashboard' as View, label: '나의 우주', icon: LayoutGrid },
           { id: 'goals' as View, label: '목표', icon: Target },
           { id: 'proposal' as View, label: '내일 제안', icon: Sparkles },
         ].map((n) => (
@@ -376,6 +377,7 @@ function WorkspaceContent({
   displayName?: string;
   ownerId?: string;
 }) {
+  const cosmic=useCosmicMotion();
   const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh } =
     useWorkspace(demo, ownerId);
   const data = snapshot.data,
@@ -973,7 +975,8 @@ function WorkspaceContent({
     return ok;
   };
   return (
-    <SidebarProvider style={{ '--sidebar-width': '232px' } as CSSProperties}>
+    <SidebarProvider className="galaxy-workspace" style={{ '--sidebar-width': '248px' } as CSSProperties}>
+      <CosmicBackdrop/>
       {!demo && <InstallRootHint />}
       <a href="#main-content" className="skip-link">
         본문으로 이동
@@ -989,16 +992,17 @@ function WorkspaceContent({
         <header className="topbar">
           <div className="breadcrumb">
             <SidebarTrigger className="mobile-menu" aria-label="메뉴 열기" />
-            <span>나의 워크스페이스</span>
+            <span>나의 우주</span>
             <ChevronRight size={13} />
             <strong>{navigation.find((n) => n.id === view)?.label}</strong>
           </div>
           <div className="top-actions">
+            <CosmicMotionToggle enabled={cosmic.enabled} reduced={cosmic.reduced} onToggle={cosmic.toggle}/>
             <button className="sound-launch" onClick={() => navigate('sound')} aria-label="사운드스테이션 열기" title="사운드스테이션"><Headphones size={18}/></button>
             {loaded && (
               <ShareIntake ownerId={ownerId} demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />
             )}
-            <span className="quiet">한 걸음씩, 분명한 방향으로.</span>
+            <span className="quiet">연결은 넓게, 실행은 선명하게.</span>
             <button
               className="new-button"
               disabled={!loaded || busy}

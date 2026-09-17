@@ -1,5 +1,6 @@
 'use client';
 import {useMemo} from 'react';
+import {PersonalGalaxy} from './personal-galaxy';
 import {ArrowUpRight,ArrowRight,Target,CalendarDays,Check,CheckCheck,Clock3,Flag,FolderKanban,Heart,Play,Sparkles,BookOpen,AlertCircle,Orbit,Plus} from 'lucide-react';
 import {Progress} from '@/components/ui/progress';
 import {workspaceDashboard} from '@/lib/orbit/dashboard';
@@ -19,14 +20,7 @@ export function WorkspaceDashboard({data,now,busy,demo,perform,navigate,onOpen,o
   const goalRows=[...d.goals].sort((a,b)=>Number(['paused','achieved'].includes(a.goal.status??'active'))-Number(['paused','achieved'].includes(b.goal.status??'active'))).slice(0,4);
   return <div className="workspace-dashboard">
     <div className="wd-toolbar"><div><CalendarDays size={16}/><span>{koreanDate(d.today)}</span><span className="wd-zone">{data.preferences.timeZone}</span></div><button className="secondary-button" onClick={onGoals}><Target size={16}/>목표 관리</button></div>
-    <div className="wd-metrics">
-      <button onClick={()=>navigate('goals')}><span><Target size={17}/>진행 중인 목표</span><strong>{d.activeGoals.length}<small>개</small></strong><p>일과 삶의 원하는 변화 <ArrowUpRight size={14}/></p></button>
-      <button onClick={()=>navigate('today')}><span><Flag size={17}/>오늘의 집중 업무</span><strong>{d.focusTasks.filter(t=>t.status!=='done').length}<small>개 남음</small></strong><p>지정·승인된 {d.focusTasks.length}개 기준 <ArrowUpRight size={14}/></p></button>
-      <button onClick={()=>navigate('today')}><span><CheckCheck size={17}/>오늘 완료</span><strong>{d.completed.length}<small>개</small></strong><p>완료일이 오늘인 업무 <ArrowUpRight size={14}/></p></button>
-      <button onClick={()=>document.getElementById('dashboard-attention')?.scrollIntoView({behavior:'smooth',block:'start'})}><span><AlertCircle size={17}/>확인할 업무</span><strong>{d.attention.length}<small>개</small></strong><p>기한 경과·선행 대기·재확인 <ArrowRight size={14}/></p></button>
-    </div>
-    <div className="wd-grid">
-      <section className={'wd-next wd-panel '+(['recovery','rest'].includes(primary.kind)?'is-recovery':'')} aria-labelledby="dashboard-next">
+    <div className="galaxy-command"><PersonalGalaxy data={data} navigate={navigate} onOpen={onOpen}/>      <section className={'wd-next wd-panel '+(['recovery','rest'].includes(primary.kind)?'is-recovery':'')} aria-labelledby="dashboard-next">
         <div className="wd-section-label"><Orbit size={18}/><span>지금, 궤도를 지키는 한 걸음</span></div>
         <h2 id="dashboard-next">{primary.title}</h2><p>{primary.reason}</p><div className="wd-next-step">{primary.next}</div>
         <div className="wd-actions">{next&&<button className="primary-button" disabled={disabled||(!d.active&&!canStart)} onClick={async()=>{if(d.active){onOpen({kind:'task',id:next.id});return}if(await perform({type:'task.start',id:next.id},'집중 세션을 시작했습니다.'))onOpen({kind:'task',id:next.id})}}><Play size={16}/>{d.active?'진행 중인 집중 기록':'집중 시작'}</button>}
@@ -35,6 +29,14 @@ export function WorkspaceDashboard({data,now,busy,demo,perform,navigate,onOpen,o
         </div>
         <div className="wd-next-footer"><span>{energyLabels[d.chief.energy]}</span><button className="text-button" onClick={onCoachSettings}>컨디션·페이스 설정 <ArrowUpRight size={14}/></button></div>
       </section>
+</div>
+    <div className="wd-metrics">
+      <button onClick={()=>navigate('goals')}><span><Target size={17}/>진행 중인 목표</span><strong>{d.activeGoals.length}<small>개</small></strong><p>일과 삶의 원하는 변화 <ArrowUpRight size={14}/></p></button>
+      <button onClick={()=>navigate('today')}><span><Flag size={17}/>오늘의 집중 업무</span><strong>{d.focusTasks.filter(t=>t.status!=='done').length}<small>개 남음</small></strong><p>지정·승인된 {d.focusTasks.length}개 기준 <ArrowUpRight size={14}/></p></button>
+      <button onClick={()=>navigate('today')}><span><CheckCheck size={17}/>오늘 완료</span><strong>{d.completed.length}<small>개</small></strong><p>완료일이 오늘인 업무 <ArrowUpRight size={14}/></p></button>
+      <button onClick={()=>document.getElementById('dashboard-attention')?.scrollIntoView({behavior:'smooth',block:'start'})}><span><AlertCircle size={17}/>확인할 업무</span><strong>{d.attention.length}<small>개</small></strong><p>기한 경과·선행 대기·재확인 <ArrowRight size={14}/></p></button>
+    </div>
+    <div className="wd-grid">
       <section className="wd-panel wd-time" aria-labelledby="dashboard-time"><div className="wd-panel-head"><h2 id="dashboard-time">오늘의 여유</h2><Clock3 size={18}/></div><strong className="wd-time-value">{durationText(d.chief.capacity)}</strong><p>지금부터 업무 종료까지<br/>일정·돌봄·여유분을 제외한 시간</p><div className="wd-time-demand"><span>아직 배치하지 않은 마감·집중 업무</span><strong>{durationText(d.chief.demand)}</strong></div>{d.chief.overloaded&&<div className="wd-load-notice">남은 시간에 맞춰 범위를 조정해 보세요.</div>}<button className="text-button" onClick={()=>onCalendar(d.today)}>시간 배치 확인 <ArrowUpRight size={14}/></button></section>
       <section className="wd-panel wd-goals" aria-labelledby="dashboard-goals"><div className="wd-panel-head"><h2 id="dashboard-goals">목표의 현재 위치</h2><button className="text-button" onClick={()=>navigate('goals')}>전체 목표 <ArrowUpRight size={14}/></button></div>
         {goalRows.length?goalRows.map(({goal,done,total,pace})=>{const p=goal.progress,dated=p&&p.updatedOn<=d.today,ratio=dated&&p.target!==p.baseline?Math.max(0,Math.min(100,100*(p.current-p.baseline)/(p.target-p.baseline))):0;return <button className="wd-goal-row" key={goal.id} onClick={()=>navigate('goals')}><div className="wd-goal-meta"><span>{domainLabels[goal.domain??'work']}</span><span className={'wd-pace '+pace.status}>{goal.status==='paused'?'보류':metricStatus[pace.status]}</span></div><h3>{goal.sentence}</h3><div className="wd-goal-numbers"><span>{dated?`${p.current} / ${p.target} ${p.unit}`:'성과 수치 미확인'}</span><span>퀘스트 {done}/{total}</span></div><Progress value={ratio} aria-label={goal.sentence+' 마지막 기록 수치 진척'}/><small>{dated?`${p.updatedOn} 마지막 기록`:'현재 위치를 직접 확인해 주세요.'}{goal.deadline?' · '+goal.deadline+' 목표':''}</small></button>}):<div className="wd-empty"><Target size={26}/><p>원하는 변화부터 하나 정해볼까요?</p><button className="secondary-button" onClick={onGoals}><Plus size={15}/>첫 목표 만들기</button></div>}
