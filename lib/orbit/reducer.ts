@@ -1,11 +1,12 @@
 import {careEvents,goalAllowsWork,goalIsActive} from './chief.ts';
+import {allocationAllowsWork,activeAllocation,protectedEvents,weeklyCapacity,portfolioBasis,operatingSignals,meetingBrief} from './phase3.ts';
 import {questReadiness,memorySignature} from './pacemaker.ts';
 import { wikiMatches, wikiLinks } from './wiki/relations.ts';
 import { automaticProject, normalize } from './classify.ts';
 import { planFromBrief } from './brief/planning.ts';
 import type { WorkspaceData, Task, Proposal, Improvement, Project } from './model.ts';
 import type { WorkspaceAction } from './validation.ts';
-import { todayInZone, addDays } from './dates.ts';
+import { todayInZone, addDays, weekDates } from './dates.ts';
 import { meetingCandidates } from './meeting.ts';
 import { focusIds } from './derived.ts';
 import { generateProposal, approveProposalItem, overlaps, calibrationFactor } from './planner.ts';
@@ -20,6 +21,23 @@ function replace<T extends { id: string }>(list: T[], record: T) {
 }
 export const LIMITS = { goals: 12, improvements: 40, habits: 3, risks: 10, habitLog: 400 };
 export function validateLinks(data: WorkspaceData) {
+  const observations=data.metricObservations??[],replacedObservations=new Set(observations.map(o=>o.supersedesId));
+  for(const o of observations){
+    if(o.from>o.through)fail('운영 수치의 집계 시작·종료를 확인해 주세요.');
+    const m=data.operatingMetrics?.find(m=>m.id===o.metricId);
+    if(o.noteId&&!data.notes.some(n=>n.id===o.noteId&&n.projectId===m?.projectId))fail('운영 수치와 같은 프로젝트의 근거 문서를 연결해 주세요.');
+    if(o.supersedesId){const old=observations.find(x=>x.id===o.supersedesId);if(!old||old.id===o.id||old.metricId!==o.metricId||old.from!==o.from||old.through!==o.through||old.recordedAt>o.recordedAt||observations.filter(x=>x.supersedesId===old.id).length>1)fail('운영 수치의 정정 이력을 확인해 주세요.');const seen=new Set([o.id]);let x=old;while(x){if(seen.has(x.id))fail('운영 수치의 정정 이력이 순환합니다.');seen.add(x.id);if(!x.supersedesId)break;const nextId=x.supersedesId;x=observations.find(v=>v.id===nextId)!;}}
+    if(!replacedObservations.has(o.id)&&observations.some(x=>x.id!==o.id&&!replacedObservations.has(x.id)&&x.metricId===o.metricId&&x.from<=o.through&&x.through>=o.from))fail('같은 운영 지표에 집계 기간이 겹칩니다.');
+  }
+  for(const f of data.signalFollowups??[]){const projectId=data.operatingMetrics?.find(m=>m.id===f.metricId)?.projectId;if(f.taskId&&data.tasks.find(t=>t.id===f.taskId)?.projectId!==projectId||f.delegationId&&data.delegations?.find(d=>d.id===f.delegationId)?.projectId!==projectId)fail('신호와 같은 프로젝트의 후속 업무를 연결해 주세요.');}
+  for(const p of data.weeklyAllocations??[]){if(weekDates(p.from)[0]!==p.from||p.id!==p.from||p.through!==addDays(p.from,6)||new Set(p.allocations.map(a=>a.projectId)).size!==p.allocations.length||p.allocations.some(a=>a.stance==='pause'&&a.minutes!==0)||p.protectedBlocks.some(b=>b.date<p.from||b.date>p.through||b.end<=b.start))fail('주간 배분의 기간·보호 시간·프로젝트를 확인해 주세요.');}
+  for(const m of data.meetingRecords??[]){if(m.event.end<=m.event.start||data.notes.find(n=>n.id===m.noteId)?.projectId!==m.projectId||m.taskIds.some(id=>data.tasks.find(t=>t.id===id)?.projectId!==m.projectId)||m.delegationIds.some(id=>data.delegations?.find(d=>d.id===id)?.projectId!==m.projectId)||m.decisionId&&data.decisions?.find(d=>d.id===m.decisionId)?.projectId!==m.projectId)fail('회의 결과의 프로젝트·후속 기록 연결을 확인해 주세요.');}
+  if((data.operatingMetrics??[]).length>60||(data.metricObservations??[]).length>600||(data.signalFollowups??[]).length>200||(data.meetingRecords??[]).length>100)fail('운영 기록의 보관 한도에 도달했습니다. 백업 후 기록을 정리해 주세요.');
+  for(const m of data.operatingMetrics??[])if(!data.projects.some(p=>p.id===m.projectId))fail('운영 지표의 프로젝트를 확인해 주세요.');
+  for(const o of data.metricObservations??[]){if(!data.operatingMetrics?.some(m=>m.id===o.metricId))fail('관측값의 지표를 확인해 주세요.');if(o.noteId&&!data.notes.some(n=>n.id===o.noteId))fail('관측값의 근거 문서를 확인해 주세요.');}
+  for(const f of data.signalFollowups??[]){if(!data.operatingMetrics?.some(m=>m.id===f.metricId)||![f.observationId,f.baselineId].every(id=>data.metricObservations?.some(o=>o.id===id&&o.metricId===f.metricId)))fail('운영 신호의 비교 근거를 확인해 주세요.');if(f.taskId&&!data.tasks.some(t=>t.id===f.taskId)||f.delegationId&&!data.delegations?.some(d=>d.id===f.delegationId))fail('운영 신호의 후속 업무를 확인해 주세요.');}
+  for(const p of data.weeklyAllocations??[])for(const a of p.allocations)if(!data.projects.some(p=>p.id===a.projectId))fail('주간 배분의 프로젝트를 확인해 주세요.');
+  for(const m of data.meetingRecords??[]){if(!data.projects.some(p=>p.id===m.projectId)||!data.notes.some(n=>n.id===m.noteId))fail('회의의 프로젝트·원문 연결을 확인해 주세요.');if(m.taskIds.some(id=>!data.tasks.some(t=>t.id===id))||m.delegationIds.some(id=>!data.delegations?.some(d=>d.id===id))||m.decisionId&&!data.decisions?.some(d=>d.id===m.decisionId))fail('회의의 후속 기록을 확인해 주세요.');}
   if((data.memories??[]).length>60)fail('기억은 60개까지 보관합니다. 오래된 기억을 정리해 주세요.');
   if((data.decisions??[]).length>100||(data.delegations??[]).length>100)fail('의사결정과 위임 기록은 각각 100개까지 보관합니다.');
   for(const record of [...data.decisions??[],...data.delegations??[]]){
@@ -109,6 +127,7 @@ export function applyAction(
   };
   const plannerOptions = (date: string) => ({
     dominoProjectId: data.dominoProjectId,
+    projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
     calibration: (t: Task) => calibrationFactor(data.tasks, t, date),
   });
   const finishSession = (t: Task) => {
@@ -124,6 +143,69 @@ export function applyAction(
       fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.');
   };
   switch (action.type) {
+    case 'portfolio.approve': {
+      const from=weekDates(action.week)[0],through=addDays(from,6);
+      if(through<today||from>addDays(today,90))fail('이번 주부터 90일 이내의 주를 선택해 주세요.');
+      if(action.basis!==portfolioBasis(data,action.week))fail('업무·일정이 바뀌었습니다. 배분안을 다시 계산한 뒤 승인해 주세요.');
+      if(new Set(action.allocations.map(a=>a.projectId)).size!==action.allocations.length||action.allocations.length!==data.projects.length)fail('모든 프로젝트를 한 번씩 배분해 주세요.');
+      for(const a of action.allocations){if(!data.projects.some(p=>p.id===a.projectId))fail('배분할 프로젝트가 없습니다.');if(a.stance==='pause'&&a.minutes>0)fail('보류한 프로젝트의 추가 투입 시간은 0분으로 설정해 주세요.');}
+      if(new Set(action.protectedBlocks.map(b=>b.id)).size!==action.protectedBlocks.length)fail('보호 시간 번호가 중복되었습니다.');
+      for(const b of action.protectedBlocks){if(b.date<from||b.date>through)fail('보호 시간은 선택한 주 안에 있어야 합니다.');if(data.events.some(e=>e.date===b.date&&e.kind!=='break'&&overlaps(e,b))||data.proposals.some(p=>p.date===b.date&&p.items.some(i=>i.state==='approved'&&overlaps(i,b))))fail('보호 시간이 기존 일정과 겹칩니다. 일정을 먼저 조정해 주세요.');}
+      const capacity=weeklyCapacity(data,from,action.protectedBlocks,now);
+      if(action.allocations.reduce((n,a)=>n+a.minutes,0)>capacity.budget)fail('남은 가용 시간을 넘었습니다. 배분안을 다시 계산하거나 시간을 줄여 주세요.');
+      data.weeklyAllocations=replace(data.weeklyAllocations??[],{id:from,from,through,approvedAt:now.toISOString(),active:true,capacityAtApproval:capacity.budget,allocations:action.allocations,protectedBlocks:action.protectedBlocks}).sort((a,b)=>a.from.localeCompare(b.from)).slice(-12);break;
+    }
+    case 'portfolio.release':data.weeklyAllocations=(data.weeklyAllocations??[]).map(p=>p.id===action.id?{...p,active:false}:p);break;
+    case 'metric.upsert': {
+      const old=data.operatingMetrics?.find(m=>m.id===action.metric.id);
+      if(old&&data.metricObservations?.some(o=>o.metricId===old.id)&&['projectId','unit','category','badDirection'].some(k=>old[k as keyof typeof old]!==action.metric[k as keyof typeof action.metric]))fail('값이 기록된 지표의 프로젝트·단위·구분·방향은 바꿀 수 없습니다. 별도 지표를 만드세요.');
+      data.operatingMetrics=replace(data.operatingMetrics??[],{...action.metric,updatedAt:now.toISOString()});break;
+    }
+    case 'metric.observe': {
+      const o=action.observation,m=data.operatingMetrics?.find(m=>m.id===o.metricId)??fail('지표를 먼저 등록해 주세요.');
+      if(o.from>o.through||o.through>today)fail('집계 기간과 오늘까지의 확정 수치를 입력해 주세요.');
+      const old=o.supersedesId?data.metricObservations?.find(x=>x.id===o.supersedesId):undefined;
+      if(o.supersedesId&&(!old||old.metricId!==o.metricId||old.from!==o.from||old.through!==o.through||data.metricObservations?.some(x=>x.supersedesId===old.id)))fail('정정할 수치가 바뀌었습니다. 같은 지표·기간의 최신 기록을 선택하세요.');
+      const replaced=new Set((data.metricObservations??[]).map(x=>x.supersedesId));
+      if(data.metricObservations?.some(x=>x.id===o.id||!replaced.has(x.id)&&x.id!==o.supersedesId&&x.metricId===o.metricId&&x.from<=o.through&&x.through>=o.from))fail('같은 지표에 겹치는 집계 기간이 있습니다. 기간을 확인해 주세요.');
+      if(o.noteId&&!data.notes.some(n=>n.id===o.noteId&&n.projectId===m.projectId&&(n.revision??1)===o.noteRevision))fail('같은 프로젝트의 최신 원문을 연결해 주세요.');
+      data.metricObservations=[...data.metricObservations??[],{...o,recordedAt:now.toISOString()}];break;
+    }
+    case 'signal.followup': {
+      const signal=operatingSignals(data,today).find(s=>s.metric.id===action.metricId&&s.latest?.id===action.observationId&&s.baseline?.id===action.baselineId)??fail('신호를 찾을 수 없습니다.');
+      if(signal.state!=='attention')fail('신호의 근거가 바뀌었습니다. 최신 비교를 확인해 주세요.');
+      if(signal.followup)fail('이 변화에 대한 후속 업무가 이미 등록되어 있습니다.');
+      if(action.due<today)fail('확인 기한은 오늘 이후로 지정해 주세요.');
+      const at=now.toISOString(),r={id:action.id,metricId:action.metricId,observationId:action.observationId,baselineId:action.baselineId,question:action.question,status:'open' as const,resolution:'',createdAt:at,updatedAt:at};
+      if(data.tasks.some(t=>t.id===action.id)||data.delegations?.some(d=>d.id===action.id)||data.signalFollowups?.some(f=>f.id===action.id))fail('이미 사용한 기록 번호입니다.');
+      const evidence=`${signal.metric.name}: ${signal.baseline!.value} → ${signal.latest!.value} ${signal.metric.unit}. ${signal.latest!.source}`;
+      if(action.assignee){data.delegations=[...data.delegations??[],{id:action.id,title:action.title,projectId:signal.metric.projectId,assignee:action.assignee,deliverable:action.question,due:action.due,checkDate:action.due,status:'requested',update:evidence.slice(0,2000),evidence:'',createdAt:at,updatedAt:at,history:[{at,status:'requested',update:evidence.slice(0,2000),evidence:'',assignee:action.assignee,due:action.due,checkDate:action.due}]}];data.signalFollowups=[...data.signalFollowups??[],{...r,delegationId:action.id}];}
+      else{data.tasks.push({id:action.id,title:action.title,projectId:signal.metric.projectId,status:'todo',duration:30,due:action.due,impact:4,focus:false,definition:action.question+'\n근거: '+evidence});data.signalFollowups=[...data.signalFollowups??[],{...r,taskId:action.id}];}break;
+    }
+    case 'signal.resolve': {
+      const old=data.signalFollowups?.find(f=>f.id===action.id)??fail('등록한 후속 확인을 찾을 수 없습니다.');
+      data.signalFollowups=replace(data.signalFollowups??[],{...old,status:action.status,resolution:action.resolution,updatedAt:now.toISOString()});break;
+    }
+    case 'meeting.finish': {
+      const e=data.events.find(e=>e.id===action.event.id&&e.kind==='meeting')??fail('회의 일정을 찾을 수 없습니다.');
+      if(['title','date','start','end'].some(k=>e[k as keyof typeof e]!==action.event[k as keyof typeof action.event]))fail('회의 일정이 변경됐습니다. 최신 일정을 확인해 주세요.');
+      if(e.projectId&&e.projectId!==action.projectId)fail('회의 일정과 같은 프로젝트를 선택해 주세요.');
+      if(e.date>today)fail('미래 회의는 결과 확정 후 기록해 주세요.');
+      if(data.meetingRecords?.some(r=>r.id===action.id||r.event.id===e.id&&r.event.date===e.date))fail('이 회의의 결과가 이미 반영되었습니다. 연결된 기록에서 후속 내용을 수정하세요.');
+      const at=now.toISOString(),brief=meetingBrief(data,e,action.projectId),noteId=action.id,taskIds:string[]=[],delegationIds:string[]=[];
+      if(data.notes.some(n=>n.id===noteId))fail('이미 사용한 문서 번호입니다.');
+      const body=`# ${e.title}\n\n## 확인한 결과\n${action.summary}\n\n## 바뀐 조건\n${action.changedConditions||'별도 기록 없음'}\n\n## 회의 원문\n${action.body}\n\n## 승인한 후속 행동\n${action.actions.map(a=>`${a.assignee||'나'} · ${a.title} · ${a.due}`).join('\n')}`;
+      data.notes.push({id:noteId,title:(e.title+' · 회의 결과').slice(0,160),kind:'meeting',projectId:action.projectId,summary:action.summary.slice(0,500),body,tags:['회의 결과','3차 브리핑'],updated:today,revision:1,bodyStored:false});
+      let decisionId:string|undefined;
+      if(action.decision){decisionId='decision:'+action.id;const d=action.decision;if(data.decisions?.some(r=>r.id===decisionId))fail('이미 사용한 결정 번호입니다.');data.decisions=[...data.decisions??[],{id:decisionId,title:(e.title+' · 결정').slice(0,160),projectId:action.projectId,choice:d.choice,rationale:d.rationale,alternatives:'',reviewDate:d.reviewDate,status:'active',outcome:'',noteId,noteRevision:1,createdAt:at,updatedAt:at,history:[{at,choice:d.choice,rationale:d.rationale,alternatives:'',status:'active',outcome:''}]}];}
+      for(const [i,a] of action.actions.entries()){
+        const id='meeting:'+action.id+':'+i;if(data.tasks.some(t=>t.id===id)||data.delegations?.some(d=>d.id===id))fail('이미 사용한 후속 업무 번호입니다.');
+        if(a.due<e.date)fail('후속 업무 기한은 회의 날짜 이후로 지정해 주세요.');
+        if(a.assignee){delegationIds.push(id);data.delegations=[...data.delegations??[],{id,title:a.title,projectId:action.projectId,assignee:a.assignee,deliverable:a.title,due:a.due,checkDate:a.due,status:'requested',update:'회의 결과 검토 후 등록',evidence:'',noteId,noteRevision:1,createdAt:at,updatedAt:at,history:[{at,status:'requested',update:'회의 결과 검토 후 등록',evidence:'',assignee:a.assignee,due:a.due,checkDate:a.due}]}];}
+        else{taskIds.push(id);data.tasks.push({id,title:a.title,projectId:action.projectId,status:'todo',duration:a.minutes,due:a.due,impact:3,focus:false,definition:a.title,noteId});}
+      }
+      data.meetingRecords=[...data.meetingRecords??[],{id:action.id,projectId:action.projectId,event:action.event,noteId,noteRevision:1,summary:action.summary,changedConditions:action.changedConditions,priorDecisions:brief.decisions.map(d=>({id:d.id,title:d.title,choice:d.choice,updatedAt:d.updatedAt})),decisionId,taskIds,delegationIds,createdAt:at}];break;
+    }
     case 'decision.upsert': {
       const r=action.record,old=data.decisions?.find(d=>d.id===r.id);
       if(action.expectedUpdatedAt&&old?.updatedAt!==action.expectedUpdatedAt)fail('결정이 변경됐습니다. 최신 기록을 열고 다시 작성해 주세요.');
@@ -541,8 +623,8 @@ export function applyAction(
       const date = addDays(action.review.date, 1);
       saveProposal(
         generateProposal(
-          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)),
-          [...data.events,...careEvents(data,date)],
+          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)&&allocationAllowsWork(data,t.projectId,date)),
+          [...data.events,...careEvents(data,date),...protectedEvents(data,date)],
           date,
           action.review.energy,
           data.proposals.find((p) => p.date === date),
@@ -558,8 +640,8 @@ export function applyAction(
     case 'proposal.generate':
       saveProposal(
         generateProposal(
-          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)),
-          [...data.events,...careEvents(data,action.date)],
+          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)&&allocationAllowsWork(data,t.projectId,action.date)),
+          [...data.events,...careEvents(data,action.date),...protectedEvents(data,action.date)],
           action.date,
           action.energy,
           data.proposals.find((p) => p.date === action.date),
@@ -573,7 +655,7 @@ export function applyAction(
       if (p.date < today) fail('지난 날짜의 제안은 승인할 수 없습니다.');
       const item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목을 찾을 수 없습니다.');
       const target = data.tasks.find(t=>t.id===item.taskId) ?? item.draftTask;
-      if(item.state!=='approved' && target && !goalAllowsWork(data,target.projectId)) fail('보류하거나 달성한 목표의 작업입니다. 목표 상태를 먼저 확인해 주세요.');
+      if(item.state!=='approved' && target && (!goalAllowsWork(data,target.projectId)||!allocationAllowsWork(data,target.projectId,p.date))) fail('보류하거나 달성한 목표의 작업입니다. 목표 상태를 먼저 확인해 주세요.');
       if (item.draftTask && !data.tasks.some((t) => t.id === item.taskId)) {
         data.tasks.push({ ...item.draftTask });
       }
@@ -582,7 +664,7 @@ export function applyAction(
       ).length;
       if (item.state !== 'approved' && count >= data.preferences.focusLimit)
         fail('이미 지정한 핵심 결과물이 있습니다. 먼저 계획을 조정해 주세요.');
-      if (item.state !== 'approved' && careEvents(data,p.date).some(e => overlaps(e,item))) fail('등록한 돌봄·학습 시간과 겹칩니다. 제안을 다시 만들거나 루틴 시간을 조정해 주세요.');
+      if (item.state !== 'approved' && [...careEvents(data,p.date),...protectedEvents(data,p.date)].some(e => overlaps(e,item))) fail('등록한 돌봄·학습 시간과 겹칩니다. 제안을 다시 만들거나 루틴 시간을 조정해 주세요.');
       const out = approveProposalItem(p, action.itemId, data.tasks, data.events);
       if (out.error) fail(out.error);
       saveProposal(out.proposal);

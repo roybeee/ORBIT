@@ -1,3 +1,4 @@
+import {planningEvents} from './allocation-policy.ts';
 import {
   withDefaults,
   DEFAULT_PREFERENCES,
@@ -70,6 +71,7 @@ export const calibrationFactor=(tasks:Task[],task:Task,date:string)=>calibration
 export const calibrate = (duration: number, factor: number) =>
   Math.min(480, Math.max(5, Math.round((duration * factor) / 5) * 5));
 export interface PlannerOptions {
+  projectPriority?: Record<string,number>;
   dominoProjectId?: string;
   calibration?: (task: Task) => number;
   // Strategic ranking from the one-page brief: only these tasks, in this order.
@@ -120,42 +122,12 @@ export function generateProposal(
   const reservations: CalendarEvent[] = events
     .filter((e) => !reserved.some((r) => r.taskId === e.taskId && e.date === date))
     .concat(reserved);
-  // GoTEM: fill meals and travel before anything else. Lunch and meeting travel become busy time.
-  const synthetic: CalendarEvent[] = [];
-  if (prefs.rhythm.lunchEnd > prefs.rhythm.lunchStart)
-    synthetic.push({
-      id: 'lunch',
-      title: '점심',
-      date,
-      start: prefs.rhythm.lunchStart,
-      end: prefs.rhythm.lunchEnd,
-      kind: 'break',
-    });
-  if (prefs.travelMinutes > 0)
-    for (const e of reservations.filter((e) => e.date === date && e.kind === 'meeting'))
-      synthetic.push(
-        {
-          id: `travel-before:${e.id}`,
-          title: '이동',
-          date,
-          start: Math.max(0, e.start - prefs.travelMinutes),
-          end: e.start,
-          kind: 'break',
-        },
-        {
-          id: `travel-after:${e.id}`,
-          title: '이동',
-          date,
-          start: e.end,
-          end: Math.min(1440, e.end + prefs.travelMinutes),
-          kind: 'break',
-        },
-      );
+  const calendar=planningEvents(reservations,date,prefs);
   const workday = new Date(date + 'T12:00:00Z').getUTCDay();
   const windows: Window[] =
     preferences && !preferences.workDays.includes(workday)
       ? []
-      : availableWindows([...reservations, ...synthetic], date, workStart, workEnd);
+      : availableWindows(calendar, date, workStart, workEnd);
   const free = windows.reduce((sum, w) => sum + w.end - w.start, 0);
   const budget = Math.floor(
     free *
@@ -183,6 +155,7 @@ export function generateProposal(
       !events.some((e) => e.date === date && e.taskId === t.id),
   );
   const score = (t: Task) =>
+    (options.projectPriority?.[t.projectId]??0) +
     t.impact * 10 +
     (t.due <= date ? 30 : 0) +
     (t.focus ? 15 : 0) +

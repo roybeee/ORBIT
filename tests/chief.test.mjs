@@ -85,7 +85,8 @@ test('check-ins use revision protection and cannot resolve on a stale write',asy
 });
 test('overlapping meetings are counted once and expired/finished goals do not reserve care',()=>{
  const data=fixture({events:[{id:'a',title:'a',date:today,start:540,end:600,kind:'meeting'},{id:'b',title:'b',date:today,start:570,end:630,kind:'meeting'}]});
- assert.equal(chiefOfStaff(data,now).capacity,Math.round((540-90)*.8));
+ // Meeting union (90m) and the same lunch reservation (60m) as the planner.
+ assert.equal(chiefOfStaff(data,now).capacity,Math.round((540-90-60)*.8));
  data.careRoutines=[{...routine,goalId:'g'}];data.goals=[{...goal,status:'achieved'}];assert.equal(careEvents(data,today).length,0);
 });
 test('remaining capacity uses local time, workdays and excludes already scheduled demand',()=>{

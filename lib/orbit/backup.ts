@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {weeklyAllocationSchema,metricSchema,observationSchema,signalFollowupSchema,meetingRecordSchema} from './phase3-schema.ts';
 import {eventSchema,projectSchema,taskSchema,noteSchema,goalSchema,preferencesSchema,improvementSchema,habitSchema,riskSchema,decisionSchema,delegationSchema,reviewDetailSchema,dateSchema} from './validation.ts';
 import {validateLinks,DomainError} from './reducer.ts';
 import {readWorkspace,RevisionConflict,type Database} from '../../db/repository.ts';
@@ -7,6 +8,10 @@ const historyDecision=z.object({at:z.string().datetime(),choice:z.string().max(2
 const historyDelegation=z.object({at:z.string().datetime(),status:delegationSchema.shape.status,update:z.string().max(2000),evidence:z.string().max(2000),assignee:z.string().max(100),due:dateSchema,checkDate:dateSchema}).strict();
 const noteStored=noteSchema.extend({revision:z.number().int().positive().optional(),bodyStored:z.boolean().optional(),wikiMentionIds:z.array(z.string()).max(300).optional()});
 export const contentSchema=z.object({
+ weeklyAllocations:z.array(weeklyAllocationSchema).max(12).default([]),
+ operatingMetrics:z.array(metricSchema.extend({updatedAt:z.string().datetime()})).max(60).default([]),
+ metricObservations:z.array(observationSchema.extend({recordedAt:z.string().datetime()})).max(600).default([]),
+ signalFollowups:z.array(signalFollowupSchema).max(200).default([]),meetingRecords:z.array(meetingRecordSchema).max(100).default([]),
  projects:z.array(projectSchema).max(500),tasks:z.array(taskSchema).max(3000),notes:z.array(noteStored).max(3000),
  goals:z.array(goalSchema).max(12).default([]),improvements:z.array(improvementSchema).max(40).default([]),habits:z.array(habitSchema).max(3).default([]),risks:z.array(riskSchema).max(10).default([]),
  decisions:z.array(decisionSchema.extend({createdAt:z.string().datetime(),updatedAt:z.string().datetime(),history:z.array(historyDecision).max(30)})).max(100).default([]),
@@ -15,9 +20,9 @@ export const contentSchema=z.object({
  reviews:z.array(z.object({id:z.string().max(100),date:dateSchema,win:z.string().max(6000),block:z.string().max(6000),energy:z.enum(['low','normal','high']),completedIds:z.array(z.string()).max(3000),updatedAt:z.string(),stats:z.object({planned:z.number(),done:z.number(),partial:z.number(),skipped:z.number(),laserMinutes:z.number(),executionRate:z.number()}).optional(),habitChecks:z.array(z.string()).optional(),highlight:z.string().optional(),hasDetail:z.boolean().optional()}).strict()).max(5000).default([]),
  preferences:preferencesSchema,
 });
-export const categories=['projects','tasks','notes','goals','improvements','habits','risks','decisions','delegations','events','reviews'] as const;
+export const categories=['projects','tasks','notes','goals','improvements','habits','risks','decisions','delegations','events','reviews','weeklyAllocations','operatingMetrics','metricObservations','signalFollowups','meetingRecords'] as const;
 export type Category=typeof categories[number];
-export const categoryLabels:Record<Category,string>={projects:'프로젝트',tasks:'할 일',notes:'위키·회의록·지식',goals:'목표',improvements:'개선 규칙',habits:'습관',risks:'리스크',decisions:'의사결정',delegations:'위임 기록',events:'내부 일정',reviews:'회고'};
+export const categoryLabels:Record<Category,string>={projects:'프로젝트',tasks:'할 일',notes:'위키·회의록·지식',goals:'목표',improvements:'개선 규칙',habits:'습관',risks:'리스크',decisions:'의사결정',delegations:'위임 기록',events:'내부 일정',reviews:'회고',weeklyAllocations:'주간 배분 · 재승인 필요',operatingMetrics:'운영 지표',metricObservations:'확인한 운영 수치',signalFollowups:'운영 후속 확인',meetingRecords:'회의 결과 연결'};
 export const payloadSchema=z.object({format:z.literal('orbit-backup/v2'),capturedAt:z.string().datetime(),data:contentSchema,noteHistory:z.array(noteStored).max(10000),reviewDetails:z.array(reviewDetailSchema).max(5000)}).passthrough();
 export const selectionSchema=z.array(z.object({category:z.enum(categories),id:z.string().min(1).max(100)}).strict()).max(3000);
 export async function digest(value:unknown){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))].map(n=>n.toString(16).padStart(2,'0')).join('')}
@@ -37,6 +42,11 @@ export function previewRestore(current:WorkspaceData,raw:unknown,selection:z.inf
   if(category==='goals'&&'parentId'in record&&record.parentId)add('goals',record.parentId);
   if('taskId'in record&&record.taskId)add('tasks',record.taskId);
   if('noteId'in record&&record.noteId)add('notes',record.noteId);
+  if('metricId'in record)add('operatingMetrics',record.metricId);
+  if('supersedesId'in record&&record.supersedesId)add('metricObservations',record.supersedesId);
+  if(category==='weeklyAllocations')for(const a of (record as NonNullable<WorkspaceData['weeklyAllocations']>[number]).allocations)add('projects',a.projectId);
+  if(category==='signalFollowups'){const r=record as NonNullable<WorkspaceData['signalFollowups']>[number];add('metricObservations',r.observationId);add('metricObservations',r.baselineId);if(r.delegationId)add('delegations',r.delegationId);}
+  if(category==='meetingRecords'){const r=record as NonNullable<WorkspaceData['meetingRecords']>[number];for(const id of r.taskIds)add('tasks',id);for(const id of r.delegationIds)add('delegations',id);if(r.decisionId)add('decisions',r.decisionId);}
   if(category==='tasks')for(const id of (record as any).dependsOn??[])add('tasks',id);
   if(category==='notes'){const n=record as Note;for(const id of [n.wiki?.parentId,...n.wiki?.links??[]].filter(Boolean) as string[])if(source.notes.some(n=>n.id===id))add('notes',id);}
   (next[category]??=[] as never).push(record as never);
@@ -44,6 +54,7 @@ export function previewRestore(current:WorkspaceData,raw:unknown,selection:z.inf
  for(const s of selection)add(s.category,s.id);
  // Imported tasks never resume an old timer or carry automatic plan holds.
  next.tasks=next.tasks.map(t=>current.tasks.some(o=>o.id===t.id)?t:{...t,startedAt:undefined,focus:false,focusDate:undefined,laserDate:undefined,planHoldProposalId:undefined,planHoldUntil:undefined,planHoldReason:undefined});
+ next.weeklyAllocations=next.weeklyAllocations?.map(p=>current.weeklyAllocations?.some(o=>o.id===p.id)?p:{...p,active:false});
  validateLinks(next);
  const inserted=[...chosen.values()].filter(s=>!(current[s.category]??[]).some(r=>r.id===s.id));
  const history=parsed.data.noteHistory;

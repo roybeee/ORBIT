@@ -1,6 +1,7 @@
 import type { DailyBrief } from './brief/schema';
+import type {WeeklyAllocation,OperatingMetric,MetricObservation,SignalFollowup,MeetingRecord} from './phase3-model';
 export type View =
-  'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).
@@ -249,6 +250,11 @@ export interface DelegationRecord {
   history:{at:string; status:DelegationRecord['status']; update:string; evidence:string; assignee:string; due:string; checkDate:string}[];
 }
 export interface WorkspaceData {
+  weeklyAllocations?:WeeklyAllocation[];
+  operatingMetrics?:OperatingMetric[];
+  metricObservations?:MetricObservation[];
+  signalFollowups?:SignalFollowup[];
+  meetingRecords?:MeetingRecord[];
   decisions?:DecisionRecord[];
   delegations?:DelegationRecord[];
   memories?: PersonalMemory[];

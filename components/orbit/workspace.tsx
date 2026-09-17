@@ -3,6 +3,8 @@ import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react'
 import {FollowupPanel} from './phase2/followup';
 import {LearningPanel} from './phase2/learning';
 import {BackupPanel} from './phase2/backup';
+import {PortfolioPanel,SignalsPanel,MeetingsPanel} from './phase3/executive';
+import {protectedEvents} from '@/lib/orbit/allocation-policy';
 import { SoundStation } from './sound/station';
 import { DailyBriefPanel } from './brief/daily-brief';
 import { ShareIntake } from './attachments/share-intake';
@@ -132,6 +134,9 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'aside', label: 'ASIDE 실행', icon: Network },
   { id: 'automation', label: '서버 자동화', icon: Clock3 },
   { id: 'goals', label: '나의 목표', icon: Target },
+  { id: 'portfolio', label: '사업별 시간 배분', icon: Layers },
+  { id: 'signals', label: '운영 신호', icon: AlertCircle },
+  { id: 'meetings', label: '회의 브리핑', icon: MessagesSquare },
   { id: 'today', label: '오늘', icon: Sun },
   { id: 'calendar', label: '일정', icon: CalendarDays },
   { id: 'tasks', label: '할 일', icon: CheckCheck },
@@ -147,6 +152,9 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  portfolio:{title:'사업별 시간 배분',subtitle:'이번 주 집중할 사업과 지켜야 할 시간을 함께 정합니다.',eyebrow:'WEEKLY ALLOCATION'},
+  signals:{title:'운영 신호',subtitle:'확인한 수치의 변화에서 필요한 판단과 후속 행동을 찾습니다.',eyebrow:'OPERATING SIGNALS'},
+  meetings:{title:'회의 브리핑',subtitle:'이전 결정과 약속을 준비하고, 회의에서 바뀐 것을 실행으로 연결합니다.',eyebrow:'MEETING BRIEF'},
   followup:{title:'결정·위임 추적',subtitle:'판단의 근거와 맡긴 결과를 끝까지 확인합니다.',eyebrow:'FOLLOW THROUGH'},
   learning:{title:'계획 개선',subtitle:'실제 기록으로 예상 시간을 보정하고 다음 계획을 조정합니다.',eyebrow:'LEARNING'},
   backup:{title:'백업·복구',subtitle:'기록을 보관하고 필요한 항목을 확인한 뒤 복원합니다.',eyebrow:'MY RECORDS'},
@@ -847,10 +855,10 @@ function WorkspaceContent({
   const miniWeek = weekDates(TODAY);
   const reviewCompleted = tasks.filter((t) => t.status === 'done' && t.completedOn === reviewDate);
   const reviewFocus = tasks.filter((t) => focusIds(data, reviewDate).has(t.id));
-  const selectedEvents = events.filter((e) => e.date === calendarDate).sort((a, b) => a.start - b.start);
+  const selectedEvents = [...events,...protectedEvents(data,calendarDate)].filter((e) => e.date === calendarDate).sort((a, b) => a.start - b.start);
   const todayRemaining = focus.filter((t) => t.status !== 'done').reduce((s, t) => s + t.duration, 0);
   const renderTimeline = (date: string) => {
-    const list = events.filter((e) => e.date === date).sort((a, b) => a.start - b.start);
+    const list = [...events,...protectedEvents(data,date)].filter((e) => e.date === date).sort((a, b) => a.start - b.start);
     return list.length ? (
       list.map((e) => (
         <div className="timeline-item" key={e.id}>
@@ -868,7 +876,7 @@ function WorkspaceContent({
                       : ''
             }`}
             onClick={() =>
-              e.taskId ? setDetail({ kind: 'task', id: e.taskId }) : setDetail({ kind: 'event', id: e.id })
+              e.id.startsWith('protected:') ? navigate('portfolio') : e.taskId ? setDetail({ kind: 'task', id: e.taskId }) : setDetail({ kind: 'event', id: e.id })
             }
           >
             <strong>{e.title}</strong>
@@ -1159,6 +1167,7 @@ function WorkspaceContent({
           {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})}/>}
           {loaded && view==='learning'&&<LearningPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={id=>setDetail({kind:'task',id})}/>}
           {loaded && view==='backup'&&<BackupPanel snapshot={snapshot} demo={demo} busy={busy||hasPending} onRefresh={refresh}/>}
+          {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})} onNavigate={navigate}/>})()}
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}

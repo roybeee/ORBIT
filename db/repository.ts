@@ -257,7 +257,7 @@ export async function writeCommand(
   const timestamp = now.toISOString(),
     revision = current.revision + 1;
   const changedNotes = action.type === 'note.upsert' ? next.notes.filter(n=>n.id===action.note.id) :
-    action.type === 'wiki.import' ? next.notes.filter(n=>!current.data.notes.some(old=>old.id===n.id)) : [];
+    action.type === 'wiki.import' || action.type === 'meeting.finish' ? next.notes.filter(n=>!current.data.notes.some(old=>old.id===n.id)) : [];
   const legacy = current.data.notes
     .filter((n) => !n.bodyStored)
     .map((n) => ({ ...n, revision: n.revision ?? 1, bodyStored: false }));

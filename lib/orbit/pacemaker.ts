@@ -1,3 +1,4 @@
+import {allocationAllowsWork} from './allocation-policy.ts';
 import type { WorkspaceData, Task, PersonalMemory } from './model.ts';
 import { goalAllowsWork, goalPace } from './chief.ts';
 import { addDays } from './dates.ts';
@@ -5,6 +6,7 @@ import { addDays } from './dates.ts';
 export type QuestState = 'ready' | 'doing' | 'blocked' | 'waiting' | 'held' | 'paused' | 'done';
 export function questReadiness(data:WorkspaceData,task:Task,date:string):{state:QuestState;reason:string;canStart:boolean} {
   if(task.status==='done')return {state:'done',reason:task.completedOn?`${task.completedOn} 완료`:'완료 기록',canStart:false};
+  if(!allocationAllowsWork(data,task.projectId,date))return {state:'paused',reason:'승인한 주간 배분에서 이번 주 보류한 사업입니다.',canStart:false};
   if(!goalAllowsWork(data,task.projectId))return {state:'paused',reason:'연결 목표가 보류 또는 달성 상태입니다.',canStart:false};
   if(task.planHoldUntil&&task.planHoldUntil>date)return {state:'held',reason:`${task.planHoldUntil}까지 보류 · ${task.planHoldReason??'다음 검토를 기다립니다.'}`,canStart:false};
   const blockers=(task.dependsOn??[]).filter(id=>data.tasks.find(t=>t.id===id)?.status!=='done');
