@@ -4,6 +4,7 @@ export interface AsideOperation {
   destination: string; target: string; content: string; amountKrw?: number;
 }
 export interface AsideJob {
+  parentOrderId?:string;
   id: string; title: string; instruction: string; workflow: string; projectId: string;
   status: AsideStatus; bridgeId: string; runId: string; account: string; seq: number;
   progress: string; result: string; createdAt: string; updatedAt: string;
