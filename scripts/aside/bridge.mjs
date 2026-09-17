@@ -13,11 +13,13 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_RESULT=30000;
 function atomic(file,value){
   const tmp=file+'.tmp';writeFileSync(tmp,JSON.stringify(value),{mode:0o600});
-  const fd=openSync(tmp,'r');try{fsyncSync(fd)}finally{closeSync(fd)}renameSync(tmp,file);
+  // Windows FlushFileBuffers requires a writable handle, including after writeFileSync.
+  const fd=openSync(tmp,'r+');try{fsyncSync(fd)}finally{closeSync(fd)}renameSync(tmp,file);
   if(process.platform!=='win32'){const dir=openSync(dirname(file),'r');try{fsyncSync(dir)}finally{closeSync(dir)}}
 }
 function clean(text,max=1000){return String(text??'').replace(/\x1b\[[0-9;]*m/g,'').slice(0,max)}
 function fail(message,status=400){return Object.assign(new Error(message),{status})}
+export function validAccountId(value){return typeof value==='string'&&value.length>0&&value.length<=150&&!/[^A-Za-z0-9_-]/.test(value)}
 export function parseEvents(text){
   let result='',activity='';
   for(const line of text.split('\n')){try{const event=JSON.parse(line);
@@ -160,11 +162,16 @@ async function main(){
   if(Number(process.versions.node.split('.')[0])<22)throw Error('Node.js 22 이상이 필요합니다. https://nodejs.org/ 에서 LTS를 설치해 주세요.');
   const directory=join(homedir(),'.orbit-aside'),configFile=join(directory,'config.json');mkdirSync(directory,{recursive:true,mode:0o700});
   const cli=resolveCli();let account=existsSync(configFile)?JSON.parse(readFileSync(configFile,'utf8')).account:'';
-  if(!account||process.argv.includes('--setup')){
+  if(!validAccountId(account)||process.argv.includes('--setup')){
     console.log('\nASIDE 계정 목록 (공식 CLI):');const listed=spawnSync(cli.command,[...cli.prefix,'account','list'],{stdio:'inherit',timeout:15000,windowsHide:true});
     if(listed.error||listed.status!==0)throw Error('ASIDE를 열고 로그인한 뒤 CLI 설치 상태를 확인해 주세요.');
-    const input=createInterface({input:process.stdin,output:process.stdout});try{account=(await input.question('\n위 목록에서 사용할 account ID를 입력하세요: ')).trim()}finally{input.close()}
-    if(!account||account.length>150)throw Error('올바른 account ID가 필요합니다.');atomic(configFile,{account});
+    const input=createInterface({input:process.stdin,output:process.stdout});try{
+      do{
+        account=(await input.question('\n목록 왼쪽의 account ID를 입력하세요 (예: u0, 이메일 아님): ')).trim();
+        if(!validAccountId(account))console.log('이메일 대신 로그인된 계정 왼쪽의 ID를 입력해 주세요. 예: u0');
+      }while(!validAccountId(account));
+    }finally{input.close()}
+    atomic(configFile,{account});
   }
   const bridge=await createBridge({directory,cli,account});
   console.log('\n'+bridge.diagnostic+'\n계정: '+account+'\n이 창과 ORBIT 탭을 열어 두세요. Ctrl+C로 종료합니다.');

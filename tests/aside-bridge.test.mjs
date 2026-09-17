@@ -5,7 +5,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {createBridge,parseEvents,readEvents,ORIGIN} from '../scripts/aside/bridge.mjs';
+import {createBridge,parseEvents,readEvents,validAccountId,ORIGIN} from '../scripts/aside/bridge.mjs';
+test('account setup rejects email addresses and accepts CLI account identifiers',()=>{
+ assert.equal(validAccountId('u0'),true);assert.equal(validAccountId('paid-account'),true);
+ for(const value of ['owner@example.com','u0 signed in','','u0\n',null])assert.equal(validAccountId(value),false);
+});
 const cli={command:process.execPath,prefix:[fileURLToPath(new URL('./fixtures/aside-cli.mjs',import.meta.url))]};
 async function setup(){const directory=mkdtempSync(join(tmpdir(),'orbit-aside-'));const bridge=await createBridge({directory,cli,account:'paid-account',port:0});return {directory,bridge}}
 async function req(bridge,path,input,headers={}){return fetch(`http://127.0.0.1:${bridge.port}`+path,{method:input?'POST':'GET',headers:{Origin:ORIGIN,Authorization:`Bearer ${bridge.token}`,...(input?{'Content-Type':'application/json'}:{}),...headers},body:input?JSON.stringify(input):undefined})}
