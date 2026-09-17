@@ -1,0 +1,106 @@
+From 2259129457e1bd5315e819ca46386cec7cbdb748 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Thu, 17 Sep 2026 01:01:51 -0400
+Subject: [PATCH] Expose scoped read-only ODA settlement metrics for Orbit
+
+---
+ apps/api/src/oda-automation.test.ts | 33 ++++++++++++++++++++++++++++-
+ apps/api/src/oda-automation.ts      | 23 +++++++++++++++++---
+ 2 files changed, 52 insertions(+), 4 deletions(-)
+
+diff --git a/apps/api/src/oda-automation.test.ts b/apps/api/src/oda-automation.test.ts
+index cfabb42..35b6b71 100644
+--- a/apps/api/src/oda-automation.test.ts
++++ b/apps/api/src/oda-automation.test.ts
+@@ -1,6 +1,6 @@
+ import { randomUUID } from 'node:crypto';
+ import { createDemoRepository, DEMO_IDS } from '@ofd/db';
+-import { createOdaMonth, type Actor, type OdaMonth } from '@ofd/domain';
++import { calculateOdaMonth, createOdaMonth, type Actor, type OdaMonth } from '@ofd/domain';
+ import { afterEach, describe, expect, it } from 'vitest';
+ import type { FastifyInstance } from 'fastify';
+ import { buildApp } from './app.ts';
+@@ -30,6 +30,37 @@ async function approve(app: FastifyInstance, batch: AutomationBatch, commit = tr
+ afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
+ 
+ describe('ODA scoped automation posting', () => {
++  it('reads scoped metrics without creating missing months or exposing restricted kinds', async () => {
++    const { app, repository, headers } = await setup();
++    const url = `${machine}/metrics?storeId=${storeId}&month=${month}`;
++    expect((await app.inject({ url })).statusCode).toBe(401);
++    expect((await app.inject({ url, headers })).json()).toMatchObject({ status: 'missing', values: null });
++    expect(await repository.get('oda_month', `${storeId}:${month}`)).toBeUndefined();
++    expect((await app.inject({ url: `${machine}/metrics?storeId=other&month=${month}`, headers })).statusCode).toBe(403);
++    const batch = (await preview(app, headers)).json(); await approve(app, batch);
++    const draft = await app.inject({ url, headers });
++    expect(draft.statusCode, draft.body).toBe(200); expect(draft.json()).toMatchObject({ status: 'draft', quality: { finalized: false }, period: { from: '2026-08-01', through: '2026-08-31' } });
++    const limited = await app.inject({ method: 'POST', url: `${ui}/tokens`, headers: owner, payload: { name: 'Read revenue', storeIds: [storeId], kinds: ['revenue'] } });
++    const scoped = await app.inject({ url, headers: { authorization: `Bearer ${limited.json().token}` } });
++    expect(scoped.json().values).toHaveProperty('revenue'); expect(scoped.json().values).not.toHaveProperty('expenses'); expect(scoped.json().values).not.toHaveProperty('profit');
++  });
++  it('returns the immutable finalized totals instead of recalculating current lines', async () => {
++    const { app, repository, headers } = await setup();
++    const record = { ...createOdaMonth(storeId, month), status: 'paid' as const };
++    const frozen = { ...calculateOdaMonth(record), revenue: 1234567, expenses: 234567, profit: 1000000 };
++    record.history.push({ id: randomUUID(), version: record.version, reason: '월 정산 확정', summary: frozen, at: new Date().toISOString(), actorId: 'test', actorName: 'test', lines: [], sources: [], policy: record.policy });
++    await repository.commit({ changes: [{ type: 'oda_month', id: record.id, storeId, expectedVersion: null, value: record }], audits: [] });
++    const r = await app.inject({ url: `${machine}/metrics?storeId=${storeId}&month=${month}`, headers });
++    expect(r.statusCode, r.body).toBe(200); expect(r.json()).toMatchObject({ status: 'paid', amountBasis: 'frozen', values: { revenue: 1234567, expenses: 234567, profit: 1000000 }, quality: { finalized: true } });
++    expect(r.json()).not.toHaveProperty('history');
++  });
++  it('refuses closed metrics when the finalization snapshot is missing', async () => {
++    const { app, repository, headers } = await setup();
++    const record = { ...createOdaMonth(storeId, month), status: 'finalized' as const };
++    await repository.commit({ changes: [{ type: 'oda_month', id: record.id, storeId, expectedVersion: null, value: record }], audits: [] });
++    const r = await app.inject({ url: `${machine}/metrics?storeId=${storeId}&month=${month}`, headers });
++    expect(r.statusCode, r.body).toBe(409); expect(r.json().error.code).toBe('ODA_METRICS_SNAPSHOT');
++  });
+   it('keeps only a hash at rest and rejects missing, invalid and browser bearer tokens', async () => {
+     const { app, repository, headers, token, tokenId } = await setup();
+     const stored = await repository.get<IntegrationToken>('oda_automation_token', tokenId);
+diff --git a/apps/api/src/oda-automation.ts b/apps/api/src/oda-automation.ts
+index fa79f73..0644114 100644
+--- a/apps/api/src/oda-automation.ts
++++ b/apps/api/src/oda-automation.ts
+@@ -1,10 +1,10 @@
+ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+ import type { AggregateChange, StateRepository } from '@ofd/db';
+-import { DomainError, odaLineExternalKey, type Actor, type OdaLine, type OdaMonth, type Store } from '@ofd/domain';
++import { createOdaMonth, DomainError, odaLineExternalKey, type Actor, type OdaLine, type OdaMonth, type Store } from '@ofd/domain';
+ import type { FastifyInstance, FastifyRequest } from 'fastify';
+ import { z } from 'zod';
+ import { audit } from './events.ts';
+-import { loadOdaMonthForAutomation } from './oda-routes.ts';
++import { monthSummary, loadOdaMonthForAutomation } from './oda-routes.ts';
+ 
+ declare module 'fastify' {
+   interface FastifyContextConfig { odaMachineIntegration?: boolean }
+@@ -221,7 +221,24 @@ export function registerOdaAutomation(app: FastifyInstance, repository: StateRep
+   app.get(`${machine}/capabilities`, odaIntegrationRouteOptions, async request => {
+     const { token } = await requireOdaIntegration(request, repository);
+     const stores = await Promise.all(token.storeIds.map(async id => { const store = await repository.get<Store>('store', id); return store?.active ? { id, name: store.name } : null; }));
+-    return { version: 1, storeIds: token.storeIds, stores: stores.filter(Boolean), kinds: token.kinds, routines: token.routines, batchPreview: true, approvedCommit: true, currency: 'KRW', maxLines: 200, expiresAt: token.expiresAt };
++    return { version: 1, storeIds: token.storeIds, stores: stores.filter(Boolean), kinds: token.kinds, routines: token.routines, metrics: true, batchPreview: true, approvedCommit: true, currency: 'KRW', maxLines: 200, expiresAt: token.expiresAt };
++  });
++  app.get(`${machine}/metrics`, odaIntegrationRouteOptions, async request => {
++    const { token, actor } = await requireOdaIntegration(request, repository);
++    const { storeId, month } = z.object({ storeId: safeId, month: z.string().regex(/^(19|[2-9]\d)\d{2}-(0[1-9]|1[0-2])$/) }).strict().parse(request.query);
++    if (!token.storeIds.includes(storeId)) throw new DomainError('ODA_TOKEN_SCOPE', '이 매장의 권한이 없습니다.', 403);
++    await requireOdaAutomationStore(repository, actor, storeId);
++    const record = (await repository.listOdaOverviewMonths(month, [storeId])).find(r => r.storeId === storeId && r.month === month);
++    if (!record || (record.status === 'draft' && !record.lines.length && !record.sources.length)) return { version: 1, storeId, month, currency: 'KRW', status: 'missing', values: null };
++    const closed = record.status !== 'draft';
++    const summary = closed ? record.frozenSummary : monthSummary({ ...createOdaMonth(storeId, month), ...record });
++    if (!summary) throw new DomainError('ODA_METRICS_SNAPSHOT', '확정 당시 보관본이 없어 수치를 제공할 수 없습니다.', 409);
++    const revenue = token.kinds.includes('revenue'), expense = token.kinds.includes('expense');
++    const through = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
++    return { version: 1, storeId, month, currency: 'KRW', recordVersion: record.version, status: record.status, updatedAt: record.updatedAt,
++      period: { from: `${month}-01`, through }, amountBasis: closed ? 'frozen' : record.policy.vatBasis,
++      values: { ...(revenue ? { revenue: summary.revenue } : {}), ...(expense ? { expenses: summary.expenses } : {}), ...(revenue && expense ? { profit: summary.profit } : {}) },
++      quality: { finalized: closed, blockerCodes: closed ? [] : [...new Set(summary.blockers.map(b => b.code))], unreviewedCount: summary.unreviewedCount, duplicateCount: summary.duplicateCount } };
+   });
+   app.get(`${machine}/batches`, odaIntegrationRouteOptions, async request => {
+     const { token } = await requireOdaIntegration(request, repository);
+-- 
+2.51.1
+
