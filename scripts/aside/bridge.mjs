@@ -44,7 +44,7 @@ import {readSync as readFileChunk} from 'node:fs';
 export async function createBridge({directory,cli,account,port=43127,origin=ORIGIN,timeoutMs=30*60*1000,probe=true}){
   mkdirSync(directory,{recursive:true,mode:0o700});
   const token=randomBytes(32).toString('hex'),jobs=new Map();
-  let bridgeId='',ready=false,diagnostic='연결 프로그램을 준비하고 있습니다.',active=null,initialized=false;
+  let bridgeId='',ready=false,diagnostic='연결 프로그램을 준비하고 있습니다.',active=null,initialized=false,logDump=false;
   const headers={'Cache-Control':'no-store','Content-Type':'application/json; charset=utf-8','X-Content-Type-Options':'nosniff','Vary':'Origin'};
   const server=http.createServer(async(req,res)=>{
     const send=(value,status=200)=>{res.writeHead(status,headers);res.end(JSON.stringify(value))};
@@ -78,18 +78,27 @@ export async function createBridge({directory,cli,account,port=43127,origin=ORIG
         const old=jobs.get(input.runId);
         if(old){if(old.fingerprint&&old.fingerprint!==fingerprint)throw fail('같은 실행 ID의 내용이 다릅니다.',409);return send(publicRun(old));}
         if(active||[...jobs.values()].some(j=>['running','needs_attention'].includes(j.status)))throw fail('이전 ASIDE 실행을 먼저 확인해 주세요.',409);
-        const job={runId:input.runId,fingerprint,status:'running',seq:1,progress:'ASIDE에 업무를 전달했습니다.',result:'',createdAt:new Date().toISOString()};
+        const job={runId:input.runId,fingerprint,status:'running',seq:1,progress:'ASIDE에 업무를 전달했습니다.',result:'',outputMode:logDump?'events':'stdout',createdAt:new Date().toISOString()};
         // Durable intent before spawn; restart never silently replays this record.
         save(job);jobs.set(job.runId,job);
         const log=join(directory,job.runId+'.jsonl');
-        const child=spawn(cli.command,[...cli.prefix,'exec','--account',account,'--log-dump',log,input.prompt],{shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});
-        active={runId:job.runId,child,timer:null};let stderr='';
-        child.stdout.on('data',()=>{});child.stderr.on('data',data=>{stderr=(stderr+data.toString()).slice(-2000)});
+        const child=spawn(cli.command,[...cli.prefix,'exec','--account',account,...(logDump?['--log-dump',log]:[]),input.prompt],{shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});
+        active={runId:job.runId,child,timer:null};let stderr='',stdout='';
+        child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+        child.stdout.on('data',data=>{
+          if(job.outputMode!=='stdout')return;
+          stdout=(stdout+data).slice(-(MAX_RESULT-100));
+          // Persist bounded output for recovery; stdout is not proof of session completion.
+          job.result='[CLI 출력 · ASIDE에서 실제 종료와 결과를 확인하세요]\n'+clean(stdout,MAX_RESULT);
+          try{save(job)}catch{stop(job,'CLI 출력을 저장하지 못했습니다. ASIDE에서 실행 상태를 확인해 주세요.')}
+        });
+        child.stderr.on('data',data=>{stderr=(stderr+data).slice(-2000)});
         const finish=(code,error)=>{
           if(active?.runId===job.runId){clearTimeout(active.timer);active=null;}
-          let events;try{events=readEvents(log)}catch{events={result:''};error='로컬 로그를 읽지 못했습니다. ASIDE 화면에서 결과를 확인해 주세요.';code=null}job.result=events.result;
-          if(job.status==='running')job.status=code===0&&job.result?'needs_review':'needs_attention';
+          if(job.outputMode==='events'){let events;try{events=readEvents(log)}catch{events={result:''};error='로컬 로그를 읽지 못했습니다. ASIDE 화면에서 결과를 확인해 주세요.';code=null}job.result=events.result;}
+          if(job.status==='running')job.status=job.outputMode==='events'&&code===0&&job.result?'needs_review':'needs_attention';
           job.progress=job.status==='needs_review'?'CLI 실행이 끝났습니다. 업무 결과를 검토해 주세요.':clean(error||`실행 상태 확인이 필요합니다 (종료 코드 ${code??'없음'}). ${stderr}`,1000);
+          if(job.outputMode==='stdout'&&code===0&&!error)job.progress='CLI 실행이 끝났습니다. ASIDE에서 실제 작업 종료와 결과를 확인한 뒤 종료 확인을 눌러 주세요.';
           job.seq++;save(job);
         };
         child.once('error',error=>finish(null,error.message));child.once('close',code=>{if(job.status==='running'||active?.runId===job.runId)finish(code)});
@@ -116,7 +125,7 @@ export async function createBridge({directory,cli,account,port=43127,origin=ORIG
   const save=job=>atomic(join(directory,job.runId+'.json'),job);
   const publicRun=job=>({runId:job.runId,status:job.status,seq:job.seq,progress:job.progress,result:job.result});
   const poll=async(job)=>{
-    if(job.status!=='running')return;
+    if(job.status!=='running'||job.outputMode==='stdout')return;
     const event=readEvents(join(directory,job.runId+'.jsonl'));
     if(event.activity&&event.activity!==job.progress){job.progress=event.activity;job.seq++;save(job)}
   };
@@ -132,12 +141,12 @@ export async function createBridge({directory,cli,account,port=43127,origin=ORIG
     if(!UUID.test(bridgeId))throw Error('로컬 연결 ID를 확인해 주세요.');atomic(identityFile,{bridgeId});
     for(const file of readdirSync(directory).filter(f=>UUID.test(f.slice(0,-5))&&f.endsWith('.json'))){
       const job=JSON.parse(readFileSync(join(directory,file),'utf8'));
-      if(job.status==='running'){job.status='needs_attention';job.progress='이전 연결이 중단되었습니다. ASIDE에서 실행 상태를 확인해 주세요.';try{job.result=readEvents(join(directory,job.runId+'.jsonl')).result}catch{/* diagnostic remains attention */}job.seq++;save(job)}jobs.set(job.runId,job);
+      if(job.status==='running'){job.status='needs_attention';job.progress='이전 연결이 중단되었습니다. ASIDE에서 실행 상태를 확인해 주세요.';try{if(job.outputMode!=='stdout')job.result=readEvents(join(directory,job.runId+'.jsonl')).result}catch{/* diagnostic remains attention */}job.seq++;save(job)}jobs.set(job.runId,job);
     }
     const help=probe?spawnSync(cli.command,[...cli.prefix,'exec','--help'],{encoding:'utf8',timeout:12000,windowsHide:true,maxBuffer:1024*1024}):{status:0,stdout:'--account --log-dump'};
-    const helpText=(help.stdout??'')+(help.stderr??'');ready=help.status===0&&helpText.includes('--log-dump')&&helpText.includes('--account');
-    diagnostic=ready?'ASIDE CLI 호환성 확인 완료':`현재 CLI에서 --account와 --log-dump를 확인하지 못했습니다. ASIDE를 업데이트하고 개발자 설정에서 CLI를 설치해 주세요. ${clean(help.error?.message??'',200)}`;
-    if(ready&&probe){const status=spawnSync(cli.command,[...cli.prefix,'account','status',account],{encoding:'utf8',timeout:12000,windowsHide:true,maxBuffer:1024*1024});if(status.status!==0){ready=false;diagnostic='선택한 ASIDE 계정을 확인하지 못했습니다. ASIDE에 로그인하고 SETUP-ACCOUNT.cmd에서 계정을 다시 선택해 주세요.'}}
+    const helpText=(help.stdout??'')+(help.stderr??'');logDump=helpText.includes('--log-dump');ready=help.status===0&&helpText.includes('--account');
+    diagnostic=ready?'ASIDE CLI 호환성 확인 완료':`현재 CLI에서 exec --account 지원을 확인하지 못했습니다. ASIDE를 업데이트하고 개발자 설정에서 CLI를 설치해 주세요. ${clean(help.error?.message??'',200)}`;
+    if(ready&&probe){const status=spawnSync(cli.command,[...cli.prefix,'account','list'],{encoding:'utf8',timeout:12000,windowsHide:true,maxBuffer:1024*1024});if(status.status!==0||!(status.stdout??'').split(/\r?\n/).some(line=>line.trim().replace(/^\*\s*/, '').split(/\s+/)[0]===account&&/signed in/i.test(line))){ready=false;diagnostic='선택한 ASIDE 계정을 확인하지 못했습니다. ASIDE에 로그인하고 SETUP-ACCOUNT.cmd에서 계정을 다시 선택해 주세요.'}}
     initialized=true;
   }catch(error){await new Promise(ok=>server.close(ok));throw error}
   return {server,token,bridgeId,port:server.address().port,ready,diagnostic,close:async()=>{if(active){const job=jobs.get(active.runId);stop(job,'연결 프로그램이 종료되었습니다. ASIDE에서 실행 상태를 확인해 주세요.')}await new Promise(ok=>server.close(ok))}};

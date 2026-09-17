@@ -38,7 +38,7 @@ export function AsidePanel({snapshot,perform,busy,demo,onAsk,visible}:{snapshot:
       if(!candidate){showPairing();throw Error('PC 연결 주소가 없습니다. START-WINDOWS.cmd 실행 후 검은 창에 표시된 전체 주소를 위 입력칸에 붙여넣고 연결 확인을 누르세요.');}
       const result=await local<AsideHealth>(candidate,'/health');if(result.protocol!==1)throw Error('연결 프로그램을 새 버전으로 다운로드해 주세요.');
       sessionStorage.setItem('orbit.aside.token',candidate);setToken(candidate);setKey('');setHealth(result);setError('');
-      toast.success(result.ready?'이 PC의 ASIDE를 확인했습니다.':result.diagnostic);
+      if(result.ready)toast.success('이 PC의 ASIDE를 확인했습니다.');else{setError(result.diagnostic);toast.error(result.diagnostic);}
     }catch(e){setError((e as Error).message);toast.error((e as Error).message)}finally{setWorking(false)}
   }
   useEffect(()=>{

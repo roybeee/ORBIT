@@ -74,3 +74,24 @@ test('event parser ignores tool output and malformed/incomplete JSON',()=>{
  const input=JSON.stringify({type:'message_end',message:{role:'toolResult',content:[{type:'text',text:'secret'}]}})+'\n{"type":';
  assert.equal(parseEvents(input).result,'');
 });
+
+test('modern CLI without log-dump runs, preserves output, and requires native completion confirmation',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'orbit-modern-'));
+ const modern={command:process.execPath,prefix:[fileURLToPath(new URL('./fixtures/aside-modern-cli.mjs',import.meta.url))]};
+ let bridge=await createBridge({directory,cli:modern,account:'paid-account',port:0});
+ try{
+  assert.equal(bridge.ready,true);
+  const runId=randomUUID(),input={runId,account:'paid-account',prompt:'Read and report this source.'};
+  assert.equal((await req(bridge,'/runs',input)).status,200);
+  const result=await until(async()=>{const r=await(await req(bridge,'/runs/'+runId)).json();return r.status==='needs_attention'?r:false});
+  assert.match(result.result,/세션 시작/);assert.match(result.result,/CLI 출력 수신/);
+  assert.match(result.progress,/실제 작업 종료/);
+  assert.equal((await req(bridge,'/runs',{...input,runId:randomUUID()})).status,409);
+  await bridge.close();bridge=await createBridge({directory,cli:modern,account:'paid-account',port:0});
+  assert.equal((await(await req(bridge,'/runs',input)).json()).result,result.result);
+  await req(bridge,'/acknowledge',{runId,confirmed:true});
+  const failedId=randomUUID();await req(bridge,'/runs',{...input,runId:failedId,prompt:'Please fail this execution.'});
+  const failed=await until(async()=>{const r=await(await req(bridge,'/runs/'+failedId)).json();return r.status==='needs_attention'?r:false});
+  assert.match(failed.progress,/종료 코드 1/);
+ }finally{await bridge.close();rmSync(directory,{recursive:true,force:true})}
+});
