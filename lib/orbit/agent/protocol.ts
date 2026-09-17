@@ -38,6 +38,7 @@ export const agentInput = z
   })
   .strict();
 const allowed = new Set([
+  'meeting.finish','experiment.start','contact.upsert','decision.upsert','delegation.upsert','metric.observe',
   'memory.upsert',
   'quest.plan',
   'chief.checkin',
@@ -81,7 +82,17 @@ export function parseAction(value: unknown) {
     throw new AgentError('한 카드에서 옮길 수 있는 할 일은 20개까지입니다.');
   return parsed.data;
 }
-export const contract = `Supported action JSON examples (use actual user values and IDs):
+export const contract = `Additional reviewable actions (never invent observations; required fields must be known or explicitly proposed):
+{"type":"experiment.start","experiment":{"id":"new-uuid","title":"Small pilot","projectId":"existing","noteId":"read-source-id","noteRevision":1,"hypothesis":"Testable assumption","action":"Small action","metric":"conversion","unit":"percent","baseline":10,"target":15,"direction":"up","from":"YYYY-MM-DD","through":"YYYY-MM-DD","minutes":30}}
+{"type":"metric.observe","observation":{"id":"new-uuid","metricId":"existing-metric-id","from":"YYYY-MM-DD","through":"YYYY-MM-DD","value":100,"source":"Exact retrieved source and period","noteId":"existing-note-id","noteRevision":1}}
+{"type":"meeting.finish","id":"new-uuid","projectId":"existing-project","event":{"id":"exact-event-id","title":"exact-title","date":"YYYY-MM-DD","start":600,"end":660},"summary":"Verified meeting outcome","changedConditions":"Changes relative to prior decisions","body":"Exact supplied or fully read transcript","decision":{"choice":"Actual decision","rationale":"Actual rationale","reviewDate":"YYYY-MM-DD"},"actions":[{"title":"Outcome","assignee":"Named person or empty string for user","due":"YYYY-MM-DD","minutes":30}]}
+meeting.finish requires an existing past/today meeting and exact title/date/time. Read the full saved source or use user supplied transcript; never invent attendees, choices, dates or commitments. Omit decision if none occurred. Missing required fields need a question. Approval atomically saves immutable minutes, decision and followups; it does not send messages.
+{"type":"decision.upsert","record":{"id":"new-id","title":"Decision","projectId":"existing","choice":"Confirmed choice","rationale":"Confirmed rationale","alternatives":"Considered alternatives","reviewDate":"YYYY-MM-DD","status":"active","outcome":"","noteId":"actual-source","noteRevision":1}}
+{"type":"delegation.upsert","record":{"id":"existing-id","title":"Request","projectId":"existing","assignee":"Actual person","deliverable":"Agreed result","due":"YYYY-MM-DD","checkDate":"YYYY-MM-DD","status":"delivered","update":"Actual reply","evidence":"Exact source and received result"},"expectedUpdatedAt":"exact current updatedAt"}
+When linking a received mail/reply to delegation, read its source and existing record first; retain every original field and linked IDs. delivered means received, not verified. Never mark verified from an unreviewed message or infer acceptance from silence.
+{"type":"contact.upsert","contact":{"id":"new-id","name":"Actual name","organization":"Reported organization","role":"Reported role","aliases":[],"projectIds":[],"noteIds":[],"decisionIds":[],"delegationIds":[],"eventIds":[],"memo":"User-approved relationship context"}}
+Use experiment.start only after reading the exact source. Unknown baselines/targets must be requested, not fabricated. Source facts and proposed success thresholds must be clearly distinguished.
+Supported action JSON examples (use actual user values and IDs):
 {"type":"google.event.deleteSeries","calendarId":"primary","eventId":"exact-native-google-id","expectedTitle":"exact event title","scope":"all"}
 Calendar recurring-series deletion uses google.event.deleteSeries through Orbit's own Google OAuth, NEVER agent.dispatch to a Hermes run without Google tools. Only propose this for explicit ENTIRE series deletion, never single occurrence or this-and-following requests. Use the user-provided native ID or read google_calendar_read to obtain it (use google.eventId metadata only when google.calendarId is primary; auxiliary calendars are read-only and must never use this deletion action). No inferred IDs. Omit verified: the server resolves and validates the actual title, series, calendar and version before staging; approval revalidates and deletes only that series. No tasks are created, edited or completed by this action. If the user says keep an existing todo unchanged, propose only this deletion card. After an earlier Hermes permission failure, offer this direct action instead of repeating the same dispatch. Existing Google connection can be used without Hermes reauthentication; request Orbit → 연결 → Google Calendar only when that connection fails. A prior completed execution is not proof of deletion.
 {"type":"agent.dispatch","title":"Concrete execution order","instruction":"The exact approved scope, intended recipient if any, observable outcome and authorization limits","projectId":"actual-project-id or null","taskIds":["actual-task-id"],"eventIds":["actual-calendar-event-id"]}

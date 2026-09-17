@@ -1,0 +1,26 @@
+'use client';
+import {useRef,useState} from 'react';
+import {unzipSync,strFromU8} from 'fflate';
+import {agentRequest} from '../agent/connections';
+import {requestOwnerHeaders} from '@/lib/orbit/request-owner';
+import {digest} from '@/lib/orbit/backup';
+const byteHash=async(b:Uint8Array)=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',b as BufferSource))].map(n=>n.toString(16).padStart(2,'0')).join('');
+export function HistoryRestore({disabled,onRefresh}:{disabled:boolean;onRefresh:()=>Promise<void>}){
+ const archive=useRef<Uint8Array|null>(null),history=useRef<any>(null),checksums=useRef<Record<string,string>>({}),lock=useRef(false);const [counts,setCounts]=useState<any>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[includeFiles,setIncludeFiles]=useState(true);
+ async function load(file:File){setCounts(null);setError('');setMessage('');try{if(file.size>300*1024*1024)throw Error('이 복원 화면은 300MB 이내의 백업 ZIP을 지원합니다.');archive.current=new Uint8Array(await file.arrayBuffer());const wanted=['manifest.json','file-checksums.json','history/orbit_conversations.json','history/orbit_agent_turns.json','history/orbit_agent_orders.json','history/orbit_attachments.json'];const files=unzipSync(archive.current,{filter:f=>wanted.includes(f.name)&&f.originalSize<=10000000});const parse=(name:string,fallback:any)=>files[name]?JSON.parse(strFromU8(files[name])):fallback;if(parse('manifest.json',{}).format!=='orbit-archive/v2')throw Error('Orbit 전체 백업 ZIP을 선택하세요.');for(const name of wanted.filter(n=>n.startsWith('history/')))if(!files[name])throw Error('복구에 필요한 이력 파일이 없거나 10MB를 넘습니다.');history.current={conversations:parse(wanted[2],[]),turns:parse(wanted[3],[]),orders:parse(wanted[4],[]),attachments:parse(wanted[5],[]).filter((a:any)=>a.state==='ready')};checksums.current=parse('file-checksums.json',{});setCounts(Object.fromEntries(Object.entries(history.current).map(([k,v])=>[k,(v as any[]).length])));}catch(e){archive.current=null;setError((e as Error).message)}}
+ async function restore(){if(lock.current||!history.current||!archive.current)return;lock.current=true;setBusy(true);setError('');try{const savedOwnerHeaders=requestOwnerHeaders();const assertOwner=()=>{if(JSON.stringify(requestOwnerHeaders())!==JSON.stringify(savedOwnerHeaders))throw Error('로그인 계정이 바뀌었습니다. 복원을 중단했습니다.');};
+  const send=async(records:any)=>{assertOwner();return agentRequest('/api/backup/history','POST',{records,checksum:await digest(records),operationId:crypto.randomUUID()})};
+  for(const category of ['conversations','turns','orders']){const rows=history.current[category];for(let i=0;i<rows.length;i+=10){setMessage(`${{conversations:'대화 목록',turns:'대화 내용',orders:'실행 결과'}[category]} ${Math.min(i+10,rows.length)}/${rows.length} 복원 확인 중`);await send({[category]:rows.slice(i,i+10)})}}
+  if(includeFiles)for(const [i,f] of history.current.attachments.entries()){
+   assertOwner();setMessage(`첨부 ${i+1}/${history.current.attachments.length} · ${f.name}`);
+   const prepared=await agentRequest('/api/attachments','POST',{id:f.id,name:f.name,size:f.size});
+   if(prepared.state!=='ready'){
+    const path=`files/${encodeURIComponent(f.id)}/original`,files=unzipSync(archive.current,{filter:entry=>entry.name===path&&entry.originalSize<=104857600}),bytes=files[path];if(!bytes||bytes.length!==f.size)throw Error(f.name+' 원본의 크기를 확인하지 못했습니다.');const hash=await byteHash(bytes);if(checksums.current[path]&&checksums.current[path]!==hash)throw Error(f.name+' 원본의 검증값이 일치하지 않습니다.');
+    const response=await fetch('/api/backup/history?id='+encodeURIComponent(f.id),{method:'PUT',headers:{...savedOwnerHeaders,'Content-Type':'application/octet-stream','x-orbit-sha256':hash},body:new Blob([bytes as BlobPart])});const result=await response.json();if(!response.ok)throw Error(result.error||'첨부 복원을 확인하지 못했습니다.');
+   }
+   await send({attachments:[{...f,context_text:f.context_text??'',context_label:f.context_label??'복원한 원본',target_type:f.target_type??null,target_id:f.target_id??null}]});
+  }
+  await onRefresh();setMessage(`대화·실행 결과${includeFiles?'·첨부 원본':''} 복원 확인을 마쳤습니다. 같은 번호의 기존 기록은 유지했습니다. 진행 중이던 실행은 재개하지 않았습니다.`);
+ }catch(e){setError((e as Error).message+' 이미 복원한 기록은 유지됩니다. 같은 ZIP으로 다시 실행하면 없는 부분부터 확인합니다.');}finally{lock.current=false;setBusy(false)}}
+ return <article className="phase2-record"><h2>대화·실행 결과·첨부 원본 복원</h2><p>프로젝트와 일정은 위에서 먼저 복원하세요. 같은 번호의 기존 기록을 덮어쓰지 않으며, 과거 실행·승인 요청은 재개하지 않습니다.</p><label className="form-label">전체 백업 ZIP<input type="file" accept=".zip" disabled={disabled||busy} onChange={e=>{if(e.target.files?.[0])void load(e.target.files[0])}}/></label>{counts&&<><p>대화 {counts.conversations}개 · 메시지 {counts.turns}개 · 실행 결과 {counts.orders}개 · 첨부 {counts.attachments}개</p><label className="backup-choice"><input type="checkbox" checked={includeFiles} disabled={busy} onChange={e=>setIncludeFiles(e.target.checked)}/>첨부 원본도 복원</label><p className="form-hint">복원한 대화는 AI 에이전트의 대화 목록에서, 실행 결과는 실행실에서 확인합니다. 첨부 미리보기와 외부 세션 연결은 다시 생성하지 않습니다. 이전 백업에 파일 검증값이 없으면 원본 크기와 전송 일치 여부를 검사합니다.</p><button className="primary-button" disabled={disabled||busy} onClick={()=>void restore()}>{busy?'복원 확인 중…':'확인한 대화·실행 결과 복원'}</button></>}{message&&<p role="status">{message}</p>}{error&&<p className="brief-alert" role="alert">{error}</p>}</article>;
+}

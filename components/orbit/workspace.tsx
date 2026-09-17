@@ -1,6 +1,8 @@
 'use client';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
+import {ExperimentsPanel,ContactsPanel,MonthlyPanel} from './phase4/workbench';
+import {VoicePanel} from './phase4/voice';
 import {FollowupPanel} from './phase2/followup';
 import {LearningPanel} from './phase2/learning';
 import {BackupPanel} from './phase2/backup';
@@ -142,6 +144,10 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'calendar', label: '일정', icon: CalendarDays },
   { id: 'tasks', label: '할 일', icon: CheckCheck },
   { id: 'followup', label: '결정·위임 추적', icon: CheckCheck },
+  { id: 'experiments', label: '사업 실험', icon: Sparkles },
+  { id: 'contacts', label: '사람·거래처', icon: MessagesSquare },
+  { id: 'monthly', label: '월간 개선 보고', icon: Layers },
+  { id: 'voice', label: '음성 브리핑', icon: Headphones },
   { id: 'learning', label: '계획 개선', icon: Sparkles },
   { id: 'backup', label: '백업·복구', icon: Download },
   { id: 'projects', label: '프로젝트', icon: FolderKanban },
@@ -153,6 +159,10 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  experiments:{title:'지식에서 사업 실험으로',subtitle:'작게 실행하고 근거로 판단합니다.',eyebrow:'EXPERIMENTS'},
+  contacts:{title:'사람·거래처',subtitle:'만남 전에 합의와 약속을 확인합니다.',eyebrow:'PEOPLE'},
+  monthly:{title:'월간 업무방식 개선',subtitle:'중단·위임·표준화하고 다음 달 효과를 확인합니다.',eyebrow:'MONTHLY REVIEW'},
+  voice:{title:'음성 지시·아침 브리핑',subtitle:'짧게 듣고 말하고, 확인한 내용만 실행합니다.',eyebrow:'VOICE'},
   portfolio:{title:'사업별 시간 배분',subtitle:'이번 주 집중할 사업과 지켜야 할 시간을 함께 정합니다.',eyebrow:'WEEKLY ALLOCATION'},
   signals:{title:'운영 신호',subtitle:'확인한 수치의 변화에서 필요한 판단과 후속 행동을 찾습니다.',eyebrow:'OPERATING SIGNALS'},
   meetings:{title:'회의 브리핑',subtitle:'이전 결정과 약속을 준비하고, 회의에서 바뀐 것을 실행으로 연결합니다.',eyebrow:'MEETING BRIEF'},
@@ -403,7 +413,7 @@ function WorkspaceContent({
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
-  const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string } | null>(
+  const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string; revision?:number } | null>(
     null,
   );
   const [create, setCreate] = useState<
@@ -1152,6 +1162,7 @@ function WorkspaceContent({
           {loaded && (
             <div hidden={view !== 'agent'}>
               <AgentWorkspace
+                visible={view==='agent'}
                 ownerId={ownerId}
                 perform={perform}
                 onOpenRecord={setDetail}
@@ -1168,10 +1179,12 @@ function WorkspaceContent({
           {loaded && <AsidePanel visible={view==='aside'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && <AutomationPanel visible={view==='automation'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           <SoundStation visible={view === 'sound'} demo={demo} onOpen={() => {setDetail(null);navigate('sound')}} />
-          {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})}/>}
+          {loaded && ['experiments','contacts','monthly'].includes(view)&&(()=>{const Panel=view==='experiments'?ExperimentsPanel:view==='contacts'?ContactsPanel:MonthlyPanel;return <Panel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>})()}
+          {loaded&&view==='voice'&&<VoicePanel data={data} today={TODAY} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
+          {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}
           {loaded && view==='learning'&&<LearningPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={id=>setDetail({kind:'task',id})}/>}
           {loaded && view==='backup'&&<BackupPanel snapshot={snapshot} demo={demo} busy={busy||hasPending} onRefresh={refresh}/>}
-          {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})} onNavigate={navigate}/>})()}
+          {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onNavigate={navigate}/>})()}
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
@@ -1572,7 +1585,7 @@ function WorkspaceContent({
               </div>
             </>
           )}
-          {view === 'wiki' && <WikiLibrary data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy || hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/>}
+          {view === 'wiki' && <WikiLibrary onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy || hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/>}
           {(view === 'wiki' || view === 'knowledge') && (
             <>
               <div className="view-toolbar">
@@ -2002,8 +2015,8 @@ function WorkspaceContent({
               </>
             )}
             {noteDetail && (
-              <><NoteDetail
-                key={`${noteDetail.id}:${noteDetail.revision ?? 1}`}
+              <><NoteDetail requestedRevision={detail?.revision}
+                key={`${noteDetail.id}:${detail?.revision??noteDetail.revision ?? 1}`}
                 meta={noteDetail}
                 notes={notes}
                 onNote={(id)=>setDetail({kind:'note',id})}

@@ -1,3 +1,4 @@
+import {storedExperimentSchema,storedContactSchema,executionRecordSchema,monthlyReportSchema} from './phase4-schema.ts';
 import {z} from 'zod';
 import {weeklyAllocationSchema,metricSchema,observationSchema,signalFollowupSchema,meetingRecordSchema} from './phase3-schema.ts';
 import {eventSchema,projectSchema,taskSchema,noteSchema,goalSchema,preferencesSchema,improvementSchema,habitSchema,riskSchema,decisionSchema,delegationSchema,reviewDetailSchema,dateSchema} from './validation.ts';
@@ -8,6 +9,7 @@ const historyDecision=z.object({at:z.string().datetime(),choice:z.string().max(2
 const historyDelegation=z.object({at:z.string().datetime(),status:delegationSchema.shape.status,update:z.string().max(2000),evidence:z.string().max(2000),assignee:z.string().max(100),due:dateSchema,checkDate:dateSchema}).strict();
 const noteStored=noteSchema.extend({revision:z.number().int().positive().optional(),bodyStored:z.boolean().optional(),wikiMentionIds:z.array(z.string()).max(300).optional()});
 export const contentSchema=z.object({
+ experiments:z.array(storedExperimentSchema).max(100).default([]),contacts:z.array(storedContactSchema).max(200).default([]),executionHistory:z.array(executionRecordSchema).max(1200).default([]),monthlyReports:z.array(monthlyReportSchema).max(24).default([]),
  weeklyAllocations:z.array(weeklyAllocationSchema).max(12).default([]),
  operatingMetrics:z.array(metricSchema.extend({updatedAt:z.string().datetime()})).max(60).default([]),
  metricObservations:z.array(observationSchema.extend({recordedAt:z.string().datetime()})).max(600).default([]),
@@ -20,9 +22,9 @@ export const contentSchema=z.object({
  reviews:z.array(z.object({id:z.string().max(100),date:dateSchema,win:z.string().max(6000),block:z.string().max(6000),energy:z.enum(['low','normal','high']),completedIds:z.array(z.string()).max(3000),updatedAt:z.string(),stats:z.object({planned:z.number(),done:z.number(),partial:z.number(),skipped:z.number(),laserMinutes:z.number(),executionRate:z.number()}).optional(),habitChecks:z.array(z.string()).optional(),highlight:z.string().optional(),hasDetail:z.boolean().optional()}).strict()).max(5000).default([]),
  preferences:preferencesSchema,
 });
-export const categories=['projects','tasks','notes','goals','improvements','habits','risks','decisions','delegations','events','reviews','weeklyAllocations','operatingMetrics','metricObservations','signalFollowups','meetingRecords'] as const;
+export const categories=['experiments','contacts','executionHistory','monthlyReports','projects','tasks','notes','goals','improvements','habits','risks','decisions','delegations','events','reviews','weeklyAllocations','operatingMetrics','metricObservations','signalFollowups','meetingRecords'] as const;
 export type Category=typeof categories[number];
-export const categoryLabels:Record<Category,string>={projects:'프로젝트',tasks:'할 일',notes:'위키·회의록·지식',goals:'목표',improvements:'개선 규칙',habits:'습관',risks:'리스크',decisions:'의사결정',delegations:'위임 기록',events:'내부 일정',reviews:'회고',weeklyAllocations:'주간 배분 · 재승인 필요',operatingMetrics:'운영 지표',metricObservations:'확인한 운영 수치',signalFollowups:'운영 후속 확인',meetingRecords:'회의 결과 연결'};
+export const categoryLabels:Record<Category,string>={experiments:'사업 실험',contacts:'사람·거래처',executionHistory:'실행 결과 이력',monthlyReports:'월간 보고서',projects:'프로젝트',tasks:'할 일',notes:'위키·회의록·지식',goals:'목표',improvements:'개선 규칙',habits:'습관',risks:'리스크',decisions:'의사결정',delegations:'위임 기록',events:'내부 일정',reviews:'회고',weeklyAllocations:'주간 배분 · 재승인 필요',operatingMetrics:'운영 지표',metricObservations:'확인한 운영 수치',signalFollowups:'운영 후속 확인',meetingRecords:'회의 결과 연결'};
 export const payloadSchema=z.object({format:z.literal('orbit-backup/v2'),capturedAt:z.string().datetime(),data:contentSchema,noteHistory:z.array(noteStored).max(10000),reviewDetails:z.array(reviewDetailSchema).max(5000)}).passthrough();
 export const selectionSchema=z.array(z.object({category:z.enum(categories),id:z.string().min(1).max(100)}).strict()).max(3000);
 export async function digest(value:unknown){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))].map(n=>n.toString(16).padStart(2,'0')).join('')}
@@ -37,16 +39,17 @@ export function previewRestore(current:WorkspaceData,raw:unknown,selection:z.inf
   if(category==='events'&&id.startsWith('google:'))throw new DomainError('외부 캘린더 일정은 다시 동기화해 주세요.');
   chosen.set(key,{category,id});
   if(existing){conflicts.push(key);return;}
-  if('projectId'in record&&record.projectId)add('projects',record.projectId);
+  if(category!=='executionHistory'&&'projectId'in record&&record.projectId)add('projects',record.projectId);
   if('goalId'in record&&record.goalId)add('goals',record.goalId);
   if(category==='goals'&&'parentId'in record&&record.parentId)add('goals',record.parentId);
-  if('taskId'in record&&record.taskId)add('tasks',record.taskId);
+  if(category!=='executionHistory'&&'taskId'in record&&record.taskId)add('tasks',record.taskId);
   if('noteId'in record&&record.noteId)add('notes',record.noteId);
   if('metricId'in record)add('operatingMetrics',record.metricId);
   if('supersedesId'in record&&record.supersedesId)add('metricObservations',record.supersedesId);
   if(category==='weeklyAllocations')for(const a of (record as NonNullable<WorkspaceData['weeklyAllocations']>[number]).allocations)add('projects',a.projectId);
   if(category==='signalFollowups'){const r=record as NonNullable<WorkspaceData['signalFollowups']>[number];add('metricObservations',r.observationId);add('metricObservations',r.baselineId);if(r.delegationId)add('delegations',r.delegationId);}
   if(category==='meetingRecords'){const r=record as NonNullable<WorkspaceData['meetingRecords']>[number];for(const id of r.taskIds)add('tasks',id);for(const id of r.delegationIds)add('delegations',id);if(r.decisionId)add('decisions',r.decisionId);}
+  if(category==='contacts'){const c=record as NonNullable<WorkspaceData['contacts']>[number];for(const [ids,cat] of [[c.projectIds,'projects'],[c.noteIds,'notes'],[c.decisionIds,'decisions'],[c.delegationIds,'delegations'],[c.eventIds,'events']] as [string[],Category][])for(const id of ids)add(cat,id);}
   if(category==='tasks')for(const id of (record as any).dependsOn??[])add('tasks',id);
   if(category==='notes'){const n=record as Note;for(const id of [n.wiki?.parentId,...n.wiki?.links??[]].filter(Boolean) as string[])if(source.notes.some(n=>n.id===id))add('notes',id);}
   (next[category]??=[] as never).push(record as never);

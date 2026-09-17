@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {unzipSync,strFromU8} from 'fflate';
 import {createDatabase} from './sqlite-d1.mjs';
 import {readWorkspace,writeCommand,searchNotes,readNote} from '../db/repository.ts';
@@ -42,7 +42,7 @@ test('full archive includes history and attachment bytes; selective restore clos
  await seed(db);await save(db,'a',{type:'note.upsert',note:{...note,body:'두 번째 리뉴얼 원문'}});
  const bytes=new TextEncoder().encode('private attachment');await db.prepare('INSERT INTO orbit_attachments(owner_id,id,name,mime,size,state,object_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind('a','file1','proof.txt','text/plain',bytes.length,'ready','a/file1',date,date).run();
  const b={get:async key=>key==='a/file1'?{body:new Blob([bytes]).stream(),size:bytes.length}:null};const bundle=await archive(db,'a',b);
- assert.equal(strFromU8(bundle.files['files/file1/original']),'private attachment');assert.equal(bundle.payload.noteHistory.length,2);assert.equal(await digest(bundle.payload),bundle.checksum);
+ assert.equal(strFromU8(bundle.files['files/file1/original']),'private attachment');assert.equal(JSON.parse(strFromU8(bundle.files['file-checksums.json']))['files/file1/original'],createHash('sha256').update(bytes).digest('hex'));assert.equal(bundle.payload.noteHistory.length,2);assert.equal(await digest(bundle.payload),bundle.checksum);
  await save(db,'b',{type:'project.upsert',project:{...project,id:'keep',name:'Keep me'}});
  const selection=[{category:'decisions',id:'d'}],before=await readWorkspace(db,'b'),plan=previewRestore(before.data,bundle.payload,selection);assert.equal(plan.inserted.length,4);
  const op=randomUUID(),result=await restoreContent(db,'b',bundle.payload,selection,before.revision,op,bundle.checksum);assert.equal(result.verified,true);assert.equal(result.snapshot.data.projects.length,2);assert.equal((await readNote(db,'b','n')).body,'두 번째 리뉴얼 원문');assert.equal((await readNote(db,'b','n',1)).body,note.body);

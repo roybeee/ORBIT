@@ -1,3 +1,4 @@
+import {phase4Actions} from './phase4-schema.ts';
 import { z } from 'zod';
 import {phase3Actions} from './phase3-schema.ts';
 import type { DailyBrief } from './brief/schema';
@@ -216,6 +217,7 @@ export const decisionSchema=z.object({id,title,projectId:id,choice:z.string().tr
 export const delegationSchema=z.object({id,title,projectId:id,assignee:z.string().trim().min(1).max(100),deliverable:z.string().trim().min(1).max(2000),due:dateSchema,checkDate:dateSchema,status:z.enum(['requested','accepted','working','blocked','delivered','verified','cancelled']),update:z.string().max(2000),evidence:z.string().max(2000),taskId:id.optional(),noteId:id.optional(),noteRevision:z.number().int().positive().optional()}).strict();
 export const actionSchema = z.discriminatedUnion('type', [
   ...phase3Actions,
+  ...phase4Actions,
   z.object({type:z.literal('decision.upsert'),record:decisionSchema,expectedUpdatedAt:z.string().datetime().optional()}).strict(),
   z.object({type:z.literal('delegation.upsert'),record:delegationSchema,expectedUpdatedAt:z.string().datetime().optional()}).strict(),
   z.object({type:z.literal('memory.upsert'),memory:z.object({id,statement:z.string().trim().min(1).max(600),kind:z.enum(['preference','constraint','strategy','reflection']),origin:z.enum(['user','records','saju']),sources:z.array(z.object({kind:z.enum(['note','task','review']),id,revision:z.number().int().positive().optional()}).strict()).max(6)}).strict().refine(m=>m.origin!=='saju'||m.kind==='reflection','사주 자료는 자기 탐색으로 보관합니다.').refine(m=>m.origin!=='records'||m.sources.length>0,'연결할 기록이 필요합니다.')}).strict(),

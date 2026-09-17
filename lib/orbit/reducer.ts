@@ -1,3 +1,4 @@
+import {monthlyReport} from './phase4.ts';
 import {careEvents,goalAllowsWork,goalIsActive} from './chief.ts';
 import {allocationAllowsWork,activeAllocation,protectedEvents,weeklyCapacity,portfolioBasis,operatingSignals,meetingBrief} from './phase3.ts';
 import {questReadiness,memorySignature} from './pacemaker.ts';
@@ -21,6 +22,10 @@ function replace<T extends { id: string }>(list: T[], record: T) {
 }
 export const LIMITS = { goals: 12, improvements: 40, habits: 3, risks: 10, habitLog: 400 };
 export function validateLinks(data: WorkspaceData) {
+  if((data.experiments??[]).length>100||(data.contacts??[]).length>200)fail('실험 100개·사람 200개까지 보관할 수 있습니다.');
+  for(const e of data.experiments??[])if(!data.projects.some(p=>p.id===e.projectId)||!data.notes.some(n=>n.id===e.noteId)||!data.tasks.some(t=>t.id===e.taskId&&t.projectId===e.projectId))fail('실험의 프로젝트·근거·업무 연결을 확인해 주세요.');
+  for(const c of data.contacts??[]){for(const [ids,records] of [[c.projectIds,data.projects],[c.noteIds,data.notes],[c.decisionIds,data.decisions??[]],[c.delegationIds,data.delegations??[]],[c.eventIds,data.events]] as [string[],{id:string}[]][])if(ids.some(id=>!records.some(r=>r.id===id)))fail('사람 카드의 연결 기록을 확인해 주세요.');}
+
   const observations=data.metricObservations??[],replacedObservations=new Set(observations.map(o=>o.supersedesId));
   for(const o of observations){
     if(o.from>o.through)fail('운영 수치의 집계 시작·종료를 확인해 주세요.');
@@ -143,6 +148,31 @@ export function applyAction(
       fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.');
   };
   switch (action.type) {
+    case 'experiment.start': {
+      const e=action.experiment,n=data.notes.find(n=>n.id===e.noteId);
+      if(!n||(n.revision??1)!==e.noteRevision)fail('근거 원문이 변경됐습니다. 다시 확인해 주세요.');
+      if(e.from>e.through||e.through<today||e.baseline===e.target)fail('실험 기간과 성공 기준을 확인해 주세요.');
+      if(e.direction==='up'?e.target<e.baseline:e.target>e.baseline)fail('목표와 개선 방향이 다릅니다.');
+      if(data.experiments?.some(x=>x.id===e.id)||data.tasks.some(t=>t.id==='experiment:'+e.id))fail('이미 등록된 실험입니다.');
+      const taskId='experiment:'+e.id;
+      data.tasks.push({id:taskId,title:e.title,projectId:e.projectId,status:'todo',duration:e.minutes,due:e.through,impact:3,focus:false,definition:e.action+'\n성공 기준: '+e.metric+' '+e.target+' '+e.unit,noteId:e.noteId});
+      data.experiments=[...data.experiments??[],{...e,taskId,status:'active',createdAt:now.toISOString()}];break;
+    }
+    case 'experiment.finish': {
+      const e=data.experiments?.find(e=>e.id===action.id)??fail('실험을 찾을 수 없습니다.');
+      if(e.status!=='active'||today<e.from)fail('진행 중인 실험만 결과를 기록할 수 있습니다.');
+      e.result={value:action.value,evidence:action.evidence,conclusion:action.conclusion,at:now.toISOString(),met:e.direction==='up'?action.value>=e.target:action.value<=e.target};e.status='completed';break;
+    }
+    case 'experiment.stop': {const e=data.experiments?.find(e=>e.id===action.id)??fail('실험을 찾을 수 없습니다.');if(e.status!=='active')fail('진행 중인 실험만 중단할 수 있습니다.');e.status='stopped';break;}
+    case 'contact.upsert':data.contacts=replace(data.contacts??[],{...action.contact,updatedAt:now.toISOString()});break;
+    case 'contact.delete':data.contacts=(data.contacts??[]).filter(c=>c.id!==action.id);break;
+    case 'monthly.generate': {
+      if(action.month>=today.slice(0,7))fail('완료된 월의 보고서를 생성해 주세요.');
+      if(!data.monthlyReports?.some(r=>r.id===action.month))data.monthlyReports=[...data.monthlyReports??[],monthlyReport(data,action.month,now)].slice(-24);break;
+    }
+    case 'monthly.decide': {const r=data.monthlyReports?.find(r=>r.id===action.month)?.recommendations.find(r=>r.id===action.id)??fail('개선 제안을 찾을 수 없습니다.');r.status=action.status;break;}
+    case 'monthly.review': {const r=data.monthlyReports?.find(r=>r.id===action.month)?.recommendations.find(r=>r.id===action.id)??fail('개선 제안을 찾을 수 없습니다.');if(r.status!=='adopted'||today.slice(0,7)<=action.month)fail('채택한 개선의 다음 달 결과를 기록해 주세요.');r.review={date:today,value:action.value,note:action.note};break;}
+
     case 'portfolio.approve': {
       const from=weekDates(action.week)[0],through=addDays(from,6);
       if(through<today||from>addDays(today,90))fail('이번 주부터 90일 이내의 주를 선택해 주세요.');
@@ -204,7 +234,7 @@ export function applyAction(
         if(a.assignee){delegationIds.push(id);data.delegations=[...data.delegations??[],{id,title:a.title,projectId:action.projectId,assignee:a.assignee,deliverable:a.title,due:a.due,checkDate:a.due,status:'requested',update:'회의 결과 검토 후 등록',evidence:'',noteId,noteRevision:1,createdAt:at,updatedAt:at,history:[{at,status:'requested',update:'회의 결과 검토 후 등록',evidence:'',assignee:a.assignee,due:a.due,checkDate:a.due}]}];}
         else{taskIds.push(id);data.tasks.push({id,title:a.title,projectId:action.projectId,status:'todo',duration:a.minutes,due:a.due,impact:3,focus:false,definition:a.title,noteId});}
       }
-      data.meetingRecords=[...data.meetingRecords??[],{id:action.id,projectId:action.projectId,event:action.event,noteId,noteRevision:1,summary:action.summary,changedConditions:action.changedConditions,priorDecisions:brief.decisions.map(d=>({id:d.id,title:d.title,choice:d.choice,updatedAt:d.updatedAt})),decisionId,taskIds,delegationIds,createdAt:at}];break;
+      data.meetingRecords=[...data.meetingRecords??[],{id:action.id,projectId:action.projectId,event:action.event,noteId,noteRevision:1,summary:action.summary,changedConditions:action.changedConditions,priorDecisions:brief.decisions.map(d=>({id:d.id,title:d.title,choice:d.choice,updatedAt:d.updatedAt})),decisionId,decisionSnapshot:action.decision?{choice:action.decision.choice,rationale:action.decision.rationale}:undefined,taskIds,delegationIds,createdAt:at}];break;
     }
     case 'decision.upsert': {
       const r=action.record,old=data.decisions?.find(d=>d.id===r.id);
@@ -776,6 +806,7 @@ export function applyAction(
       data.risks = (data.risks ?? []).filter((r) => r.id !== action.id);
       break;
   }
+  for(const t of data.tasks){const previous=current.tasks.find(x=>x.id===t.id);if(t.outcome&&t.outcomeOn&&(!previous||previous.outcome!==t.outcome||previous.outcomeOn!==t.outcomeOn||previous.actualMinutes!==t.actualMinutes||previous.outcomeReason!==t.outcomeReason)){data.executionHistory=[...data.executionHistory??[],{id:`execution:${crypto.randomUUID()}`,taskId:t.id,title:t.title,projectId:t.projectId,date:t.outcomeOn,at:now.toISOString(),due:t.due,outcome:t.outcome,reason:t.outcomeReason??'',estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes??null,impact:t.impact,buffer:data.preferences.bufferFraction}].slice(-1200);}}
   validateLinks(data);
   if (
     new TextEncoder().encode(JSON.stringify({ ...data, notes: data.notes.map((n) => ({ ...n, body: '' })) }))

@@ -1,5 +1,5 @@
 import {syncActivity,activityStatus} from './agent/activity.ts';
-import {readWorkspace,type Database} from '../../db/repository.ts';
+import {readWorkspace,writeCommand,type Database} from '../../db/repository.ts';
 import {todayInZone,addDays} from './dates.ts';
 import {connections,type Runtime} from './agent/integrations.ts';
 import {syncCalendar} from './agent/calendar.ts';
@@ -31,6 +31,8 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime){
   config.syncAt=new Date().toISOString();config.syncCursor=0;return await finish(true);
  }
  const snapshot=await readWorkspace(db,owner),zone=snapshot.data.preferences.timeZone,today=todayInZone(zone),afterEvening=eveningDue(new Date(),zone,config.eveningHour),target=afterEvening?addDays(today,1):today;
+ const previousMonth=addDays(today.slice(0,7)+'-01',-1).slice(0,7);
+ if(!snapshot.data.monthlyReports?.some(r=>r.id===previousMonth)){try{await writeCommand(db,owner,{operationId:crypto.randomUUID(),expectedRevision:snapshot.revision,action:{type:'monthly.generate',month:previousMonth}});return await finish(true);}catch{config.lastError='월간 보고서 준비를 다음 실행에서 재시도합니다.';}}
  const runs=await db.prepare('SELECT date,state_json FROM orbit_daily_runs WHERE owner_id=? ORDER BY date DESC LIMIT 7').bind(owner).all<{date:string;state_json:string}>();
  for(const r of runs.results){const state=JSON.parse(r.state_json);if(state.status!=='running')continue;const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,state.id).first<{status:string;response_json:string}>();if(turn&&turn.status!=='running'){const response=JSON.parse(turn.response_json);state.status=turn.status==='failed'&&state.attempts<3&&!/중지|cancel/i.test(response.error??'')&&r.date>=today?'queued':turn.status;await db.prepare('UPDATE orbit_daily_runs SET state_json=?,updated_at=? WHERE owner_id=? AND date=?').bind(JSON.stringify(state),new Date().toISOString(),owner,r.date).run();}}
  // After an overnight outage prepare today's missing plan; never backfill old days.

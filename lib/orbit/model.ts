@@ -1,7 +1,8 @@
+import type {Experiment,Contact,ExecutionRecord,MonthlyReport} from './phase4-schema';
 import type { DailyBrief } from './brief/schema';
 import type {WeeklyAllocation,OperatingMetric,MetricObservation,SignalFollowup,MeetingRecord} from './phase3-model';
 export type View =
-  'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'experiments' | 'contacts' | 'monthly' | 'voice' | 'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).
@@ -250,6 +251,7 @@ export interface DelegationRecord {
   history:{at:string; status:DelegationRecord['status']; update:string; evidence:string; assignee:string; due:string; checkDate:string}[];
 }
 export interface WorkspaceData {
+  experiments?:Experiment[]; contacts?:Contact[]; executionHistory?:ExecutionRecord[]; monthlyReports?:MonthlyReport[];
   weeklyAllocations?:WeeklyAllocation[];
   operatingMetrics?:OperatingMetric[];
   metricObservations?:MetricObservation[];

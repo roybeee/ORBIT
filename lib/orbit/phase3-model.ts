@@ -22,5 +22,5 @@ export interface MeetingRecord {
   id:string;projectId:string;event:{id:string;title:string;date:string;start:number;end:number};
   noteId:string;noteRevision:number;summary:string;changedConditions:string;
   priorDecisions:{id:string;title:string;choice:string;updatedAt:string}[];
-  decisionId?:string;taskIds:string[];delegationIds:string[];createdAt:string;
+  decisionId?:string;decisionSnapshot?:{choice:string;rationale:string};taskIds:string[];delegationIds:string[];createdAt:string;
 }

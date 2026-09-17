@@ -1,3 +1,4 @@
+import {streamHasher} from './stream-hash.ts';
 import {Zip,ZipPassThrough,strToU8} from 'fflate';
 import type {Database} from '../../db/repository.ts';
 import type {Bucket} from './attachments/storage.ts';
@@ -17,7 +18,7 @@ export async function backupArchive(db:Database,owner:string,bucket:Bucket){
  const objects:{key:string;path:string;size?:number}[]=[];
  for(const r of rows.orbit_attachments){if(r.object_key)objects.push({key:r.object_key,path:`files/${encodeURIComponent(r.id)}/original`,size:r.size});if(r.preview_key)objects.push({key:r.preview_key,path:`files/${encodeURIComponent(r.id)}/preview.jpg`});}
  for(const r of rows.orbit_order_reads)objects.push({key:r.object_key,path:`research/${encodeURIComponent(r.order_id)}/${encodeURIComponent(r.id)}.json`});
- const manifest={format:'orbit-archive/v2',capturedAt,checksum,records:Object.fromEntries(tables.map(t=>[t,rows[t].length])),files:objects.map(({key,...x})=>x),restore:'workspace.json에서 선택한 내용만 추가 복원합니다. 같은 번호의 기존 기록은 유지합니다. 대화·실행 이력과 첨부 원본은 별도 파일로 보관하며 실행 작업·승인·인증 정보는 자동 복원하지 않습니다.',excluded:['인증 토큰과 로그인 정보','PC 연결 키','기기 임시 초안','진행 중인 실행의 재개 상태']};
+ const manifest={format:'orbit-archive/v2',capturedAt,checksum,records:Object.fromEntries(tables.map(t=>[t,rows[t].length])),files:objects.map(({key,...x})=>x),restore:'workspace.json에서 선택한 내용만 추가 복원합니다. 같은 번호의 기존 기록은 유지합니다. 대화·실행 결과·첨부 원본은 별도 복원 화면에서 추가 복구합니다. 실행 작업·승인·인증 정보는 자동 재개하지 않습니다.',excluded:['인증 토큰과 로그인 정보','PC 연결 키','기기 임시 초안','진행 중인 실행의 재개 상태']};
  const stream=new TransformStream<Uint8Array,Uint8Array>(),writer=stream.writable.getWriter();
  if(objects.length+tables.length+2>60000||objects.reduce((sum,x)=>sum+(x.size??0),0)>3*1024**3)throw Error('Archive exceeds the 3 GB export limit');
  let pending=Promise.resolve(),archiveBytes=0;
@@ -28,7 +29,9 @@ export async function backupArchive(db:Database,owner:string,bucket:Bucket){
  void(async()=>{try{
    await add('manifest.json',manifest);const file=new ZipPassThrough('workspace.json');zip.add(file);file.push(strToU8(core),true);await pending;
    for(const table of tables)await add(`history/${table}.json`,rows[table].map(({owner_id,lease_until,...row})=>row));
-   for(const item of objects){const object=await bucket.get(item.key);if(!object?.body)throw Error('Backup object missing');const entry=new ZipPassThrough(item.path);zip.add(entry);await pending;let bytes=0;const reader=object.body.getReader();try{for(;;){const read=await reader.read();if(read.done)break;bytes+=read.value.length;entry.push(read.value,false);await pending;}}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}if(item.size!==undefined&&item.size!==bytes)throw Error('Backup file size mismatch');entry.push(new Uint8Array(),true);await pending;}
+   const checksums:Record<string,string>={};
+   for(const item of objects){const object=await bucket.get(item.key);if(!object?.body)throw Error('Backup object missing');const entry=new ZipPassThrough(item.path);zip.add(entry);await pending;const hash=await streamHasher();let bytes=0;const reader=object.body.getReader();try{for(;;){const read=await reader.read();if(read.done)break;bytes+=read.value.length;await hash.update(read.value);entry.push(read.value,false);await pending;}}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}if(item.size!==undefined&&item.size!==bytes)throw Error('Backup file size mismatch');checksums[item.path]=await hash.end();entry.push(new Uint8Array(),true);await pending;}
+   await add('file-checksums.json',checksums);
    zip.end();await pending;
  }catch(error){zip.terminate();await writer.abort(error).catch(()=>{});}})();
  return stream.readable;

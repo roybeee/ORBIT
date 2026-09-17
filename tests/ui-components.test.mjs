@@ -83,3 +83,19 @@ test("renders sidebar skeletons deterministically", async () => {
   assert.equal(first, second);
   assert.match(first, /--skeleton-width:70%/);
 });
+
+test('new workbench screens render stored records and honest empty states',async()=>{
+ const {emptyWorkspace}=await vite.ssrLoadModule('/lib/orbit/model.ts');
+ const {ExperimentsPanel,ContactsPanel,MonthlyPanel}=await vite.ssrLoadModule('/components/orbit/phase4/workbench.tsx');
+ const {VoicePanel}=await vite.ssrLoadModule('/components/orbit/phase4/voice.tsx');
+ const data=emptyWorkspace(),props={data,today:'2026-09-17',busy:false,perform:async()=>true,onOpen:()=>{},onAsk:()=>{}};
+ for(const Panel of [ExperimentsPanel,ContactsPanel,MonthlyPanel,VoicePanel])assert.ok(renderToStaticMarkup(React.createElement(Panel,props)).length>100);
+ const speech=renderToStaticMarkup(React.createElement(VoicePanel,props));assert.match(speech,/승인한 실행 계획은 아직 없습니다/);assert.match(speech,/disabled/);
+ data.contacts=[{id:'c',name:'검토 담당자',organization:'사업',role:'책임자',aliases:[],projectIds:[],noteIds:[],decisionIds:[],delegationIds:[],eventIds:[],memo:'확인할 맥락',updatedAt:'2026-09-17T00:00:00Z'}];assert.match(renderToStaticMarkup(React.createElement(ContactsPanel,props)),/확인할 맥락/);
+});
+
+test('historical note view never flashes the latest body while loading its recorded revision',async()=>{
+ const {NoteDetail}=await vite.ssrLoadModule('/components/orbit/note-detail.tsx');
+ const html=renderToStaticMarkup(React.createElement(NoteDetail,{requestedRevision:1,meta:{id:'n',revision:2,bodyStored:false,title:'최신',body:'LATEST_BODY_MUST_NOT_APPEAR',kind:'wiki',updated:'2026-09-17',tags:[]},notes:[],tasks:[],demo:false,busy:false,defaultDue:'2026-09-17'}));
+ assert.doesNotMatch(html,/LATEST_BODY_MUST_NOT_APPEAR/);assert.match(html,/불러오는 중/);
+});

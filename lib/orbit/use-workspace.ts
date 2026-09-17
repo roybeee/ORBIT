@@ -236,7 +236,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
     };
     const connection = () => {
       setOnline(navigator.onLine);
-      if (navigator.onLine) resume();
+      if (navigator.onLine) {if(pending.current&&!busyRef.current&&(!failure||['OFFLINE','NETWORK','UNAVAILABLE'].includes(failure.code)))void retry();else resume();}
     };
     const timer = setInterval(resume, 60000);
     window.addEventListener('focus', resume);
@@ -250,7 +250,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
       window.removeEventListener('offline', connection);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [demo, load, ownerId]);
+  }, [demo, load, ownerId, retry, failure]);
   const pauseRefresh = useCallback((value: boolean) => {
     pauseRef.current = value;
   }, []);
