@@ -21,6 +21,12 @@ function replace<T extends { id: string }>(list: T[], record: T) {
 export const LIMITS = { goals: 12, improvements: 40, habits: 3, risks: 10, habitLog: 400 };
 export function validateLinks(data: WorkspaceData) {
   if((data.memories??[]).length>60)fail('기억은 60개까지 보관합니다. 오래된 기억을 정리해 주세요.');
+  if((data.decisions??[]).length>100||(data.delegations??[]).length>100)fail('의사결정과 위임 기록은 각각 100개까지 보관합니다.');
+  for(const record of [...data.decisions??[],...data.delegations??[]]){
+    if(!data.projects.some(p=>p.id===record.projectId))fail('장부의 프로젝트를 확인해 주세요.');
+    if(record.taskId&&!data.tasks.some(t=>t.id===record.taskId&&t.projectId===record.projectId))fail('같은 프로젝트의 할 일을 연결해 주세요.');
+    if(record.noteId&&!data.notes.some(n=>n.id===record.noteId))fail('장부의 원문 기록을 확인해 주세요.');
+  }
   const projectIds = new Set(data.projects.map((p) => p.id));
   const taskIds = new Set(data.tasks.map((t) => t.id));
   const noteIds = new Set(data.notes.map((n) => n.id));
@@ -118,6 +124,25 @@ export function applyAction(
       fail('핵심 결과물 개수를 초과했습니다. 기존 항목을 조정해 주세요.');
   };
   switch (action.type) {
+    case 'decision.upsert': {
+      const r=action.record,old=data.decisions?.find(d=>d.id===r.id);
+      if(action.expectedUpdatedAt&&old?.updatedAt!==action.expectedUpdatedAt)fail('결정이 변경됐습니다. 최신 기록을 열고 다시 작성해 주세요.');
+      if(r.noteId&&(!data.notes.some(n=>n.id===r.noteId&&(n.revision??1)===r.noteRevision)))fail('원문이 변경됐습니다. 최신 기록을 확인하고 다시 연결해 주세요.');
+      if(r.status==='closed'&&!r.outcome.trim())fail('결정의 결과를 기록한 뒤 검토를 완료해 주세요.');
+      if((old?.history.length??0)>=30)fail('변경 이력이 30개입니다. 새 결정으로 후속 기록을 남겨 주세요.');
+      const at=now.toISOString();data.decisions=replace(data.decisions??[],{...r,createdAt:old?.createdAt??at,updatedAt:at,history:[...old?.history??[],{at,choice:r.choice,rationale:r.rationale,alternatives:r.alternatives,status:r.status,outcome:r.outcome}]});break;
+    }
+    case 'delegation.upsert': {
+      const r=action.record,old=data.delegations?.find(d=>d.id===r.id);
+      if(action.expectedUpdatedAt&&old?.updatedAt!==action.expectedUpdatedAt)fail('위임 기록이 변경됐습니다. 최신 기록을 열고 다시 작성해 주세요.');
+      if(r.noteId&&!data.notes.some(n=>n.id===r.noteId&&(n.revision??1)===r.noteRevision))fail('원문이 변경됐습니다. 최신 기록을 확인하고 다시 연결해 주세요.');
+      if(['delivered','verified'].includes(r.status)&&!r.evidence.trim())fail('받은 결과물이나 확인 근거를 기록해 주세요.');
+      if(r.status==='verified'&&old?.status!=='delivered'&&old?.status!=='verified')fail('결과물을 받은 상태로 저장한 뒤 검토를 완료해 주세요.');
+      if((old?.history.length??0)>=30)fail('변경 이력이 30개입니다. 새 위임으로 후속 기록을 남겨 주세요.');
+      const at=now.toISOString();data.delegations=replace(data.delegations??[],{...r,createdAt:old?.createdAt??at,updatedAt:at,history:[...old?.history??[],{at,status:r.status,update:r.update,evidence:r.evidence,assignee:r.assignee,due:r.due,checkDate:r.checkDate}]});
+      if(r.taskId&&['requested','accepted','working','blocked'].includes(r.status)){const linked=task(r.taskId);if(linked.status!=='done'){finishSession(linked);linked.status='waiting';linked.focus=false;delete linked.focusDate;linked.blocker='위임: '+r.assignee+' · '+r.deliverable.slice(0,1500);linked.checkDate=r.checkDate;}}
+      break;
+    }
     case 'memory.upsert': {
       const m={...action.memory,sources:action.memory.sources.map(s=>s.kind==='note'?{...s,revision:s.revision??data.notes.find(n=>n.id===s.id)?.revision??1}:s)};
       if(m.sources.some(s=>s.kind==='note'&&data.notes.find(n=>n.id===s.id)?.tags.includes('사주'))&&(m.kind!=='reflection'||m.origin!=='saju'))fail('사주 해석 자료는 사주·자기 탐색으로 구분해 보관해 주세요.');
@@ -318,6 +343,7 @@ export function applyAction(
       const t = task(action.id);
       finishSession(t);
       if (action.actualMinutes !== undefined) t.actualMinutes = action.actualMinutes;
+      t.outcomeEstimateMinutes = t.duration;
       t.outcome = action.outcome;
       t.outcomeOn = today;
       if (action.outcome === 'done') {

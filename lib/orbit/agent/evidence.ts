@@ -2,7 +2,7 @@ import type { WorkspaceData, Note, Task } from '../model.ts';
 import { AgentError } from './errors.ts';
 export interface AgentSource {
   title:string; label:string;
-  id?:string; kind?:'note'|'task'|'project'|'goal'|'event'|'review'|'conversation'|'plaud'|'memory';
+  id?:string; kind?:'note'|'task'|'project'|'goal'|'event'|'review'|'conversation'|'decision'|'delegation'|'plaud'|'memory';
   recordId?:string; revision?:number; date?:string; excerpt?:string;
   scope?:'metadata'|'excerpt'|'full'; retrievedAt?:string;
 }
@@ -15,6 +15,8 @@ export const taskSource=(task:Task)=>sourceRecord('task',task.id,task.title,JSON
 export function addEvidence(registry:EvidenceRegistry,sources:AgentSource[]) {const added:AgentSource[]=[];for(const source of sources){if(!source.id)continue;if(Object.keys(registry).length>=420&&!registry[source.id])break;const rank={metadata:0,excerpt:1,full:2},old=registry[source.id];const selected=old&&(rank[old.scope??'excerpt']>rank[source.scope??'excerpt'])?old:source;registry[source.id]=selected;added.push(selected)}return added;}
 export function catalogEvidence(data:WorkspaceData,registry:EvidenceRegistry) {
   return addEvidence(registry,[
+    ...(data.decisions??[]).slice(-40).map(r=>sourceRecord('decision',r.id,r.title,JSON.stringify({...r,history:undefined}),{date:r.updatedAt.slice(0,10)})),
+    ...(data.delegations??[]).slice(-40).map(r=>sourceRecord('delegation',r.id,r.title,JSON.stringify({...r,history:undefined}),{date:r.updatedAt.slice(0,10)})),
     ...data.projects.slice(0,60).map(p=>sourceRecord('project',p.id,p.name,p.goal)),
     ...data.tasks.slice(0,100).map(taskSource),
     ...data.events.slice(0,150).map(e=>sourceRecord('event',e.id,e.title,JSON.stringify(e),{date:e.date})),

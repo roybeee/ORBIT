@@ -44,7 +44,7 @@ const median = (values: number[]) => {
 };
 // PAFI improvement: median(actual / estimate) of recent completed work of the same kind.
 // Falls back from project+cognition to cognition to everything; needs five samples to act.
-export function calibrationFactor(tasks: Task[], task: Task, date: string) {
+export function calibrationEvidence(tasks: Task[], task: Task, date: string) {
   const since = addDays(date, -30);
   const samples = tasks.filter(
     (t) =>
@@ -55,17 +55,18 @@ export function calibrationFactor(tasks: Task[], task: Task, date: string) {
       t.duration > 0 &&
       (t.completedOn ?? '') >= since && (t.completedOn ?? '') <= date,
   );
-  const ratios = (list: Task[]) => list.map((t) => t.actualMinutes! / t.duration);
+  const ratios = (list: Task[]) => list.map((t) => t.actualMinutes! / (t.outcomeEstimateMinutes??t.duration));
   const cognition = taskCognition(task);
   const tiers = [
     samples.filter((t) => t.projectId === task.projectId && taskCognition(t) === cognition),
     samples.filter((t) => taskCognition(t) === cognition),
     samples,
   ];
-  for (const tier of tiers)
-    if (tier.length >= 5) return Math.round(Math.min(2, Math.max(0.5, median(ratios(tier)))) * 100) / 100;
-  return 1;
+  for (const [index,tier] of tiers.entries())
+    if (tier.length >= 5) return {factor:Math.round(Math.min(2, Math.max(0.5, median(ratios(tier)))) * 100) / 100,tier:['같은 프로젝트·인지 유형','같은 인지 유형','전체 완료 업무'][index],samples:tier.map(t=>({id:t.id,title:t.title,date:t.completedOn,estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes!})),sufficient:true};
+  return {factor:1,tier:'표본 부족',samples:samples.map(t=>({id:t.id,title:t.title,date:t.completedOn,estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes!})),sufficient:false};
 }
+export const calibrationFactor=(tasks:Task[],task:Task,date:string)=>calibrationEvidence(tasks,task,date).factor;
 export const calibrate = (duration: number, factor: number) =>
   Math.min(480, Math.max(5, Math.round((duration * factor) / 5) * 5));
 export interface PlannerOptions {

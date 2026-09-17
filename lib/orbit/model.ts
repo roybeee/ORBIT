@@ -1,6 +1,6 @@
 import type { DailyBrief } from './brief/schema';
 export type View =
-  'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).
@@ -46,6 +46,7 @@ export interface Task {
   cognition?: Cognition;
   must?: boolean;
   unplanned?: boolean;
+  outcomeEstimateMinutes?: number;
   actualMinutes?: number;
   outcome?: Outcome;
   outcomeReason?: OutcomeReason;
@@ -233,7 +234,23 @@ export interface DailyReview {
   highlight?: string;
   hasDetail?: boolean;
 }
+export interface DecisionRecord {
+  id:string; title:string; projectId:string; choice:string; rationale:string; alternatives:string;
+  reviewDate:string; status:'active'|'revised'|'closed'; outcome:string;
+  noteId?:string; noteRevision?:number; taskId?:string;
+  createdAt:string; updatedAt:string;
+  history:{at:string; choice:string; rationale:string; alternatives:string; status:DecisionRecord['status']; outcome:string}[];
+}
+export interface DelegationRecord {
+  id:string; title:string; projectId:string; assignee:string; deliverable:string; due:string; checkDate:string;
+  status:'requested'|'accepted'|'working'|'blocked'|'delivered'|'verified'|'cancelled';
+  update:string; evidence:string; taskId?:string; noteId?:string; noteRevision?:number;
+  createdAt:string; updatedAt:string;
+  history:{at:string; status:DelegationRecord['status']; update:string; evidence:string; assignee:string; due:string; checkDate:string}[];
+}
 export interface WorkspaceData {
+  decisions?:DecisionRecord[];
+  delegations?:DelegationRecord[];
   memories?: PersonalMemory[];
   chief?: ChiefState;
   careRoutines?: CareRoutine[];

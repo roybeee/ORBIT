@@ -81,23 +81,26 @@ export async function readNote(db: Database, ownerId: string, id: string, revisi
 export async function searchNotes(
   db: Database,
   ownerId: string,
-  options: { query: string; kind: 'wiki' | 'knowledge'; offset: number; expectedRevision?: number },
+  options: { query: string; kind: 'wiki' | 'knowledge'; offset: number; expectedRevision?: number; projectId?:string; tag?:string; documentKind?:string },
 ): Promise<{ items: Note[]; hasMore: boolean; revision: number }> {
   const snapshot = await readWorkspace(db, ownerId);
   if (options.expectedRevision !== undefined && options.expectedRevision !== snapshot.revision)
     throw new RevisionConflict('기록 목록이 변경됐습니다. 최신 내용을 불러와 주세요.');
   const { results } = await db
     .prepare(
-      `SELECT meta.value AS metadata FROM json_each(?) AS meta
+      `SELECT meta.value AS metadata, substr(COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), ''), max(1,instr(lower(COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), '')),lower(?))-65),240) AS excerpt FROM json_each(?) AS meta
  LEFT JOIN orbit_note_revisions AS document ON document.owner_id = ? AND document.note_id = json_extract(meta.value, '$.id') AND document.revision = COALESCE(json_extract(meta.value, '$.revision'), 1)
  WHERE (CASE WHEN ? = 'knowledge' THEN json_extract(meta.value, '$.kind') = 'knowledge' ELSE json_extract(meta.value, '$.kind') IN ('meeting', 'wiki') END)
- AND instr(lower(json_extract(meta.value, '$.title') || char(10) || json_extract(meta.value, '$.summary') || char(10) || json_extract(meta.value, '$.tags') || char(10) || COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), '')), lower(?)) > 0
+ AND instr(lower(json_extract(meta.value, '$.title') || char(10) || json_extract(meta.value, '$.summary') || char(10) || json_extract(meta.value, '$.tags') || char(10) || COALESCE(json_extract(meta.value, '$.wiki.aliases'), '') || char(10) || COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), '')), lower(?)) > 0
+ AND (? = '' OR json_extract(meta.value, '$.projectId') = ?)
+ AND (? = '' OR EXISTS(SELECT 1 FROM json_each(json_extract(meta.value,'$.tags')) WHERE value=?))
+ AND (? = '' OR json_extract(meta.value, '$.kind') = ?)
  ORDER BY json_extract(meta.value, '$.updated') DESC, json_extract(meta.value, '$.id') ASC LIMIT 25 OFFSET ?`,
     )
-    .bind(JSON.stringify(snapshot.data.notes), ownerId, options.kind, options.query, options.offset)
-    .all<{ metadata: string }>();
+    .bind(options.query,JSON.stringify(snapshot.data.notes), ownerId, options.kind, options.query,options.projectId??'',options.projectId??'',options.tag??'',options.tag??'',options.documentKind??'',options.documentKind??'', options.offset)
+    .all<{ metadata: string; excerpt:string }>();
   return {
-    items: results.slice(0, 24).map((row) => ({ ...JSON.parse(row.metadata), body: '' })),
+    items: results.slice(0, 24).map((row) => ({ ...JSON.parse(row.metadata), body: '',searchExcerpt:row.excerpt })),
     hasMore: results.length > 24,
     revision: snapshot.revision,
   };

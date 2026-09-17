@@ -60,6 +60,7 @@ export const taskSchema = z
     cognition: cognition.optional(),
     must: z.boolean().optional(),
     unplanned: z.boolean().optional(),
+    outcomeEstimateMinutes: z.number().int().min(5).max(480).optional(),
     actualMinutes: z.number().int().min(0).max(1440).optional(),
     outcome: outcome.optional(),
     outcomeReason: outcomeReason.optional(),
@@ -210,7 +211,11 @@ export const reviewDetailSchema = z
     habitChecks: z.array(id).max(3),
   })
   .strict();
+export const decisionSchema=z.object({id,title,projectId:id,choice:z.string().trim().min(1).max(2000),rationale:z.string().trim().min(1).max(2000),alternatives:z.string().max(2000),reviewDate:dateSchema,status:z.enum(['active','revised','closed']),outcome:z.string().max(2000),noteId:id.optional(),noteRevision:z.number().int().positive().optional(),taskId:id.optional()}).strict();
+export const delegationSchema=z.object({id,title,projectId:id,assignee:z.string().trim().min(1).max(100),deliverable:z.string().trim().min(1).max(2000),due:dateSchema,checkDate:dateSchema,status:z.enum(['requested','accepted','working','blocked','delivered','verified','cancelled']),update:z.string().max(2000),evidence:z.string().max(2000),taskId:id.optional(),noteId:id.optional(),noteRevision:z.number().int().positive().optional()}).strict();
 export const actionSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('decision.upsert'),record:decisionSchema,expectedUpdatedAt:z.string().datetime().optional()}).strict(),
+  z.object({type:z.literal('delegation.upsert'),record:delegationSchema,expectedUpdatedAt:z.string().datetime().optional()}).strict(),
   z.object({type:z.literal('memory.upsert'),memory:z.object({id,statement:z.string().trim().min(1).max(600),kind:z.enum(['preference','constraint','strategy','reflection']),origin:z.enum(['user','records','saju']),sources:z.array(z.object({kind:z.enum(['note','task','review']),id,revision:z.number().int().positive().optional()}).strict()).max(6)}).strict().refine(m=>m.origin!=='saju'||m.kind==='reflection','사주 자료는 자기 탐색으로 보관합니다.').refine(m=>m.origin!=='records'||m.sources.length>0,'연결할 기록이 필요합니다.')}).strict(),
   z.object({type:z.literal('memory.delete'),id}).strict(),
   z.object({type:z.literal('quest.plan'),goalId:id,project:projectSchema.optional(),tasks:z.array(taskSchema.pick({id:true,title:true,projectId:true,duration:true,due:true,impact:true,definition:true,dependsOn:true,noteId:true,quadrant:true,cognition:true})).min(1).max(12).refine(tasks=>new Set(tasks.map(t=>t.id)).size===tasks.length,'같은 퀘스트가 두 번 있습니다.')}).strict(),

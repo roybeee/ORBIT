@@ -43,7 +43,7 @@ export function personalContext(data:WorkspaceData,date:string) {
   const memories=(data.memories??[]).filter(m=>memoryAvailable(data,m));
   const since=addDays(date,-30);
   const measured=data.tasks.filter(t=>t.status==='done'&&t.outcome==='done'&&typeof t.actualMinutes==='number'&&t.actualMinutes>0&&t.duration>0&&t.completedOn&&t.completedOn>=since&&t.completedOn<=date).sort((a,b)=>b.completedOn!.localeCompare(a.completedOn!));
-  const ratios=measured.map(t=>t.actualMinutes!/t.duration).sort((a,b)=>a-b),mid=Math.floor(ratios.length/2);
+  const ratios=measured.map(t=>t.actualMinutes!/(t.outcomeEstimateMinutes??t.duration)).sort((a,b)=>a-b),mid=Math.floor(ratios.length/2);
   const median=ratios.length>=5?Math.round((ratios.length%2?ratios[mid]:(ratios[mid-1]+ratios[mid])/2)*100)/100:null;
   const factor=median===null?null:Math.max(.5,Math.min(2,median));
   const friction=data.tasks.filter(t=>t.outcome&&t.outcome!=='done'&&t.outcomeReason&&t.outcomeOn&&t.outcomeOn>=since&&t.outcomeOn<=date);

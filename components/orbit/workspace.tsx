@@ -1,5 +1,8 @@
 'use client';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import {FollowupPanel} from './phase2/followup';
+import {LearningPanel} from './phase2/learning';
+import {BackupPanel} from './phase2/backup';
 import { SoundStation } from './sound/station';
 import { DailyBriefPanel } from './brief/daily-brief';
 import { ShareIntake } from './attachments/share-intake';
@@ -132,6 +135,9 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'today', label: '오늘', icon: Sun },
   { id: 'calendar', label: '일정', icon: CalendarDays },
   { id: 'tasks', label: '할 일', icon: CheckCheck },
+  { id: 'followup', label: '결정·위임 추적', icon: CheckCheck },
+  { id: 'learning', label: '계획 개선', icon: Sparkles },
+  { id: 'backup', label: '백업·복구', icon: Download },
   { id: 'projects', label: '프로젝트', icon: FolderKanban },
   { id: 'sound', label: '사운드스테이션', icon: Headphones },
   { id: 'understanding', label: '나를 이해하는 기록', icon: Sparkles },
@@ -141,6 +147,9 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  followup:{title:'결정·위임 추적',subtitle:'판단의 근거와 맡긴 결과를 끝까지 확인합니다.',eyebrow:'FOLLOW THROUGH'},
+  learning:{title:'계획 개선',subtitle:'실제 기록으로 예상 시간을 보정하고 다음 계획을 조정합니다.',eyebrow:'LEARNING'},
+  backup:{title:'백업·복구',subtitle:'기록을 보관하고 필요한 항목을 확인한 뒤 복원합니다.',eyebrow:'MY RECORDS'},
   automation: {title:'서버 자동화',subtitle:'예약 실행부터 승인과 ODA 반영까지.',eyebrow:'AUTOMATION'},
   aside: {title:'ASIDE 실행',subtitle:'로그인된 웹 업무를 맡기고, 결과를 프로젝트에 연결합니다.',eyebrow:'BROWSER WORKSPACE'},
   sound: {title: '사운드스테이션', subtitle: '몰입할 때, 쉬어갈 때. 나의 페이스를 위한 소리.', eyebrow: 'ORBIT SOUND'},
@@ -1147,6 +1156,9 @@ function WorkspaceContent({
           {loaded && <AsidePanel visible={view==='aside'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && <AutomationPanel visible={view==='automation'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           <SoundStation visible={view === 'sound'} demo={demo} onOpen={() => {setDetail(null);navigate('sound')}} />
+          {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})}/>}
+          {loaded && view==='learning'&&<LearningPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={id=>setDetail({kind:'task',id})}/>}
+          {loaded && view==='backup'&&<BackupPanel snapshot={snapshot} demo={demo} busy={busy||hasPending} onRefresh={refresh}/>}
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
@@ -1547,7 +1559,7 @@ function WorkspaceContent({
               </div>
             </>
           )}
-          {view === 'wiki' && <WikiLibrary data={data} demo={demo} busy={busy || hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/>}
+          {view === 'wiki' && <WikiLibrary data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy || hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/>}
           {(view === 'wiki' || view === 'knowledge') && (
             <>
               <div className="view-toolbar">
@@ -2649,7 +2661,7 @@ function WorkspaceContent({
             </button>
             <p className="form-hint">
               저장된 기록과 모든 문서의 현재 본문이 포함됩니다. 작성 중인 폼과 과거 문서 이력은 포함되지
-              않습니다. 가져오기 기능은 이후 업데이트에서 제공됩니다.
+              않습니다. 전체 백업과 선택 복구는 백업·복구 화면에서 이용하세요.
             </p>
             <div className="divider" />
             <InstallSettings />
@@ -2677,7 +2689,7 @@ function WorkspaceContent({
             <AlertDialogDescription>
               {deleteTarget?.title}
               <br />
-              삭제 후 복원 기능은 아직 없습니다. 필요하면 설정에서 먼저 내 기록을 내보내세요.
+              삭제 전 백업·복구 화면에서 백업하면 선택 복구할 수 있습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
