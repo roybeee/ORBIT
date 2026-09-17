@@ -337,6 +337,7 @@ export function applyAction(
       break;
     case 'goal.upsert':
       data.goals = replace(data.goals ?? [], { ...data.goals?.find(g => g.id === action.goal.id), ...action.goal });
+      for (const field of action.clearFields ?? []) delete data.goals.find(g => g.id === action.goal.id)![field];
       break;
     case 'goal.delete':
       if (

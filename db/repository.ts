@@ -253,6 +253,19 @@ export async function writeCommand(
       throw new RevisionConflict('기록이 변경됐습니다. 작성 중인 내용을 보관하고 최신 내용을 확인해 주세요.');
   }
   const next = applyAction(working, action, now);
+  // Trashed IDs are reserved. Imports and older screens cannot silently recreate
+  // them or remove retained document history through the legacy delete endpoint.
+  const managedCategories = ['projects','tasks','notes','events','goals','memories','habits','decisions','delegations'] as const;
+  const reservedCandidates: { category: string; id: string }[] = [];
+  for (const category of managedCategories) {
+    const ids = new Set((working[category] ?? []).map(r => r.id));
+    for (const record of next[category] ?? []) if (!ids.has(record.id)) reservedCandidates.push({ category, id: record.id });
+  }
+  if (action.type === 'note.delete' || action.type === 'event.delete' || action.type === 'project.delete') reservedCandidates.push({ category: action.type === 'note.delete' ? 'notes' : action.type === 'event.delete' ? 'events' : 'projects', id: action.id });
+  if (reservedCandidates.length) {
+    const reserved = await db.prepare(`SELECT id FROM orbit_data_trash WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(?) AS candidate WHERE json_extract(candidate.value,'$.category')=orbit_data_trash.category AND json_extract(candidate.value,'$.id')=orbit_data_trash.record_id) LIMIT 1`).bind(ownerId, JSON.stringify(reservedCandidates)).first();
+    if (reserved) throw new DomainError('휴지통에 보관 중인 항목입니다. 데이터 관리에서 먼저 복원해 주세요.');
+  }
   next.events = next.events.filter((e) => !e.id.startsWith('google:'));
   const timestamp = now.toISOString(),
     revision = current.revision + 1;

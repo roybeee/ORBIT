@@ -10,6 +10,7 @@ import {restoreHistory,restoreFileContent} from '../lib/orbit/backup-history.ts'
 import {previewRestore,digest} from '../lib/orbit/backup.ts';
 import {readWorkspace,readNote,writeCommand} from '../db/repository.ts';
 import {prepareUpload,findFile} from '../lib/orbit/attachments/storage.ts';
+import {planDataTrash} from '../lib/orbit/data-manager.ts';
 import {parseAction} from '../lib/orbit/agent/protocol.ts';
 import {streamHasher} from '../lib/orbit/stream-hash.ts';
 const now=new Date('2026-09-17T00:00:00Z'),date='2026-09-17';
@@ -86,4 +87,9 @@ test('file restore rejects changed bytes, retries safely, and links verified att
 }));
 test('agent proposal protocol accepts complete reviewable experiment and rejects invented fields',()=>{
  assert.equal(parseAction({type:'experiment.start',experiment}).type,'experiment.start');assert.throws(()=>parseAction({type:'experiment.start',experiment:{...experiment,alreadyVerified:true}}));
+});
+
+test('data manager preserves experiment evidence and person links when records are moved to trash',()=>{
+ const d=applyAction(seed(),{type:'experiment.start',experiment},now);for(const selection of [[{category:'notes',id:'n'}],[{category:'tasks',id:'experiment:x'}],[{category:'projects',id:'p'}]])assert.throws(()=>planDataTrash(d,selection));
+ const contact={id:'c',name:'담당자',organization:'',role:'',aliases:[],projectIds:[],noteIds:[],decisionIds:[],delegationIds:[],eventIds:['event'],memo:''};let linked=seed();linked.events=[{id:'event',title:'면담',date,start:600,end:630,kind:'meeting'}];linked=applyAction(linked,{type:'contact.upsert',contact},now);assert.throws(()=>planDataTrash(linked,[{category:'events',id:'event'}]));
 });

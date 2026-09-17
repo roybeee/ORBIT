@@ -254,6 +254,9 @@ export function useWorkspace(demo: boolean, ownerId = '') {
   const pauseRefresh = useCallback((value: boolean) => {
     pauseRef.current = value;
   }, []);
+  const acceptSnapshot = useCallback((value: WorkspaceSnapshot) => {
+    if (value.revision >= snapshotRef.current.revision && !pending.current) publish(value);
+  }, [publish]);
   return {
     snapshot,
     loaded,
@@ -263,6 +266,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
     mutate,
     retry,
     pauseRefresh,
+    acceptSnapshot,
     refresh: load,
     discardRequestAndRefresh,
     hasPending: !!pending.current,

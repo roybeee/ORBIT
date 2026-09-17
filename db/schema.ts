@@ -1,5 +1,9 @@
 import {sql} from 'drizzle-orm';
 import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+// Deleted user records remain owner-scoped and recoverable without exposing credentials.
+export const dataTrash=sqliteTable('orbit_data_trash',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),category:text('category').notNull(),recordId:text('record_id').notNull(),title:text('title').notNull(),payloadJson:text('payload_json').notNull(),deletedAt:text('deleted_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.id]}),uniqueIndex('idx_orbit_trash_record').on(t.ownerId,t.category,t.recordId),index('idx_orbit_trash_recent').on(t.ownerId,t.deletedAt,t.id)]);
 // Bind legacy SIWC email claims only after observing the same verified stable ID.
 // A conflicting stable identity permanently disables email-only recovery.
 export const identityLinks=sqliteTable('orbit_identity_links',{
