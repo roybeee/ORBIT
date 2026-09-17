@@ -7,9 +7,15 @@ import {saveConnection} from '../lib/orbit/agent/secrets.ts';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
 const token='oda_int_'+randomUUID()+'.'+randomBytes(32).toString('base64url');
 const caps={version:1,stores:[{id:'store1',name:'Test store'}],kinds:['revenue','expense'],routines:true,currency:'KRW'};
+test('ODA redirects are rejected without forwarding credentials or saving a connection',()=>fixture(async db=>{
+ let calls=0;
+ globalThis.fetch=async(url,init)=>{calls++;assert.equal(init.redirect,'manual');return new Response(null,{status:307,headers:{Location:'https://other.example/capture'}})};
+ await assert.rejects(connectOda(db,'owner',env,token),{code:'ODA_REDIRECT',status:502});
+ assert.equal(calls,1);assert.equal(await readOda(db,'owner',env),null);
+}));
 async function fixture(fn){const db=createDatabase(),fetch=globalThis.fetch;try{await fn(db)}finally{globalThis.fetch=fetch;db.close()}}
 test('ODA connection secrets are encrypted, owner isolated and only sent to the fixed backend',()=>fixture(async db=>{
- globalThis.fetch=async(url,init)=>{assert.equal(url,ODA_ORIGIN+'/api/v2/oda/integration/capabilities');assert.equal(init.headers.Authorization,'Bearer '+token);assert.equal(init.redirect,'error');return Response.json(caps)};
+ globalThis.fetch=async(url,init)=>{assert.equal(url,ODA_ORIGIN+'/api/v2/oda/integration/capabilities');assert.equal(init.headers.Authorization,'Bearer '+token);assert.equal(init.redirect,'manual');return Response.json(caps)};
  await connectOda(db,'owner',env,token);
  const row=await db.prepare('SELECT secret_json FROM orbit_automation_connections WHERE owner_id=?').bind('owner').first();assert.ok(!row.secret_json.includes(token));
  assert.equal(await readOda(db,'other',env),null);assert.equal((await readOda(db,'owner',env)).token,token);
@@ -21,7 +27,7 @@ test('scheduled registration reuses Hermes only server-to-server; invocation ret
  await connectOda(db,'owner',env,token);
  await saveConnection(db,'owner','hermes',{endpoint:'https://hermes.example.com',token:'private-hermes',connectionId:'connection'},{connected:true},env.ORBIT_ENCRYPTION_KEY);
  const input={action:'routine.save',id:randomUUID(),title:'Daily check',prompt:'Read the current public report',storeId:'store1',timeZone:'Asia/Seoul',time:'09:00',weekdays:[1,2,3,4,5],enabled:true,mode:'report'};
- const result=await changeAutomation(db,'owner',env,input);assert.ok(!JSON.stringify(result).includes('private-hermes'));
+const result=await changeAutomation(db,'owner',env,input);assert.ok(!JSON.stringify(result).includes('private-hermes'));
  const payload=JSON.parse(calls.at(-1).init.body);assert.deepEqual(payload.runner,{endpoint:'https://hermes.example.com',token:'private-hermes'});assert.ok(!('action' in payload));
  const command={action:'routine.run',id:input.id,invocationId:randomUUID()};await changeAutomation(db,'owner',env,command);await changeAutomation(db,'owner',env,command);
  assert.equal(calls.at(-1).init.body,calls.at(-2).init.body);assert.deepEqual(JSON.parse(calls.at(-1).init.body),{id:command.invocationId});

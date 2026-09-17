@@ -16,8 +16,10 @@ export async function readOda(db:Database,owner:string,env:Runtime){
 export async function odaRequest(connection:OdaConnection,path:string,input?:unknown){
   if(!/^\/(?:capabilities|routines|runs|batches)(?:\/[a-zA-Z0-9_-]+)*(?:\?storeId=[^&]{1,400}&month=\d{4}-\d{2})?$/.test(path))throw new AgentError('지원하지 않는 자동화 요청입니다.');
   let response:Response;
-  try{response=await fetch(ODA_ORIGIN+ROOT+path,{method:input===undefined?'GET':'POST',redirect:'error',headers:{Authorization:`Bearer ${connection.token}`,'Content-Type':'application/json','Accept':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:AbortSignal.timeout(25000)})}
+  // Workers supports follow/manual only. Never forward credentials to a redirect.
+  try{response=await fetch(ODA_ORIGIN+ROOT+path,{method:input===undefined?'GET':'POST',redirect:'manual',headers:{Authorization:`Bearer ${connection.token}`,'Content-Type':'application/json','Accept':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:AbortSignal.timeout(25000)})}
   catch{throw new AgentError('ODA 서버에 연결하지 못했습니다. 작업을 중복 등록하지 말고 상태를 다시 확인해 주세요.','ODA_UNAVAILABLE',503)}
+  if(response.status>=300&&response.status<400)throw new AgentError('ODA 연결 주소가 변경되어 연결을 중단했습니다. 연결 키는 다른 주소로 전달하지 않았습니다.','ODA_REDIRECT',502);
   if([401,403].includes(response.status))throw new AgentError('ODA 연결 키가 만료되었거나 이 작업의 권한이 없습니다. ODA 자동화 연결에서 매장과 권한을 확인해 주세요.','ODA_AUTH',409);
   if(response.status===404)throw new AgentError('ODA 자동화 기능을 찾지 못했습니다. ODA 배포 상태를 확인해 주세요.','ODA_VERSION',503);
   const raw=await response.text();if(raw.length>1500000)throw new AgentError('ODA 응답이 너무 큽니다. 조회 범위를 줄여 주세요.','ODA_SIZE',502);
