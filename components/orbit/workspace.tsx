@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {FollowupPanel} from './phase2/followup';
 import {LearningPanel} from './phase2/learning';
 import {BackupPanel} from './phase2/backup';
@@ -368,6 +369,7 @@ function WorkspaceContent({
   displayName?: string;
   ownerId?: string;
 }) {
+  const cosmic=useCosmicMotion();
   const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh } =
     useWorkspace(demo, ownerId);
   const data = snapshot.data,
@@ -966,6 +968,7 @@ function WorkspaceContent({
   };
   return (
     <SidebarProvider className="galaxy-workspace" style={{ '--sidebar-width': '248px' } as CSSProperties}>
+      <CosmicBackdrop/>
       {!demo && <InstallRootHint />}
       <a href="#main-content" className="skip-link">
         본문으로 이동
@@ -986,6 +989,7 @@ function WorkspaceContent({
             <strong>{navigation.find((n) => n.id === view)?.label}</strong>
           </div>
           <div className="top-actions">
+            <CosmicMotionToggle enabled={cosmic.enabled} reduced={cosmic.reduced} onToggle={cosmic.toggle}/>
             <button className="sound-launch" onClick={() => navigate('sound')} aria-label="사운드스테이션 열기" title="사운드스테이션"><Headphones size={18}/></button>
             {loaded && (
               <ShareIntake ownerId={ownerId} demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />

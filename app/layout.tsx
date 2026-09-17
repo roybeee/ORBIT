@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import {PwaProvider} from "@/components/orbit/pwa-provider";
 import "./globals.css";
+import "./cosmic.css";
 export const metadata: Metadata = {
   title: "Orbit · 나의 페이스메이커",
   description: "나를 중심으로 프로젝트와 지식, 실행을 연결하고 성과로 확장하는 개인 AI 시스템.",

@@ -1,0 +1,60 @@
+/* Cosmic atmosphere: transform/opacity motion, never moving text or click targets. */
+.galaxy-workspace{position:relative;isolation:isolate;background:transparent}
+.cosmic-backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#050711;contain:strict}
+.cosmic-nebula{position:absolute;inset:-4%;background:url('/images/orbit-nebula.png') center/cover no-repeat;opacity:.84;animation:cosmic-drift 72s ease-in-out infinite alternate}
+.cosmic-shade{position:absolute;inset:0;background:linear-gradient(90deg,#070a1480,#070a1425 55%,#070a1410),linear-gradient(180deg,#05071110,#05071130 70%,#05071160)}
+.cosmic-stars{position:absolute;inset:0;opacity:.62}
+.cosmic-star{position:absolute;width:var(--star-size);height:var(--star-size);border-radius:50%;background:#c4d6ff;box-shadow:0 0 7px #b3b4ff90;opacity:.24;animation:cosmic-twinkle 9s ease-in-out infinite;animation-delay:var(--star-delay)}
+.cosmic-star:nth-child(3n){background:#98daeb;animation-duration:13s}
+.cosmic-toggle{display:flex;align-items:center;justify-content:center;gap:7px;min-width:44px;min-height:44px;padding:8px 12px;background:#19172ebf;color:#d4c8f5;border:1px solid #65538480;border-radius:999px;font-size:13px;white-space:nowrap}
+.cosmic-toggle small{font-size:10px;color:#c0b5d7;letter-spacing:.04em}.cosmic-toggle[aria-pressed=true] small{color:#92e4df}
+.cosmic-toggle:hover{background:#2c2247;border-color:#ad8ce0}.cosmic-toggle:disabled{opacity:.8;cursor:default}
+.app-sidebar [data-slot=sidebar-inner]{background:linear-gradient(180deg,#111326f7,#090c18f5);border-right:1px solid #b18be21a}
+.topbar{background:linear-gradient(100deg,#0a1020ed,#19152be8);border-bottom:1px solid #9d83d42e}
+.sync-bar{background:#090d18cc}.page-heading h1{text-shadow:0 0 32px #ae8bf92b}
+.personal-galaxy{background:linear-gradient(110deg,#11132bd6,#1616318c),url('/images/orbit-nebula.png') center/cover;border-color:#a18bcc6e;box-shadow:inset 0 1px 0 #d0baff12,0 12px 50px #0003}
+.galaxy-heading{position:relative;z-index:1}.galaxy-map{isolation:isolate}
+.galaxy-paths ellipse{stroke:#b394e673}.galaxy-paths .galaxy-ring-inner{stroke-dasharray:2 9;animation:cosmic-orbit 55s linear infinite}
+.galaxy-paths .galaxy-ring-outer{stroke:#77bacc69;stroke-dasharray:1 11 5 21;animation:cosmic-orbit 90s linear infinite reverse}
+.galaxy-paths .galaxy-signal{stroke:#a3dfea;stroke-width:2;stroke-linecap:round;stroke-dasharray:4 96;stroke-dashoffset:100;opacity:.75;animation:cosmic-signal 8s linear infinite;animation-delay:var(--signal-delay)}
+.galaxy-paths .galaxy-signal.is-focused{stroke:#d6fcff;stroke-width:3;opacity:1}
+.galaxy-self{background:radial-gradient(circle at 32% 23%,#b19cdb,#5e3e86 45%,#24223f 83%);border-color:#d6b7ffb0;box-shadow:inset 0 1px 8px #f9e4ff30,0 0 28px #ae70ef45,0 0 65px #865bc824}
+.galaxy-core-ring{position:absolute;inset:-11px;border:1px solid #c59be75c;border-radius:50%;pointer-events:none;opacity:.45;animation:cosmic-breathe 7s ease-in-out infinite}
+.galaxy-core-ring.is-outer{inset:-23px;border-color:#80ccdf36;animation-delay:-3.5s}
+.galaxy-self>svg{filter:drop-shadow(0 0 6px #ecd9ff70)}
+.galaxy-satellite{background:linear-gradient(130deg,#302347f5,#172a3af7);border-color:#9678b46b;box-shadow:inset 0 1px 0 #f0dcff12,0 4px 14px #05060c40}
+.galaxy-satellite::after{content:"";position:absolute;inset:-4px;border:1px solid #98e1ed00;border-radius:15px;pointer-events:none;opacity:0;transition:opacity .3s,border-color .3s,transform .3s;transform:scale(.98)}
+.galaxy-satellite.is-focused{background:linear-gradient(130deg,#41305ef5,#203c4bf7);box-shadow:0 0 25px #79d2e62e,inset 0 1px 0 #eddbff20}
+.galaxy-satellite.is-focused::after{opacity:1;border-color:#98e1ed70;transform:scale(1.025)}
+.galaxy-footer{background:#0a1021b3;border-top-color:#b4a1e325}
+.galaxy-command .wd-next{background:linear-gradient(125deg,#25203af0,#111e30ed);border-color:#8870ad66;box-shadow:inset 0 1px 0 #e6d5ff0f,0 12px 38px #0002}
+.wd-panel,.focus-panel,.project-card,.document-card,.phase2-record,.phase2-editor{box-shadow:inset 0 1px 0 #d8c7ff08,0 6px 24px #0002}
+.agent-welcome{position:relative;isolation:isolate;background:linear-gradient(180deg,#11152b20,#10192b95),url('/images/orbit-nebula.png') center/cover;border:1px solid #8d72b329;border-radius:24px;padding:34px 24px 28px}
+.agent-orbit{position:relative;isolation:isolate;background:radial-gradient(circle at 35% 25%,#b09ad6,#654484 40%,#282340 78%);border-color:#c9a3e880;box-shadow:0 0 30px #a56cea3b,0 0 75px #7254b728}
+.agent-orbit::before,.agent-orbit::after{content:"";position:absolute;inset:-12px;border:1px solid #c7a5fa4d;border-radius:50%;pointer-events:none;animation:cosmic-breathe 8s ease-in-out infinite}
+.agent-orbit::after{inset:-25px;border-color:#8ecade24;animation-delay:-4s}.agent-orbit svg{position:relative;z-index:1;filter:drop-shadow(0 0 9px #dac4fc90)}
+.chief-panel+.agent-welcome{padding-top:30px}.chief-panel+.agent-welcome .agent-orbit{display:grid;width:62px;height:62px;margin:0 auto 24px;border-radius:50%}.chief-panel+.agent-welcome .agent-orbit svg{width:32px;height:32px}
+.agent-welcome .agent-eyebrow{position:relative;margin-top:24px}.agent-welcome h1{line-height:1.5;text-shadow:0 0 28px #c78afa1c}.agent-welcome p{color:#c4cce0}
+.agent-composer{background:linear-gradient(110deg,#1c2240,#1b263d);border-color:#9270bc85;box-shadow:0 0 0 3px #ba90ec09,0 10px 35px #0005}
+.agent-composer:focus-within{border-color:#c4a0f1;box-shadow:0 0 0 3px #ba90ec17,0 8px 32px #8755c325}
+.primary-button,.new-button{box-shadow:0 0 18px #9970ed23,inset 0 1px 0 #f2dcff26}.primary-button:hover,.new-button:hover{box-shadow:0 0 25px #9970ed45,inset 0 1px 0 #f2dcff30}
+.brand-mark{box-shadow:0 0 22px #b282e936,inset 0 0 9px #e9ddff21}
+.graph-view{background:linear-gradient(#101729df,#101729ef),url('/images/orbit-nebula.png') center/cover}
+
+@keyframes cosmic-drift{from{transform:translate3d(-.6%,-.4%,0) scale(1.01)}to{transform:translate3d(.6%,.4%,0) scale(1.05)}}
+@keyframes cosmic-twinkle{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:.85;transform:scale(1.12)}}
+@keyframes cosmic-orbit{to{stroke-dashoffset:-360}}
+@keyframes cosmic-signal{0%{stroke-dashoffset:100;opacity:0}12%{opacity:.7}80%{opacity:.7}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes cosmic-breathe{0%,100%{transform:scale(.98);opacity:.3}50%{transform:scale(1.035);opacity:.8}}
+
+/* Every continuous effect has a pause path, including the welcome rings. */
+.cosmic-motion,.agent-orbit::before,.agent-orbit::after{animation-play-state:paused}
+html[data-orbit-motion=full][data-orbit-visible=yes] .cosmic-motion,
+html[data-orbit-motion=full][data-orbit-visible=yes] .agent-orbit::before,
+html[data-orbit-motion=full][data-orbit-visible=yes] .agent-orbit::after{animation-play-state:running}
+html[data-orbit-motion=still] .galaxy-signal{opacity:0}
+@media(max-width:1100px){.top-actions{gap:10px}.top-actions .quiet{display:none}}
+@media(max-width:760px){.cosmic-nebula{opacity:.64;animation:none}.cosmic-star:nth-child(n+9){display:none}.cosmic-toggle{padding:8px;gap:5px}.cosmic-toggle>span{display:none}.cosmic-toggle small{font-size:10px}.top-actions{gap:7px}.agent-welcome{padding:30px 16px 24px}.agent-welcome h1{font-size:26px}.agent-orbit::after{inset:-18px}.cosmic-shade{background:linear-gradient(180deg,#070a140d,#070a144d)}.personal-galaxy{background-position:72% center}.galaxy-core-ring.is-outer{inset:-18px}}
+@media(max-width:560px){.topbar{flex-wrap:wrap;gap:6px 12px;padding-block:8px}.topbar .breadcrumb{min-width:0}.topbar .breadcrumb strong{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top-actions{margin-left:auto;flex-wrap:wrap;justify-content:flex-end}.cosmic-toggle{min-width:56px}}
+@media(prefers-reduced-motion:reduce){.cosmic-motion,.agent-orbit::before,.agent-orbit::after{animation:none!important}.galaxy-signal{display:none}.galaxy-satellite::after{transition:none}.cosmic-nebula{transform:none}}
+@media(forced-colors:active){.cosmic-backdrop,.galaxy-core-ring,.agent-orbit::before,.agent-orbit::after{display:none}.personal-galaxy,.agent-welcome{background:Canvas}.cosmic-toggle{border:1px solid ButtonText}}
