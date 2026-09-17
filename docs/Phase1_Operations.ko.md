@@ -14,6 +14,8 @@
 
 `scripts/runtime-tick.mjs`를 매분 실행합니다. 한 실행에서 최대 12단계를 진행하고 대기 포함 약 50초에 다음 요청 시작을 멈춥니다. 단일 외부 요청 제한은 150초이며 Orbit 내부 임대는 180초입니다. 서버는 한 요청당 하나의 자료 수집 또는 실행 단계만 수행합니다. Render cron의 단일 실행 보장과 DB 임대로 중복 처리를 막습니다.
 
+실행기 생성 및 작동 검증 후 Sites 환경변수 `ORBIT_SCHEDULER_ENABLED=1`을 설정하고 다시 배포합니다. 이 값이 없으면 화면은 예약 실행기 연결 대기로 표시합니다.
+
 Sites 비밀 환경변수: `ORBIT_RUNTIME_KEY`, `ORBIT_RUNTIME_OWNER`.
 Render 비밀 환경변수: `ORBIT_RUNTIME_TICK_TOKEN`, `ORBIT_SITES_BEARER`. URL은 `ORBIT_RUNTIME_TICK_URL`입니다. 키와 고정 소유자는 모델·브라우저 입력으로 설정되지 않습니다. transport bearer는 Sites 게이트 전용이며 앱 사용자 신원을 부여하지 않습니다.
 
