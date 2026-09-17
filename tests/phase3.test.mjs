@@ -10,6 +10,7 @@ import {weeklyCapacity,portfolioBasis,operatingSignals,meetingBrief,executiveCon
 import {planFromBrief} from '../lib/orbit/brief/planning.ts';
 import {chiefOfStaff} from '../lib/orbit/chief.ts';
 import {questReadiness} from '../lib/orbit/pacemaker.ts';
+import {scheduledPrompt} from '../lib/orbit/agent/chief-jobs.ts';
 import {previewRestore,restoreContent,digest} from '../lib/orbit/backup.ts';
 const date='2026-09-14',now=new Date(date+'T00:00:00Z');
 const project={id:'p',name:'사업',color:'#5558e8',symbol:'P',goal:'검증한 결과를 낸다',due:date,priority:4};
@@ -82,4 +83,8 @@ test('restored observations reject cycles, overlapping periods and cross-project
 });
 test('executive AI context is bounded and clearly retains observed values and follow-up status',()=>{
  const d=withMetric();for(let i=0;i<59;i++)d.operatingMetrics.push({...d.operatingMetrics[0],id:'m'+i});const c=executiveContext(d,date);assert.equal(c.operating.length,12);assert.equal(c.operatingOmitted,48);assert.equal(c.operating[0].state,'attention');assert.equal(c.operating[0].latest.value,70);
+});
+test('refreshed native reminders exclude paused work and retain anonymous protection intervals',()=>{
+ const d=seed();d.goals=[{id:'g',kind:'short',sentence:'사업 목표'}];d.projects[0].goalId='g';d.weeklyAllocations=[{id:date,from:date,through:'2026-09-20',approvedAt:now.toISOString(),active:true,capacityAtApproval:0,allocations:[{projectId:'p',minutes:0,stance:'pause',reason:'보류'}],protectedBlocks:[{id:'f',title:'가족의 사적인 일정',date,start:600,end:660}]}];
+ const prompt=scheduledPrompt(d,{includeCare:false,research:'',hours:6,delivery:'local'},now),snapshot=JSON.parse(prompt.split('Snapshot DATA (bounded catalog): ')[1]);assert.equal(snapshot.tasks.length,0);assert.deepEqual(snapshot.protectedTime,[{date,start:600,end:660}]);assert.ok(!prompt.includes('가족의 사적인 일정'));assert.ok(JSON.stringify(snapshot).length<=2500);
 });
