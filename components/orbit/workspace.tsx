@@ -4,6 +4,8 @@ import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {FollowupPanel} from './phase2/followup';
 import {LearningPanel} from './phase2/learning';
 import {BackupPanel} from './phase2/backup';
+import {DataManager} from './data-manager';
+import type {TrashRecord} from '@/lib/orbit/data-manager';
 import {PortfolioPanel,SignalsPanel,MeetingsPanel} from './phase3/executive';
 import {protectedEvents} from '@/lib/orbit/allocation-policy';
 import { SoundStation } from './sound/station';
@@ -51,6 +53,7 @@ import {
   Network,
   LayoutGrid,
   Headphones,
+  Database,
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -131,6 +134,7 @@ import {
 } from '@/lib/orbit/model';
 const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'dashboard', label: '나의 우주', icon: LayoutGrid },
+  { id: 'data', label: '데이터 관리', icon: Database },
   { id: 'agent', label: 'AI 에이전트', icon: MessagesSquare },
   { id: 'aside', label: 'ASIDE 실행', icon: Network },
   { id: 'automation', label: '서버 자동화', icon: Clock3 },
@@ -153,6 +157,7 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  data:{title:'데이터 관리',subtitle:'나의 기록을 살펴보고, 연결하고, 정리합니다.',eyebrow:'MY DATA'},
   portfolio:{title:'사업별 시간 배분',subtitle:'이번 주 집중할 사업과 지켜야 할 시간을 함께 정합니다.',eyebrow:'WEEKLY ALLOCATION'},
   signals:{title:'운영 신호',subtitle:'확인한 수치의 변화에서 필요한 판단과 후속 행동을 찾습니다.',eyebrow:'OPERATING SIGNALS'},
   meetings:{title:'회의 브리핑',subtitle:'이전 결정과 약속을 준비하고, 회의에서 바뀐 것을 실행으로 연결합니다.',eyebrow:'MEETING BRIEF'},
@@ -378,7 +383,7 @@ function WorkspaceContent({
   ownerId?: string;
 }) {
   const cosmic=useCosmicMotion();
-  const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh } =
+  const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh, acceptSnapshot } =
     useWorkspace(demo, ownerId);
   const data = snapshot.data,
     preferences = data.preferences;
@@ -387,6 +392,8 @@ function WorkspaceContent({
   const TODAY = demo ? '2026-09-06' : todayInZone(preferences.timeZone, clock),
     TOMORROW = addDays(TODAY, 1);
   const [view, setView] = useState<View>(demo ? 'today' : 'agent');
+  const [dataEditing, setDataEditing] = useState(false);
+  const [demoDataTrash, setDemoDataTrash] = useState<TrashRecord[]>([]);
   const [proposalDate, setProposalDate] = useState(TOMORROW);
   const [attachmentDraft, setAttachmentDraft] = useState('event-draft:initial');
   const eventUploads = useAttachments(attachmentDraft);
@@ -463,6 +470,7 @@ function WorkspaceContent({
   useEffect(() => {
     pauseRefresh(
       !!create ||
+        dataEditing ||
         settingsOpen ||
         brainyOpen ||
         assignOpen ||
@@ -471,7 +479,7 @@ function WorkspaceContent({
         detail?.kind === 'note',
     );
     return () => pauseRefresh(false);
-  }, [create, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
+  }, [create, dataEditing, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
@@ -1171,6 +1179,7 @@ function WorkspaceContent({
           {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})}/>}
           {loaded && view==='learning'&&<LearningPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={id=>setDetail({kind:'task',id})}/>}
           {loaded && view==='backup'&&<BackupPanel snapshot={snapshot} demo={demo} busy={busy||hasPending} onRefresh={refresh}/>}
+          {loaded && view==='data'&&<DataManager snapshot={snapshot} demo={demo} demoTrash={demoDataTrash} setDemoTrash={setDemoDataTrash} busy={busy||hasPending} today={TODAY} onRefresh={refresh} onSnapshot={acceptSnapshot} onEditing={setDataEditing} onCreate={openCreate} onEdit={openEdit} onNavigate={navigate} onConnections={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}} perform={perform}/>}
           {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id)=>setDetail({kind,id})} onNavigate={navigate}/>})()}
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}

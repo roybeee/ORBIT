@@ -76,6 +76,8 @@ export async function restoreContent(db:Database,owner:string,raw:unknown,select
  if(prior){if(prior.action_hash!==hash)throw new RevisionConflict('같은 복구 번호에 다른 내용이 있습니다.');return {snapshot:await readWorkspace(db,owner),replayed:true,verified:false};}
  const snapshot=await readWorkspace(db,owner);if(snapshot.revision!==expectedRevision)throw new RevisionConflict('기록이 변경됐습니다. 복원 내용을 다시 확인해 주세요.');
  const plan=previewRestore(snapshot.data,raw,selection);if(!plan.inserted.length)throw new DomainError('새로 복원할 기록이 없습니다. 같은 번호의 기존 기록은 유지됩니다.');
+ const reserved=await db.prepare(`SELECT id FROM orbit_data_trash WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(?) AS candidate WHERE json_extract(candidate.value,'$.category')=orbit_data_trash.category AND json_extract(candidate.value,'$.id')=orbit_data_trash.record_id) LIMIT 1`).bind(owner,JSON.stringify(plan.inserted)).first();
+ if(reserved)throw new DomainError('휴지통에 보관 중인 항목이 포함되어 있습니다. 데이터 관리에서 먼저 복원해 주세요.');
  const next=plan.next,nextRevision=snapshot.revision+1,at=new Date().toISOString();next.schemaVersion=3;next.events=next.events.filter(e=>!e.id.startsWith('google:'));
  const notes=next.notes.filter(n=>plan.inserted.some(i=>i.category==='notes'&&i.id===n.id));
  next.notes=next.notes.map(n=>({...n,body:'',bodyStored:true,revision:n.revision??1}));

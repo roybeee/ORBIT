@@ -4,7 +4,7 @@ import type {Bucket} from './attachments/storage.ts';
 import {emptyWorkspace,type Note} from './model.ts';
 import {digest} from './backup.ts';
 // Product data only. Authentication secrets, live leases and runnable queues are not restored.
-const tables=['orbit_workspaces','orbit_note_revisions','orbit_reviews','orbit_conversations','orbit_agent_turns','orbit_agent_actions','orbit_agent_orders','orbit_order_reviews','orbit_order_reads','orbit_attachments','orbit_sound_state','orbit_calendar_settings','orbit_daily_runs','orbit_aside_jobs','orbit_source_status','orbit_calendar_exports','orbit_daily_runtime','orbit_chief_jobs','orbit_calendar_cache','orbit_activity_sessions','orbit_activity_messages'] as const;
+const tables=['orbit_workspaces','orbit_data_trash','orbit_note_revisions','orbit_reviews','orbit_conversations','orbit_agent_turns','orbit_agent_actions','orbit_agent_orders','orbit_order_reviews','orbit_order_reads','orbit_attachments','orbit_sound_state','orbit_calendar_settings','orbit_daily_runs','orbit_aside_jobs','orbit_source_status','orbit_calendar_exports','orbit_daily_runtime','orbit_chief_jobs','orbit_calendar_cache','orbit_activity_sessions','orbit_activity_messages'] as const;
 export async function backupArchive(db:Database,owner:string,bucket:Bucket){
  const capturedAt=new Date().toISOString(),batches=await db.batch(tables.map(table=>db.prepare(`SELECT * FROM ${table} WHERE owner_id=?`).bind(owner)));
  const rows=Object.fromEntries(tables.map((table,i)=>[table,batches[i].results??[]])) as Record<string,any[]>;

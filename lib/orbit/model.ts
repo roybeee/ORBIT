@@ -1,7 +1,7 @@
 import type { DailyBrief } from './brief/schema';
 import type {WeeklyAllocation,OperatingMetric,MetricObservation,SignalFollowup,MeetingRecord} from './phase3-model';
 export type View =
-  'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'data' | 'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).

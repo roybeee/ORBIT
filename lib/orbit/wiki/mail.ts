@@ -22,6 +22,7 @@ export async function syncWikiMail(db:Database,owner:string,env:Runtime) {
  for(const item of listed.data.messages??[]) {
   if(typeof item.id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(item.id))continue;
   let snapshot=await readWorkspace(db,owner);const id='gmail:'+item.id;if(snapshot.data.notes.some(n=>n.id===id))continue;
+  if(await db.prepare("SELECT id FROM orbit_data_trash WHERE owner_id=? AND category='notes' AND record_id=?").bind(owner,id).first())continue;
   if(Date.now()>deadline)throw new AgentError('메일 수집을 나누어 진행합니다. 다음 주기에 이어서 확인합니다.','MAIL',504);
   const detail=await fetchJson(base+'/'+encodeURIComponent(item.id)+'?format=full',{headers});if(!detail.response.ok)throw new AgentError('메일 원문을 가져오지 못했습니다. 다음 동기화에서 재시도합니다.','MAIL',502);
   const m=detail.data,header=(key:string)=>String(m.payload?.headers?.find((h:any)=>String(h.name).toLowerCase()===key)?.value??'').slice(0,2000);

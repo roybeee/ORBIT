@@ -231,7 +231,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project.upsert'), project: projectSchema }).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),
-  z.object({ type: z.literal('goal.upsert'), goal: goalSchema }).strict(),
+  z.object({ type: z.literal('goal.upsert'), goal: goalSchema, clearFields: z.array(z.enum(['deadline','parentId','metric'])).max(3).optional() }).strict(),
   z.object({ type: z.literal('goal.delete'), id }).strict(),
   z.object({ type: z.literal('task.upsert'), task: taskSchema, project: projectSchema.optional(), autoAssign: z.boolean().optional() }).strict(),
   z
