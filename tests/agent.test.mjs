@@ -282,3 +282,21 @@ test('Hermes stages content-based project creation with a task, then one approva
  assert.equal(result.data.projects.length,2);assert.equal(result.data.tasks.length,1);
  assert.equal(result.data.tasks[0].projectId,card.action.project.id);
 }));
+
+test('chat acknowledges a durable job before external work and duplicate receipt checks do not advance it',()=>fixture(async db=>{
+ await connectHermes(db);await connect(db);let calls=0;
+ globalThis.fetch=async()=>{calls++;throw new Error('calendar unavailable')};
+ const input={id:randomUUID(),message:'오늘 하루를 설계하라.'};
+ assert.equal(await runAgent(db,'owner',input,env,{defer:true}),'running');
+ assert.equal(calls,0);
+ const stored=await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE turn_id=?').bind(input.id).first();
+ assert.equal(JSON.parse(stored.job_json).phase,'prepare');
+ assert.equal((await listAgent(db,'owner')).activeRun.id,input.id);
+ assert.equal(await runAgent(db,'owner',input,env,{defer:true}),'running');
+ assert.equal(calls,0);
+ assert.equal((await db.prepare('SELECT count(*) AS n FROM orbit_agent_turns').first()).n,1);
+ await advanceAgent(db,'owner',input.id,env,true);
+ assert.equal((await listAgent(db,'owner')).activeRun,null);
+ assert.match((await listAgent(db,'owner')).turns[0].error,/중지/);
+ assert.equal(calls,0);
+}));
