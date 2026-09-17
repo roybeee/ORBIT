@@ -1,4 +1,6 @@
 import {monthlyReport} from './phase4.ts';
+import {prepareReplan,replanBasis} from './reschedule.ts';
+import {planningFloor,minuteInZone} from './dates.ts';
 import {careEvents,goalAllowsWork,goalIsActive} from './chief.ts';
 import {allocationAllowsWork,activeAllocation,protectedEvents,weeklyCapacity,portfolioBasis,operatingSignals,meetingBrief} from './phase3.ts';
 import {questReadiness,memorySignature} from './pacemaker.ts';
@@ -131,6 +133,7 @@ export function applyAction(
     data.proposals = replace(data.proposals, p);
   };
   const plannerOptions = (date: string) => ({
+    earliestStart:date<today?0:planningFloor(date,data.preferences.timeZone,now),
     dominoProjectId: data.dominoProjectId,
     projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
     calibration: (t: Task) => calibrationFactor(data.tasks, t, date),
@@ -187,7 +190,9 @@ export function applyAction(
     }
     case 'portfolio.release':data.weeklyAllocations=(data.weeklyAllocations??[]).map(p=>p.id===action.id?{...p,active:false}:p);break;
     case 'metric.upsert': {
+      if(action.metric.collector&&!['원','KRW'].includes(action.metric.unit))fail('ODA 정산 자동 수집의 단위는 원 또는 KRW로 지정하세요.');
       const old=data.operatingMetrics?.find(m=>m.id===action.metric.id);
+      if(old?.collector&&data.metricObservations?.some(o=>o.metricId===old.id)&&['provider','storeId','field'].some(k=>old.collector![k as 'provider']!==action.metric.collector?.[k as 'provider']))fail('수치가 저장된 ODA 지표의 매장·항목은 변경할 수 없습니다. 새 지표를 만들거나 기존 수집을 일시 중지하세요.');
       if(old&&data.metricObservations?.some(o=>o.metricId===old.id)&&['projectId','unit','category','badDirection'].some(k=>old[k as keyof typeof old]!==action.metric[k as keyof typeof action.metric]))fail('값이 기록된 지표의 프로젝트·단위·구분·방향은 바꿀 수 없습니다. 별도 지표를 만드세요.');
       data.operatingMetrics=replace(data.operatingMetrics??[],{...action.metric,updatedAt:now.toISOString()});break;
     }
@@ -666,8 +671,17 @@ export function applyAction(
       break;
     }
     case 'proposal.brief':
-      saveProposal(planFromBrief(data, action.brief, action.energy));
+      saveProposal(planFromBrief(data, action.brief, action.energy,now));
       break;
+    case 'proposal.replan.prepare': {
+      const p=proposal(action.date);if(p.date<today)fail('지난 날짜는 자동 재배치할 수 없습니다.');
+      p.replan=prepareReplan(data,action.date,now);break;
+    }
+    case 'proposal.replan.apply': {
+      const p=proposal(action.date);if(p.date<today)fail('지난 날짜는 자동 재배치할 수 없습니다.');if(!p.replan||p.replan.basis!==action.basis||action.basis!==replanBasis(data,action.date,now))fail('일정이나 시각이 바뀌었습니다. 대안을 다시 계산해 주세요.');
+      const next=prepareReplan(data,action.date,now).alternatives[action.choice];
+      saveProposal(next);break;
+    }
     case 'proposal.generate':
       saveProposal(
         generateProposal(
@@ -685,6 +699,7 @@ export function applyAction(
       const p = proposal(action.date);
       if (p.date < today) fail('지난 날짜의 제안은 승인할 수 없습니다.');
       const item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목을 찾을 수 없습니다.');
+      if(item.state!=='approved'&&p.date===today&&item.start<minuteInZone(data.preferences.timeZone,now))fail('이미 지난 시간입니다. 일정 대안을 다시 계산해 주세요.');
       const target = data.tasks.find(t=>t.id===item.taskId) ?? item.draftTask;
       if(item.state!=='approved' && target && (!goalAllowsWork(data,target.projectId)||!allocationAllowsWork(data,target.projectId,p.date))) fail('보류하거나 달성한 목표의 작업입니다. 목표 상태를 먼저 확인해 주세요.');
       if (item.draftTask && !data.tasks.some((t) => t.id === item.taskId)) {

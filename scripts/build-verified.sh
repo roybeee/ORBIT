@@ -30,4 +30,4 @@ timeout \
 
 
 # Validate the resumable connector protocol before any build can be published.
-node --experimental-strip-types --test tests/data-manager.test.mjs tests/order-research.test.mjs tests/orders.test.mjs tests/agent.test.mjs tests/calendar-delete.test.mjs tests/sound.test.mjs tests/aside.test.mjs tests/aside-bridge.test.mjs tests/automation.test.mjs tests/phase1.test.mjs tests/phase2.test.mjs tests/phase3.test.mjs tests/phase4.test.mjs tests/workflow-activity.test.mjs
+node --experimental-strip-types --test tests/data-manager.test.mjs tests/order-research.test.mjs tests/orders.test.mjs tests/agent.test.mjs tests/calendar-delete.test.mjs tests/sound.test.mjs tests/aside.test.mjs tests/aside-bridge.test.mjs tests/automation.test.mjs tests/phase1.test.mjs tests/phase2.test.mjs tests/phase3.test.mjs tests/phase4.test.mjs tests/phase5.test.mjs tests/workflow-activity.test.mjs

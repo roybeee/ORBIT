@@ -1,3 +1,5 @@
+import {collectMetrics} from './metric-collector.ts';
+import {replanBasis} from './reschedule.ts';
 import {syncActivity,activityStatus} from './agent/activity.ts';
 import {readWorkspace,writeCommand,type Database} from '../../db/repository.ts';
 import {todayInZone,addDays} from './dates.ts';
@@ -11,7 +13,7 @@ import {briefMessage} from './brief/schema.ts';
 import {localPlanning} from './brief/start.ts';
 import {AgentError} from './agent/errors.ts';
 import {recordSource,sourceStatuses} from './source-status.ts';
-export type RuntimeConfig={enabled:boolean;eveningHour:number;syncAt?:string;syncCursor?:number;advanceCursor?:number;lastError?:string};
+export type RuntimeConfig={enabled:boolean;eveningHour:number;syncAt?:string;syncCursor?:number;metricCursor?:number;advanceCursor?:number;lastError?:string};
 export const runtimeDefaults:RuntimeConfig={enabled:true,eveningHour:21};
 export async function runtimeStatus(db:Database,owner:string){const row=await db.prepare('SELECT config_json,last_tick FROM orbit_daily_runtime WHERE owner_id=?').bind(owner).first<{config_json:string;last_tick:string|null}>();const runs=await db.prepare('SELECT date,state_json FROM orbit_daily_runs WHERE owner_id=? ORDER BY date DESC LIMIT 7').bind(owner).all<{date:string;state_json:string}>();return {config:row?JSON.parse(row.config_json) as RuntimeConfig:runtimeDefaults,lastTick:row?.last_tick??null,sources:await sourceStatuses(db,owner),runs:runs.results.map(r=>({date:r.date,...JSON.parse(r.state_json)}))};}
 export async function runtimeSettings(db:Database,owner:string,input:{enabled:boolean;eveningHour:number}){const old=await runtimeStatus(db,owner);await db.prepare('INSERT INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0) ON CONFLICT(owner_id) DO UPDATE SET config_json=excluded.config_json').bind(owner,JSON.stringify({...old.config,...input})).run();}
@@ -27,12 +29,15 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime){
  if(!config.syncAt||Date.now()-Date.parse(config.syncAt)>=900000){
   const connected=await connections(db,owner,env),cursor=config.syncCursor??0;
   if(cursor===0){if(connected.some(c=>c.provider==='google_calendar'&&c.connected))try{await syncCalendar(db,owner,env);config.lastError='';}catch{config.lastError='Google 일정 최신 동기화 실패';}config.syncCursor=1;return await finish(true);}
-  if(connected.some(c=>c.provider==='google_mail'&&c.connected))try{const r=await syncWikiMail(db,owner,env);await recordSource(db,owner,'google_mail',{state:r.more||r.needsProject?'partial':'ok',detail:r.needsProject?'메일을 연결할 프로젝트가 필요합니다':r.more?'최근 30일 메일 수집 진행 중 · 다음 주기에 계속':'최근 30일 메일 조회 완료 · 첨부파일 제외',count:r.count});}catch{await recordSource(db,owner,'google_mail',{state:'error',detail:'메일 수집 실패 · 다음 수집에서 저장된 메일 이후부터 재확인'});config.lastError='Gmail 최신 수집 실패';}
+  if(cursor===1&&connected.some(c=>c.provider==='google_mail'&&c.connected))try{const r=await syncWikiMail(db,owner,env);await recordSource(db,owner,'google_mail',{state:r.more||r.needsProject?'partial':'ok',detail:r.needsProject?'메일을 연결할 프로젝트가 필요합니다':r.more?'최근 30일 메일 수집 진행 중 · 다음 주기에 계속':'최근 30일 메일 조회 완료 · 첨부파일 제외',count:r.count});}catch{await recordSource(db,owner,'google_mail',{state:'error',detail:'메일 수집 실패 · 다음 수집에서 저장된 메일 이후부터 재확인'});config.lastError='Gmail 최신 수집 실패';}
+  if(cursor===1){config.syncCursor=2;return await finish(true);}
+  try{await collectMetrics(db,owner,env,config.metricCursor??0);}catch{config.lastError='외부 수치 수집 상태를 확인해 주세요.';}finally{config.metricCursor=(config.metricCursor??0)+1;}
   config.syncAt=new Date().toISOString();config.syncCursor=0;return await finish(true);
  }
  const snapshot=await readWorkspace(db,owner),zone=snapshot.data.preferences.timeZone,today=todayInZone(zone),afterEvening=eveningDue(new Date(),zone,config.eveningHour),target=afterEvening?addDays(today,1):today;
  const previousMonth=addDays(today.slice(0,7)+'-01',-1).slice(0,7);
  if(!snapshot.data.monthlyReports?.some(r=>r.id===previousMonth)){try{await writeCommand(db,owner,{operationId:crypto.randomUUID(),expectedRevision:snapshot.revision,action:{type:'monthly.generate',month:previousMonth}});return await finish(true);}catch{config.lastError='월간 보고서 준비를 다음 실행에서 재시도합니다.';}}
+ for(const p of snapshot.data.proposals.filter(p=>p.date>=today&&p.date<=addDays(today,1))){if((!p.replan||Date.now()-Date.parse(p.replan.generatedAt)>900000)&&p.replan?.basis!==replanBasis(snapshot.data,p.date)){try{await writeCommand(db,owner,{operationId:crypto.randomUUID(),expectedRevision:snapshot.revision,action:{type:'proposal.replan.prepare',date:p.date}});return await finish(true);}catch{config.lastError='일정 대안은 다음 실행에서 다시 계산합니다.';}}}
  const runs=await db.prepare('SELECT date,state_json FROM orbit_daily_runs WHERE owner_id=? ORDER BY date DESC LIMIT 7').bind(owner).all<{date:string;state_json:string}>();
  for(const r of runs.results){const state=JSON.parse(r.state_json);if(state.status!=='running')continue;const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,state.id).first<{status:string;response_json:string}>();if(turn&&turn.status!=='running'){const response=JSON.parse(turn.response_json);state.status=turn.status==='failed'&&state.attempts<3&&!/중지|cancel/i.test(response.error??'')&&r.date>=today?'queued':turn.status;await db.prepare('UPDATE orbit_daily_runs SET state_json=?,updated_at=? WHERE owner_id=? AND date=?').bind(JSON.stringify(state),new Date().toISOString(),owner,r.date).run();}}
  // After an overnight outage prepare today's missing plan; never backfill old days.

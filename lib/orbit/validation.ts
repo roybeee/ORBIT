@@ -123,7 +123,7 @@ export const noteSchema = z
     tags: z.array(z.string().max(40)).max(20),
     updated: dateSchema,
     wiki: z.object({parentId:id.optional(),order:z.string().max(40).optional(),aliases:z.array(z.string().max(160)).max(50),links:z.array(id).max(300),sources:z.array(z.string().max(300)).max(50),confidential:z.boolean().optional(),private:z.boolean().optional(),importedFrom:z.string().max(300).optional()}).strict().optional(),
-    source:z.object({provider:z.enum(['gmail','plaud','manual']),externalId:z.string().max(200),url:z.string().url().max(1000).optional(),date:dateSchema}).strict().optional(),
+    source:z.object({mail:z.object({threadId:z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),senderEmail:z.string().email().max(254),receivedAt:z.string().datetime(),incoming:z.boolean()}).strict().optional(),provider:z.enum(['gmail','plaud','manual']),externalId:z.string().max(200),url:z.string().url().max(1000).optional(),date:dateSchema}).strict().optional(),
   })
   .strict();
 export const eventSchema = z
@@ -214,7 +214,7 @@ export const reviewDetailSchema = z
   })
   .strict();
 export const decisionSchema=z.object({id,title,projectId:id,choice:z.string().trim().min(1).max(2000),rationale:z.string().trim().min(1).max(2000),alternatives:z.string().max(2000),reviewDate:dateSchema,status:z.enum(['active','revised','closed']),outcome:z.string().max(2000),noteId:id.optional(),noteRevision:z.number().int().positive().optional(),taskId:id.optional()}).strict();
-export const delegationSchema=z.object({id,title,projectId:id,assignee:z.string().trim().min(1).max(100),deliverable:z.string().trim().min(1).max(2000),due:dateSchema,checkDate:dateSchema,status:z.enum(['requested','accepted','working','blocked','delivered','verified','cancelled']),update:z.string().max(2000),evidence:z.string().max(2000),taskId:id.optional(),noteId:id.optional(),noteRevision:z.number().int().positive().optional()}).strict();
+export const delegationSchema=z.object({replyWatch:z.object({senderEmail:z.string().trim().email().max(254),threadId:z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/)}).strict().optional(),id,title,projectId:id,assignee:z.string().trim().min(1).max(100),deliverable:z.string().trim().min(1).max(2000),due:dateSchema,checkDate:dateSchema,status:z.enum(['requested','accepted','working','blocked','delivered','verified','cancelled']),update:z.string().max(2000),evidence:z.string().max(2000),taskId:id.optional(),noteId:id.optional(),noteRevision:z.number().int().positive().optional()}).strict();
 export const actionSchema = z.discriminatedUnion('type', [
   ...phase3Actions,
   ...phase4Actions,
@@ -316,6 +316,8 @@ export const actionSchema = z.discriminatedUnion('type', [
   z
     .object({ type: z.literal('review.saveGenerate'), review, detail: reviewDetailSchema.optional() })
     .strict(),
+  z.object({type:z.literal('proposal.replan.prepare'),date:dateSchema}).strict(),
+  z.object({type:z.literal('proposal.replan.apply'),date:dateSchema,basis:z.string().max(100000),choice:z.union([z.literal(0),z.literal(1)])}).strict(),
   z.object({ type: z.literal('proposal.generate'), date: dateSchema, energy }).strict(),
   z.object({ type: z.literal('proposal.approve'), date: dateSchema, itemId: id }).strict(),
   z

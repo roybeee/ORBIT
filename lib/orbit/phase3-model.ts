@@ -5,6 +5,7 @@ export interface WeeklyAllocation {
   protectedBlocks:ProtectedBlock[];
 }
 export interface OperatingMetric {
+  collector?:{enabled?:boolean;provider:'oda';storeId:string;field:'revenue'|'expenses'|'profit';month:string};
   id:string;projectId:string;name:string;category:'sales'|'cost'|'evidence'|'people'|'contract';unit:string;
   badDirection:'up'|'down';thresholdPercent:number;thresholdAbsolute:number;maxAgeDays:number;
   assignee:string;updatedAt:string;

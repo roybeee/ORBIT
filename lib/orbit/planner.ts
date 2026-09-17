@@ -71,6 +71,7 @@ export const calibrationFactor=(tasks:Task[],task:Task,date:string)=>calibration
 export const calibrate = (duration: number, factor: number) =>
   Math.min(480, Math.max(5, Math.round((duration * factor) / 5) * 5));
 export interface PlannerOptions {
+  earliestStart?: number;
   projectPriority?: Record<string,number>;
   dominoProjectId?: string;
   calibration?: (task: Task) => number;
@@ -102,7 +103,7 @@ export function generateProposal(
   options: PlannerOptions = {},
 ): Proposal {
   const prefs = withDefaults(preferences ?? DEFAULT_PREFERENCES);
-  const workStart = preferences?.workStart ?? 540,
+  const workStart = Math.max(preferences?.workStart ?? 540,options.earliestStart??0),
     workEnd = preferences?.workEnd ?? 1080,
     focusLimit = preferences?.focusLimit ?? 3,
     breakMinutes = preferences?.breakMinutes ?? 10,
@@ -120,7 +121,7 @@ export function generateProposal(
       taskId: i.taskId,
     }));
   const reservations: CalendarEvent[] = events
-    .filter((e) => !reserved.some((r) => r.taskId === e.taskId && e.date === date))
+    .filter((e) => !reserved.some((r) => (e.id==='approved:'+r.id||e.google?.orbitEventId==='approved:'+r.id) && e.date === date))
     .concat(reserved);
   const calendar=planningEvents(reservations,date,prefs);
   const workday = new Date(date + 'T12:00:00Z').getUTCDay();
@@ -139,6 +140,7 @@ export function generateProposal(
   );
   let remaining = budget;
   const isReady = (t: Task) =>
+    !t.blocker?.trim() &&
     t.status !== 'waiting' &&
     t.status !== 'done' &&
     (!t.planHoldUntil || t.planHoldUntil <= date) &&
@@ -384,6 +386,7 @@ export function approveProposalItem(
   if (item.state === 'approved') return { proposal, events };
   if (item.state !== 'pending') return { proposal, events, error: '보류한 항목을 먼저 다시 검토해 주세요.' };
   if (
+    !!task.blocker?.trim() ||
     task.status === 'done' ||
     task.status === 'waiting' ||
     (task.planHoldUntil && task.planHoldUntil > proposal.date) ||

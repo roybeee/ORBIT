@@ -14,7 +14,7 @@ export async function readOda(db:Database,owner:string,env:Runtime){
   return row?decrypt<OdaConnection>(row.secret_json,keyOf(env),`${owner}:oda-automation`):null;
 }
 export async function odaRequest(connection:OdaConnection,path:string,input?:unknown){
-  if(!/^\/(?:capabilities|routines|runs|batches)(?:\/[a-zA-Z0-9_-]+)*(?:\?storeId=[^&]{1,400}&month=\d{4}-\d{2})?$/.test(path))throw new AgentError('지원하지 않는 자동화 요청입니다.');
+  if(!/^\/(?:capabilities|routines|runs|batches|metrics)(?:\/[a-zA-Z0-9_-]+)*(?:\?storeId=[^&]{1,400}&month=\d{4}-\d{2})?$/.test(path))throw new AgentError('지원하지 않는 자동화 요청입니다.');
   let response:Response;
   // Workers supports follow/manual only. Never forward credentials to a redirect.
   try{response=await fetch(ODA_ORIGIN+ROOT+path,{method:input===undefined?'GET':'POST',redirect:'manual',headers:{Authorization:`Bearer ${connection.token}`,'Content-Type':'application/json','Accept':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:AbortSignal.timeout(25000)})}

@@ -1,3 +1,4 @@
+import {settingsFromBackup} from './backup-settings.ts';
 import {streamHasher} from './stream-hash.ts';
 import {Zip,ZipPassThrough,strToU8} from 'fflate';
 import type {Database} from '../../db/repository.ts';
@@ -27,7 +28,7 @@ export async function backupArchive(db:Database,owner:string,bucket:Bucket){
  });
  const add=async(path:string,value:unknown)=>{const file=new ZipPassThrough(path);zip.add(file);file.push(strToU8(JSON.stringify(value)),true);await pending;};
  void(async()=>{try{
-   await add('manifest.json',manifest);const file=new ZipPassThrough('workspace.json');zip.add(file);file.push(strToU8(core),true);await pending;
+   await add('manifest.json',manifest);const settings=settingsFromBackup(data,capturedAt,rows);await add('settings.json',{payload:settings,checksum:await digest(settings)});const file=new ZipPassThrough('workspace.json');zip.add(file);file.push(strToU8(core),true);await pending;
    for(const table of tables)await add(`history/${table}.json`,rows[table].map(({owner_id,lease_until,...row})=>row));
    const checksums:Record<string,string>={};
    for(const item of objects){const object=await bucket.get(item.key);if(!object?.body)throw Error('Backup object missing');const entry=new ZipPassThrough(item.path);zip.add(entry);await pending;const hash=await streamHasher();let bytes=0;const reader=object.body.getReader();try{for(;;){const read=await reader.read();if(read.done)break;bytes+=read.value.length;await hash.update(read.value);entry.push(read.value,false);await pending;}}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}if(item.size!==undefined&&item.size!==bytes)throw Error('Backup file size mismatch');checksums[item.path]=await hash.end();entry.push(new Uint8Array(),true);await pending;}

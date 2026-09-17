@@ -112,7 +112,7 @@ export interface WikiMetadata {
   parentId?: string; order?: string; aliases: string[]; links: string[];
   sources: string[]; confidential?: boolean; private?: boolean; importedFrom?: string;
 }
-export interface RecordSource { provider: 'gmail' | 'plaud' | 'manual'; externalId: string; url?: string; date: string }
+export interface RecordSource { mail?:{threadId:string;senderEmail:string;receivedAt:string;incoming:boolean}; provider: 'gmail' | 'plaud' | 'manual'; externalId: string; url?: string; date: string }
 export interface Note {
   id: string;
   title: string;
@@ -161,6 +161,7 @@ export interface ProposalItem {
   estimate?: number;
 }
 export interface Proposal {
+  replan?: {basis:string;generatedAt:string;earliestStart:number;alternatives:Proposal[];conflicts:string[]};
   brief?: DailyBrief;
   draftTasks?: Task[];
   id: string;
@@ -244,6 +245,7 @@ export interface DecisionRecord {
   history:{at:string; choice:string; rationale:string; alternatives:string; status:DecisionRecord['status']; outcome:string}[];
 }
 export interface DelegationRecord {
+  replyWatch?:{senderEmail:string;threadId:string};
   id:string; title:string; projectId:string; assignee:string; deliverable:string; due:string; checkDate:string;
   status:'requested'|'accepted'|'working'|'blocked'|'delivered'|'verified'|'cancelled';
   update:string; evidence:string; taskId?:string; noteId?:string; noteRevision?:number;

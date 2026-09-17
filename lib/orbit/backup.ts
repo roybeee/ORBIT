@@ -79,6 +79,13 @@ export async function restoreContent(db:Database,owner:string,raw:unknown,select
  if(prior){if(prior.action_hash!==hash)throw new RevisionConflict('같은 복구 번호에 다른 내용이 있습니다.');return {snapshot:await readWorkspace(db,owner),replayed:true,verified:false};}
  const snapshot=await readWorkspace(db,owner);if(snapshot.revision!==expectedRevision)throw new RevisionConflict('기록이 변경됐습니다. 복원 내용을 다시 확인해 주세요.');
  const plan=previewRestore(snapshot.data,raw,selection);if(!plan.inserted.length)throw new DomainError('새로 복원할 기록이 없습니다. 같은 번호의 기존 기록은 유지됩니다.');
+ // New records must resolve to the exact historical evidence present in this account.
+ for(const selected of plan.inserted){const record=(plan.next[selected.category]??[]).find(r=>r.id===selected.id);if(!record||!('noteId' in record)||!record.noteId||!('noteRevision' in record)||!record.noteRevision)continue;
+  const existing=snapshot.data.notes.find(n=>n.id===record.noteId);if(!existing)continue;
+  const revision=record.noteRevision as number,stored=!existing.bodyStored&&revision===(existing.revision??1)?existing:await db.prepare('SELECT note_json FROM orbit_note_revisions WHERE owner_id=? AND note_id=? AND revision=?').bind(owner,record.noteId,revision).first<{note_json:string}>().then(r=>r?JSON.parse(r.note_json) as Note:null);
+  const original=plan.payload.noteHistory.find(n=>n.id===record.noteId&&(n.revision??1)===revision)??plan.payload.data.notes.find(n=>n.id===record.noteId&&(n.revision??1)===revision);
+  if(!stored||!original||stored.body!==original.body||stored.title!==original.title)throw new DomainError('연결된 원문의 과거 버전이 없거나 다릅니다. 해당 기록의 근거를 먼저 확인해 주세요.');
+ }
  const reserved=await db.prepare(`SELECT id FROM orbit_data_trash WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(?) AS candidate WHERE json_extract(candidate.value,'$.category')=orbit_data_trash.category AND json_extract(candidate.value,'$.id')=orbit_data_trash.record_id) LIMIT 1`).bind(owner,JSON.stringify(plan.inserted)).first();
  if(reserved)throw new DomainError('휴지통에 보관 중인 항목이 포함되어 있습니다. 데이터 관리에서 먼저 복원해 주세요.');
  const next=plan.next,nextRevision=snapshot.revision+1,at=new Date().toISOString();next.schemaVersion=3;next.events=next.events.filter(e=>!e.id.startsWith('google:'));
