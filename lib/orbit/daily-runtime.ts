@@ -1,3 +1,4 @@
+import {syncActivity,activityStatus} from './agent/activity.ts';
 import {readWorkspace,type Database} from '../../db/repository.ts';
 import {todayInZone,addDays} from './dates.ts';
 import {connections,type Runtime} from './agent/integrations.ts';
@@ -20,6 +21,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime){
  const lease=Date.now()+180000,claimed=await db.prepare('UPDATE orbit_daily_runtime SET lease_until=? WHERE owner_id=? AND lease_until<?').bind(lease,owner,Date.now()).run();if(claimed.meta?.changes!==1)return {busy:true,active:true};
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
+ const capture=await activityStatus(db,owner);if(!capture.lastSync||Date.now()-Date.parse(capture.lastSync)>=120000)try{await syncActivity(db,owner,env);}catch{/* independent collector error is visible in source status */}
  const finish=async(active:boolean)=>{const latest=(await runtimeStatus(db,owner)).config;await db.prepare('UPDATE orbit_daily_runtime SET config_json=? WHERE owner_id=? AND lease_until=?').bind(JSON.stringify({...config,enabled:latest.enabled,eveningHour:latest.eveningHour}),owner,lease).run();return {active};};
  // One bounded unit per tick. Collection happens before preparing a new brief.
  if(!config.syncAt||Date.now()-Date.parse(config.syncAt)>=900000){

@@ -7,12 +7,13 @@ const uuid = z.string().uuid();
 const identity = { id: uuid, bridgeId: uuid, runId: uuid };
 const operation=z.object({kind:z.enum(['send','payment','delete','submit']),destination:z.string().trim().min(3).max(1000),target:z.string().trim().min(2).max(500),content:z.string().trim().min(2).max(8000),amountKrw:z.number().int().positive().max(1000000000).optional()}).strict().refine(o=>o.kind!=='payment'||o.amountKrw!==undefined,'결제 금액이 필요합니다.');
 export const asideInput = z.discriminatedUnion('action', [
-  z.object({action:z.literal('enqueue'),id:uuid,title:z.string().trim().min(1).max(160),instruction:z.string().trim().min(10).max(12000),workflow:z.string().max(50),projectId:z.string().max(100),operation:operation.optional()}).strict(),
+  z.object({action:z.literal('enqueue'),id:uuid,title:z.string().trim().min(1).max(160),instruction:z.string().trim().min(10).max(12000),workflow:z.string().max(50),projectId:z.string().max(100),parentOrderId:uuid.optional(),operation:operation.optional()}).strict(),
   z.object({action:z.literal('approve'),id:uuid,digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
   z.object({action:z.literal('claim'),id:uuid,bridgeId:uuid,account:z.string().trim().min(1).max(150)}).strict(),
   z.object({action:z.literal('report'),...identity,seq:z.number().int().min(1).max(2147483647),status:z.enum(['running','needs_review','needs_attention']),progress:z.string().max(1000),result:z.string().max(30000)}).strict(),
   z.object({action:z.literal('cancel'),id:uuid}).strict(),
   z.object({action:z.literal('resolve'),...identity}).strict(),
+  z.object({action:z.literal('confirm_result'),...identity,seq:z.number().int().positive(),result:z.string().trim().min(1).max(30000)}).strict(),
   z.object({action:z.literal('complete'),id:uuid}).strict(),
 ]);
 type Input = z.infer<typeof asideInput>;
@@ -31,14 +32,15 @@ export async function changeAsideJob(db:Database,ownerId:string,input:Input):Pro
       const state=row?JSON.parse(row.state_json):null;
       if(!state?.projects?.some((p:{id:string})=>p.id===input.projectId))throw new AgentError('프로젝트를 다시 선택해 주세요.','PROJECT',422);
     }
-    const job:AsideJob={id:input.id,title:input.title,instruction:input.instruction,workflow:input.workflow,projectId:input.projectId,status:'queued',bridgeId:'',runId:'',account:'',seq:0,progress:'PC 연결 후 순서대로 실행합니다.',result:'',createdAt:now,updatedAt:now};
+    if(input.parentOrderId){const order=await db.prepare('SELECT state_json,stop_requested FROM orbit_agent_orders WHERE owner_id=? AND id=?').bind(ownerId,input.parentOrderId).first<{state_json:string;stop_requested:number}>();if(!order||order.stop_requested||JSON.parse(order.state_json).workflow?.asideJobId!==input.id)throw new AgentError('상위 업무가 중지되었거나 연결이 바뀌었습니다.','ORDER_STATE',409);}
+    const job:AsideJob={id:input.id,...(input.parentOrderId?{parentOrderId:input.parentOrderId}:{}),title:input.title,instruction:input.instruction,workflow:input.workflow,projectId:input.projectId,status:'queued',bridgeId:'',runId:'',account:'',seq:0,progress:'PC 연결 후 순서대로 실행합니다.',result:'',createdAt:now,updatedAt:now};
     if(input.operation){job.operation=input.operation;job.status='awaiting_approval';job.progress='대상과 내용을 확인한 뒤 이번 실행을 승인해 주세요.';job.approvalDigest=await approvalDigest({ownerId,id:job.id,title:job.title,instruction:job.instruction,operation:job.operation});}
     // INSERT and capacity check are one statement. Repeating an identical ID is idempotent.
     await db.prepare("INSERT INTO orbit_aside_jobs (owner_id,id,status,job_json,version,created_at) SELECT ?,?,?,?,0,? WHERE (SELECT COUNT(*) FROM orbit_aside_jobs WHERE owner_id=? AND status IN ('queued','awaiting_approval'))<30 ON CONFLICT(owner_id,id) DO NOTHING").bind(ownerId,job.id,job.status,JSON.stringify(job),now,ownerId).run();
     const row=await db.prepare('SELECT job_json FROM orbit_aside_jobs WHERE owner_id=? AND id=?').bind(ownerId,job.id).first<Row>();
     if(!row)throw new AgentError('대기 업무는 최대 30개입니다.','CAPACITY',409);
     const saved=parse(row);
-    if(['title','instruction','workflow','projectId'].some(key=>saved[key as keyof AsideJob]!==job[key as keyof AsideJob])||JSON.stringify(saved.operation)!==JSON.stringify(job.operation))throw new AgentError('같은 작업 ID의 내용이 다릅니다.','CONFLICT',409);
+    if(['title','instruction','workflow','projectId','parentOrderId'].some(key=>saved[key as keyof AsideJob]!==job[key as keyof AsideJob])||JSON.stringify(saved.operation)!==JSON.stringify(job.operation))throw new AgentError('같은 작업 ID의 내용이 다릅니다.','CONFLICT',409);
     return saved;
   }
   for(let attempt=0;attempt<5;attempt++) {
@@ -46,6 +48,7 @@ export async function changeAsideJob(db:Database,ownerId:string,input:Input):Pro
     if(!row)throw new AgentError('업무를 찾을 수 없습니다.','NOT_FOUND',404);
     const old=parse(row), job={...old,updatedAt:now};
     let claim=false;
+    if(input.action==='claim'&&old.parentOrderId){const order=await db.prepare('SELECT stop_requested FROM orbit_agent_orders WHERE owner_id=? AND id=?').bind(ownerId,old.parentOrderId).first<{stop_requested:number}>();if(!order||order.stop_requested)throw new AgentError('상위 업무가 중지되었습니다.','ORDER_STATE',409);}
     if(input.action==='approve') {
       if(!old.operation||old.approvalDigest!==input.digest)throw new AgentError('승인할 업무 내용이 일치하지 않습니다.','STALE_APPROVAL',409);
       if(old.approvedAt)return old;
@@ -65,6 +68,9 @@ export async function changeAsideJob(db:Database,ownerId:string,input:Input):Pro
       if(old.status==='queued'||old.status==='awaiting_approval'){job.status='cancelled';job.progress='실행 전에 종료했습니다.';}
       else if(old.status==='running'){job.status='stop_requested';job.progress='PC에 중지를 요청했습니다. ASIDE 화면에서 실제 작업 상태를 확인해 주세요.';}
       else return old;
+    } else if(input.action==='confirm_result') {
+      if(old.bridgeId!==input.bridgeId||old.runId!==input.runId||!['needs_attention','needs_review'].includes(old.status))throw new AgentError('실행 연결과 결과 확인 상태가 일치하지 않습니다.','CONFLICT',409);
+      job.status='needs_review';job.result=input.result;job.seq=Math.max(old.seq,input.seq);job.progress='사용자가 ASIDE 종료와 반환 결과를 확인했습니다. 연결된 Hermes 업무가 이어집니다.';
     } else if(input.action==='resolve') {
       if(old.bridgeId!==input.bridgeId||old.runId!==input.runId||!['needs_attention','stop_requested'].includes(old.status))throw new AgentError('이 PC에서 실행 상태를 먼저 확인해 주세요.','CONFLICT',409);
       job.status='cancelled';job.progress='사용자가 ASIDE 작업 종료를 확인했습니다.';
@@ -73,7 +79,7 @@ export async function changeAsideJob(db:Database,ownerId:string,input:Input):Pro
       if(old.status!=='needs_review')throw new AgentError('검토할 실행 결과가 아직 없습니다.','CONFLICT',409);
       job.status='completed';
     }
-    const result=await db.prepare(`UPDATE orbit_aside_jobs SET job_json=?,status=?,version=version+1 WHERE owner_id=? AND id=? AND version=?${claim?" AND NOT EXISTS (SELECT 1 FROM orbit_aside_jobs WHERE owner_id=? AND status IN ('running','stop_requested','needs_attention'))":''}`).bind(JSON.stringify(job),job.status,ownerId,input.id,row.version,...(claim?[ownerId]:[])).run();
+    const result=await db.prepare(`UPDATE orbit_aside_jobs SET job_json=?,status=?,version=version+1 WHERE owner_id=? AND id=? AND version=?${claim&&old.parentOrderId?" AND EXISTS (SELECT 1 FROM orbit_agent_orders WHERE owner_id=? AND id=? AND stop_requested=0)":''}${claim?" AND NOT EXISTS (SELECT 1 FROM orbit_aside_jobs WHERE owner_id=? AND status IN ('running','stop_requested','needs_attention'))":''}`).bind(JSON.stringify(job),job.status,ownerId,input.id,row.version,...(claim&&old.parentOrderId?[ownerId,old.parentOrderId]:[]),...(claim?[ownerId]:[])).run();
     if(result.meta?.changes)return job;
     if(claim)throw new AgentError('이전 실행의 완료 또는 PC 확인을 기다리고 있습니다.','BUSY',409);
   }

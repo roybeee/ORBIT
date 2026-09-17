@@ -136,3 +136,13 @@ export const dailyRuns=sqliteTable('orbit_daily_runs',{
 export const orderReviews=sqliteTable('orbit_order_reviews',{
  ownerId:text('owner_id').notNull(),orderId:text('order_id').notNull(),reviewJson:text('review_json').notNull(),updatedAt:text('updated_at').notNull(),
 },t=>[primaryKey({columns:[t.ownerId,t.orderId]})]);
+
+export const activitySync=sqliteTable('orbit_activity_sync',{
+ ownerId:text('owner_id').primaryKey(),stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),
+});
+export const activitySessions=sqliteTable('orbit_activity_sessions',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),connectionId:text('connection_id').notNull(),sessionId:text('session_id').notNull(),source:text('source').notNull(),title:text('title').notNull(),projectId:text('project_id'),category:text('category').notNull(),manual:integer('manual').notNull().default(0),summary:text('summary').notNull(),metadataJson:text('metadata_json').notNull(),messageOffset:integer('message_offset').notNull().default(0),signature:text('signature').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.id]}),index('idx_orbit_activity_recent').on(t.ownerId,t.updatedAt,t.id),index('idx_orbit_activity_project').on(t.ownerId,t.projectId,t.updatedAt)]);
+export const activityMessages=sqliteTable('orbit_activity_messages',{
+ ownerId:text('owner_id').notNull(),connectionId:text('connection_id').notNull(),sessionId:text('session_id').notNull(),id:text('id').notNull(),recordId:text('record_id').notNull(),role:text('role').notNull(),content:text('content').notNull(),toolName:text('tool_name').notNull(),toolCalls:text('tool_calls').notNull(),timestamp:text('timestamp').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.connectionId,t.sessionId,t.id]}),index('idx_orbit_activity_messages_record').on(t.ownerId,t.recordId,t.timestamp)]);

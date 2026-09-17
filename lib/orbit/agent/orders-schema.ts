@@ -7,7 +7,7 @@ export const orderActionSchema=z.object({
  projectId:z.string().min(1).max(100).nullable().default(null),
  taskIds:z.array(z.string().min(1).max(100)).max(12).default([]),
  eventIds:z.array(z.string().min(1).max(200)).max(12).optional(),
- mode:z.enum(['native','research']).optional(),
+ mode:z.enum(['native','research','workflow']).optional(),
 }).strict();
 export type DispatchAction=z.infer<typeof orderActionSchema>;
 export const orderInput=z.discriminatedUnion('action',[
@@ -16,11 +16,12 @@ export const orderInput=z.discriminatedUnion('action',[
  z.object({action:z.literal('steer'),id:z.string().uuid(),input:z.string().trim().min(1).max(4000)}).strict(),
  z.object({action:z.literal('approval'),id:z.string().uuid(),requestId:z.string().min(1).max(200),choice:z.enum(['once','deny'])}).strict(),
 ]);
-export type OrderStatus='queued'|'submitting'|'running'|'waiting_for_approval'|'stopping'|'completed'|'failed'|'cancelled'|'unknown';
+export type OrderStatus='queued'|'submitting'|'running'|'waiting_for_approval'|'stopping'|'completed'|'failed'|'cancelled'|'unknown'|'waiting_for_aside';
 export interface WorkOrder {
  id:string;title:string;instruction:string;projectId:string|null;taskIds:string[];conversationId:string|null;
  eventIds?:string[];
- mode?:'native'|'research';
+ mode?:'native'|'research'|'workflow';
+ workflow?:{phase:'hermes'|'aside';step:number;asideJobId?:string;receipts:{jobId:string;result:string;status:string}[];runIds:string[]};
  canResume?:boolean;
  coverage?:{reads:number;fullReads:number;errors:number;round:number;status:'collecting'|'partial'|'reported'};
  status:OrderStatus;runId:string|null;output:string;error:string;createdAt:string;updatedAt:string;
@@ -28,5 +29,5 @@ export interface WorkOrder {
  controls:{steer:boolean;approval:boolean};
  activity:{at:string;text:string}[];
 }
-export const orderStatusLabel:Record<OrderStatus,string>={queued:'접수 대기',submitting:'접수 확인 중',running:'실행 중',waiting_for_approval:'실행 승인 대기',stopping:'중지 확인 중',completed:'실행 종료 · 결과 검토',failed:'실행 실패',cancelled:'중지됨',unknown:'실행 기록 확인 필요'};
+export const orderStatusLabel:Record<OrderStatus,string>={waiting_for_aside:'ASIDE 웹 작업 대기',queued:'접수 대기',submitting:'접수 확인 중',running:'실행 중',waiting_for_approval:'실행 승인 대기',stopping:'중지 확인 중',completed:'실행 종료 · 결과 검토',failed:'실행 실패',cancelled:'중지됨',unknown:'실행 기록 확인 필요'};
 export const orderActive=(status:OrderStatus)=>!['completed','failed','cancelled','unknown'].includes(status);
