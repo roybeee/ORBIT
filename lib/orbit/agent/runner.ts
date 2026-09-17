@@ -95,13 +95,13 @@ function remember(job:Job,input:string,output:string){
  for(let i=2;i<job.history.length-2&&total()>budget.history;i++){const m=job.history[i];if(m.role==='user'&&m.content.length>4000)job.history[i]={role:'user',content:m.content.slice(0,4000)+'\n…[이전 조회 결과 '+(m.content.length-4000)+'자 생략 — 근거 ID는 유효합니다]'}}
 }
 
-export async function runAgent(db:Database,owner:string,input:{id:string;message:string;conversationId?:string;attachmentIds?:string[];planning?:PlanningRequest},env:Runtime){
+export async function runAgent(db:Database,owner:string,input:{id:string;message:string;conversationId?:string;attachmentIds?:string[];planning?:PlanningRequest},env:Runtime,options:{defer?:boolean}={}){
  let conversationId=input.conversationId??'legacy';const attachmentIds=input.attachmentIds??[];
  const old=await db.prepare('SELECT attachment_ids,conversation_id,input,status,updated_at FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,input.id).first<{attachment_ids:string;conversation_id:string;input:string;status:string;updated_at:string}>();
  // Existing jobs retain their original conversation and native session across deployment.
  if(input.planning)conversationId=old?.conversation_id??await planningConversation(db,owner,input.planning.date);
  if(old&&(old.input!==input.message||old.conversation_id!==conversationId||old.attachment_ids!==JSON.stringify(attachmentIds)))throw new AgentError('같은 대화 번호의 내용이 다릅니다. 새 메시지로 보내 주세요.','CONFLICT',409);
- if(old?.status==='completed')return;
+ if(old?.status==='completed')return 'completed' as const;
  const config=await hermesConfig(db,owner,env);
  if(old?.status==='failed')await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,input.id).run();
  if(!await getJob(db,owner,input.id)){
@@ -109,7 +109,10 @@ export async function runAgent(db:Database,owner:string,input:{id:string;message
   const job:Job={planning:input.planning,attachmentIds,phase:'prepare',connectionId:config.connectionId,sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner,conversationId),started:Date.now(),round:0,revision:0,history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
   await db.prepare('INSERT OR IGNORE INTO orbit_hermes_jobs(owner_id,turn_id,turn_lease,job_json,lease_until) VALUES(?,?,?,?,0)').bind(owner,input.id,lease,packed(job)).run();
  }
- await advanceAgent(db,owner,input.id,env);
+ // A chat submission acknowledges durable storage before any external calendar/model work.
+ // The existing resumable poller (or daily runtime) advances the queued job.
+ if(!options.defer)await advanceAgent(db,owner,input.id,env);
+ return 'running' as const;
 }
 
 export async function advanceAgent(db:Database,owner:string,id:string,env:Runtime,cancel=false){
@@ -136,6 +139,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   const config=await hermesConfig(db,owner,env);
   if(config.connectionId!==job.connectionId)throw new AgentError('헤르메스 연결이 변경됐습니다. 새 메시지로 다시 요청해 주세요.','HERMES_CHANGED',409);
   if(job.phase==='prepare'){
+   await save('메시지를 접수했습니다. 연결된 일정과 참고 기록을 확인합니다.');
    const planningWarnings:string[]=[];
    try{await syncCalendar(db,owner,env,job.planning?.date)}catch(error){if(!job.planning)throw error;planningWarnings.push('Google 최신 동기화 실패 · 저장된 일정 기준으로 검토합니다.')}
    const snapshot=await readWorkspace(db,owner),history=await listAgent(db,owner,undefined,turn.conversation_id),connected=await connections(db,owner,env),{data}=snapshot,today=todayInZone(data.preferences.timeZone);

@@ -37,11 +37,15 @@ export function useAgentConversations(demo:boolean,ownerId:string){
    const envelope:Envelope=stored??{id:id??crypto.randomUUID(),conversationId:target,message:text.trim(),attachmentIds:attachments.map(f=>f.id)};
    if(stored&&(stored.message!==text.trim()||(id&&id!==stored.id)||JSON.stringify(stored.attachmentIds)!==JSON.stringify(attachments.map(f=>f.id)))){setError('이전 전송 결과를 먼저 확인해 주세요. 새 입력은 임시 보관했습니다.');return false;}
    saveDraft(ownerId,'pending-message',target,envelope);if(selectedRef.current===target)setPendingMessage(envelope);
-   await agentRequest('/api/agent','POST',envelope);
+   const receipt=await agentRequest('/api/agent','POST',envelope);
+   if(alive.current&&receipt.status==='running'){
+    // Show the durable receipt immediately; external work continues through the poller.
+    setState(s=>({...s,activeRuns:[...(s.activeRuns??[]).filter(r=>r.id!==envelope.id),{id:envelope.id,conversationId:target}],...(selectedRef.current===target?{activeRun:{id:envelope.id,conversationId:target},turns:s.turns.some(t=>t.id===envelope.id)?s.turns.map(t=>t.id===envelope.id?{...t,status:'running' as const,error:undefined,progress:'메시지를 접수했습니다. 업무와 일정을 확인합니다.'}:t):[...s.turns,{id:envelope.id,conversationId:target,input:envelope.message,attachments,status:'running' as const,text:'',sources:[],createdAt:new Date().toISOString(),progress:'메시지를 접수했습니다. 업무와 일정을 확인합니다.'}]}:{})}));
+   }
    clearDraft(ownerId,'pending-message',target);if(selectedRef.current===target)setPendingMessage(null);
    if((drafts.current[target]??'').trim()===envelope.message){drafts.current[target]='';clearDraft(ownerId,'composer',target);if(selectedRef.current===target)setDraftState('');}
-   if(alive.current)await refresh().catch(()=>{});return true;
-  }catch(e){if(alive.current)setError(message(e));return false;}
+   if(alive.current)void refresh().catch(()=>{});return true;
+  }catch(e){if(alive.current){setError(message(e));void refresh().catch(()=>{});}return false;}
   finally{sendLock.current.delete(sendKey);if(alive.current)setSendingIds(s=>{const next=new Set(s);next.delete(sendKey);return next})}
  };
  const retryPending=async()=>{const p=readDraft<Envelope>(ownerId,'pending-message',selectedRef.current??'new');if(!p)return;await send(p.message,p.id,p.attachmentIds.map(id=>({id}) as StoredAttachment),p.conversationId);};
