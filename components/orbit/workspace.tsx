@@ -3,6 +3,7 @@ import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import {OrbitWordmark} from './brand';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
+import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {AppearanceShortcut} from './appearance';
 import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {ExperimentsPanel,ContactsPanel,MonthlyPanel} from './phase4/workbench';
@@ -937,7 +938,7 @@ function WorkspaceContent({
     return ok;
   };
   return (
-    <CityThemeProvider preferences={data.preferences} view={view} title={navigation.find(n=>n.id===view)?.label??pageInfo[view].title} busy={busy||hasPending||!loaded} perform={perform} demo={demo}><SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''}`} style={{ '--sidebar-width': '248px' } as CSSProperties}>
+    <CityThemeProvider preferences={data.preferences} view={view} title={navigation.find(n=>n.id===view)?.label??pageInfo[view].title} busy={busy||hasPending||!loaded} perform={perform} demo={demo}><SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''}`} data-illustration-collection={illustrationTheme(screenIllustration(data.preferences,view)).collection} style={{ '--sidebar-width': '248px', '--illustration-accent':illustrationTheme(screenIllustration(data.preferences,view)).accent } as CSSProperties}>
       <CosmicBackdrop/>
       {!demo && <InstallRootHint />}
       <a href="#main-content" className="skip-link">

@@ -40,7 +40,7 @@ export function ProjectDetailPanel({intent='overview',onManage,project:p,data,to
       {!!s.milestones.length&&<label className="project-task-stage">단계<select value={milestone?.id??''} disabled={locked} aria-label={`${task.title} 단계 선택`} onChange={e=>void perform({type:'project.task-stage',id:p.id,taskId:task.id,milestoneId:e.target.value||null},'할 일의 단계를 변경했습니다.')}><option value="">미지정</option>{s.milestones.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}</select></label>}
     </article>;
   };
-  return <div className="project-detail-panel project-flow-detail">
+  return <div className="project-detail-panel project-flow-detail" style={{'--illustration-accent':projectWorld(p.id,data.preferences).accent} as CSSProperties}>
     <div className="project-detail-art"><img src={projectWorld(p.id,data.preferences).image} width="960" height="720" alt=""/><CityThemeButton project={p}/></div>
     <div className="project-detail-surface">
     <div className="project-detail-heading"><span>ORBIT PROJECT · {projectStatusLabel[state]}</span><h2>{p.name}</h2><p>{p.goal||'완료 기준을 정해 보세요.'}</p><div><span>{s.done} / {s.tasks.length} 완료</span><strong>{s.progress??0}%</strong></div><Progress value={s.progress??0} aria-label="프로젝트 할 일 완료율"/></div>

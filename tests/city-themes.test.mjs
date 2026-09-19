@@ -5,7 +5,7 @@ import {existsSync} from 'node:fs';
 import {emptyWorkspace} from '../lib/orbit/model.ts';
 import {applyAction,DomainError} from '../lib/orbit/reducer.ts';
 import {actionSchema,preferencesSchema} from '../lib/orbit/validation.ts';
-import {screenIllustration,projectIllustration,cityThemes,illustrationThemes} from '../lib/orbit/city-themes.ts';
+import {screenIllustration,projectIllustration,cityThemes,worldThemes,illustrationIds,illustrationThemes} from '../lib/orbit/city-themes.ts';
 import {projectWorld} from '../lib/orbit/project-world.ts';
 import {readWorkspace,writeCommand,RevisionConflict} from '../db/repository.ts';
 import {createDatabase} from './sqlite-d1.mjs';
@@ -17,7 +17,29 @@ const change=(data,action)=>applyAction(data,actionSchema.parse(action),now);
 
 test('ten distinct city illustrations and previews are deployable assets',()=>{
  assert.equal(cityThemes.length,10);assert.equal(new Set(cityThemes.map(c=>c.id)).size,10);
+ assert.equal(worldThemes.length,6);assert.equal(illustrationThemes.length,17);
+ assert.deepEqual(new Set(illustrationThemes.map(t=>t.id)),new Set(illustrationIds));
  for(const theme of illustrationThemes){assert.ok(existsSync(new URL('../public'+theme.image,import.meta.url)));assert.ok(existsSync(new URL('../public'+theme.thumbnail,import.meta.url)));}
+});
+test('new world themes persist at every scope and survive settings backup without replacing city choices',async()=>{
+ const db=createDatabase();let revision=0;
+ const save=async action=>{const state=await writeCommand(db,'world-owner',{expectedRevision:revision,operationId:randomUUID(),action:actionSchema.parse(action)},now);revision=state.revision;return state;};
+ try{
+  await save({type:'project.upsert',project});
+  await save({type:'illustration.screen',screen:'calendar',theme:'tokyo'});
+  for(const theme of worldThemes){
+   await save({type:'illustration.default',theme:theme.id});
+   await save({type:'illustration.screen',screen:'today',theme:theme.id});
+   await save({type:'illustration.project',id:project.id,theme:theme.id});
+   const {data}=await readWorkspace(db,'world-owner');
+   assert.equal(screenIllustration(data.preferences,'wiki'),theme.id);
+   assert.equal(screenIllustration(data.preferences,'today'),theme.id);
+   assert.equal(screenIllustration(data.preferences,'calendar'),'tokyo');
+   assert.equal(projectWorld(project.id,data.preferences).image,`/orbit-themes/${theme.id}.webp`);
+   const restored=planSettings(initial(),settingsFromBackup(data,now.toISOString()),['preferences']).next;
+   assert.equal(projectIllustration(restored.preferences,project.id),theme.id);
+  }
+ }finally{db.close()}
 });
 test('screen choices are independent and project overrides stay consistent across views',()=>{
  let data=initial();assert.equal(screenIllustration(data.preferences,'today'),'seoul');
