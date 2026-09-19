@@ -66,3 +66,7 @@ html[data-orbit-theme=focus] .cosmic-motion,html[data-orbit-theme=focus] .agent-
 .week-day.active,.agent-composer-bottom>button,.wizard-steps li.active button span,.brainy-badge.is-laser,.app-update-notice button,.install-logo,.calendar-days button.active,.calendar-days button.active strong,[data-slot=checkbox][data-checked],[data-slot=checkbox][data-state=checked]{color:var(--primary-foreground)}
 
 .install-logo{background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:24px;box-shadow:none}
+
+.project-hub-compact .project-hub-card.is-held{background:var(--accent)}
+.project-hub-compact .project-next-action{background:var(--muted)}
+.project-action-error{background:var(--galaxy-warm-surface);border-color:var(--border)}
