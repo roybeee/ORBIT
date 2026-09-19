@@ -7,6 +7,7 @@ import "./projects.css";
 import "./brand-legacy.css";
 import "./brand-system.css";
 import "./focus.css";
+import "./project-flow.css";
 import "./mobile-overlays.css";
 import {AppearanceProvider} from "@/components/orbit/appearance";
 export const metadata: Metadata = {

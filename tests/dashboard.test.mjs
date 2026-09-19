@@ -48,3 +48,16 @@ test('overlapping meetings use the existing union capacity and metrics never add
  const base=fixture({goals:[goal,{...goal,id:'child',parentId:'g'}],projects:[{...project,goalId:'child'}],tasks:[task('one',{status:'done',completedOn:date})]});const d=workspaceDashboard(base,now);assert.equal(d.completed.length,1);assert.equal(d.goals[0].done,1);assert.equal(d.goals[1].done,1);
  const meeting={id:'m',title:'회의',date,start:540,end:600,kind:'meeting'};const single=workspaceDashboard({...base,events:[meeting]},now),duplicate=workspaceDashboard({...base,events:[meeting,{...meeting,id:'m2'}]},now);assert.equal(single.chief.capacity,duplicate.chief.capacity);
 });
+
+test('all finished tasks move active projects into completed immediately and reopening work returns them to home',()=>{
+ let data=fixture({projects:[project,{...project,id:'empty'},{...project,id:'paused',status:'paused'},{...project,id:'manual',status:'completed',result:'명시적 완료'}],tasks:[task('one',{status:'done'}),task('two',{status:'done'}),task('paused-task',{projectId:'paused',status:'done'}),task('unfinished',{projectId:'manual'})]});
+ const original=structuredClone(data);
+ assert.deepEqual(projectBuckets(data.projects,data.tasks).completed.map(p=>p.id),['p','manual']);
+ assert.deepEqual(workspaceDashboard(data,now).projects.map(x=>x.project.id),['empty']);
+ assert.deepEqual(projectBuckets(data.projects,data.tasks).pending.map(p=>p.id),['paused']);
+ assert.deepEqual(data,original);
+ data=applyAction(data,{type:'task.status',id:'two',status:'todo'},now);
+ assert.ok(workspaceDashboard(data,now).projects.some(x=>x.project.id==='p'));
+ assert.deepEqual(projectBuckets(data.projects,data.tasks).completed.map(p=>p.id),['manual']);
+ assert.equal(data.projects[0].result,undefined);
+});

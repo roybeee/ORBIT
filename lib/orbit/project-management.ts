@@ -1,14 +1,21 @@
-import type {Project,ProjectStatus,WorkspaceData} from './model.ts';
+import type {Project,ProjectStatus,Task,WorkspaceData} from './model.ts';
 import {workEligibility} from './work-policy.ts';
 
 export const projectStatusLabel: Record<ProjectStatus,string> = {planned:'준비',active:'진행 중',paused:'보류',completed:'완료'};
 export const projectStatus = (project: Project): ProjectStatus => project.status ?? 'active';
+// Classify finished work immediately without inventing a final result or rewriting history.
+export function projectDisplayStatus(project:Project,tasks:Task[]):ProjectStatus {
+  const status=projectStatus(project);
+  if(status!=='active')return status;
+  const linked=tasks.filter(t=>t.projectId===project.id);
+  return linked.length>0&&linked.every(t=>t.status==='done')?'completed':status;
+}
 export type ProjectBucket = 'active' | 'completed' | 'pending';
-export function projectBuckets(projects: Project[]) {
+export function projectBuckets(projects: Project[],tasks:Task[] = []) {
   return {
-    active: projects.filter(p=>projectStatus(p)==='active'),
-    completed: projects.filter(p=>projectStatus(p)==='completed'),
-    pending: projects.filter(p=>['planned','paused'].includes(projectStatus(p))),
+    active: projects.filter(p=>projectDisplayStatus(p,tasks)==='active'),
+    completed: projects.filter(p=>projectDisplayStatus(p,tasks)==='completed'),
+    pending: projects.filter(p=>['planned','paused'].includes(projectDisplayStatus(p,tasks))),
   };
 }
 export const priorityLabel = (priority: number) => priority >= 4 ? '높음' : priority <= 2 ? '낮음' : '보통';
@@ -20,8 +27,9 @@ export function projectSummary(data: WorkspaceData,project:Project,today:string)
     Number(b.id===project.nextTaskId)-Number(a.id===project.nextTaskId)||Number(b.status==='doing')-Number(a.status==='doing')||a.due.localeCompare(b.due)||b.impact-a.impact||a.id.localeCompare(b.id));
   const waiting=open.filter(t=>t.status==='waiting'||!!t.blocker?.trim());
   const overdue=open.filter(t=>t.due<today);
-  const dueOver=projectStatus(project)!=='completed'&&project.due<today;
-  const attention=projectStatus(project)==='active'&&(dueOver||overdue.length>0||waiting.length>0||tasks.length===0||!actionable.length&&open.length>0);
+  const state=projectDisplayStatus(project,tasks);
+  const dueOver=state!=='completed'&&project.due<today;
+  const attention=state==='active'&&(dueOver||overdue.length>0||waiting.length>0||tasks.length===0||!actionable.length&&open.length>0);
   return {tasks,open,done,actionable,next:actionable[0],waiting,overdue,dueOver,attention,
     progress:tasks.length?Math.round(done/tasks.length*100):null,
     notes:data.notes.filter(n=>n.projectId===project.id),events:data.events.filter(e=>e.projectId===project.id),

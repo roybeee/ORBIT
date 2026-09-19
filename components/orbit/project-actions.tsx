@@ -1,10 +1,10 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {FolderOpen,ListChecks,Pencil,CalendarDays,MessageSquare,Trash2,RotateCcw,ChevronRight} from 'lucide-react';
+import {Pencil,CalendarDays,Trash2,RotateCcw,ChevronRight} from 'lucide-react';
 import {toast} from 'sonner';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import type {WorkspaceSnapshot,View} from '@/lib/orbit/model';
-import {projectStatus,projectStatusLabel} from '@/lib/orbit/project-management';
+import {projectStatus,projectDisplayStatus,projectStatusLabel} from '@/lib/orbit/project-management';
 import {projectTrashPreview} from '@/lib/orbit/project-trash';
 import {planDataTrash,planDataRestore,recordTitle,type TrashRecord} from '@/lib/orbit/data-manager';
 import {agentRequest} from './agent/connections';
@@ -42,13 +42,11 @@ export function ProjectActions(props:Props){
   }
   const go=(run:()=>void)=>{onClose();run()};
   const counts=confirmation?.preview.counts;
-  return <Dialog open={!!target||!!undo} onOpenChange={open=>{if(!open)close()}}><DialogContent className="project-action-dialog" onEscapeKeyDown={e=>{if(working||pending.current)e.preventDefault()}} onInteractOutside={e=>{if(working||pending.current)e.preventDefault()}}><DialogHeader><DialogTitle>{undo?'프로젝트를 복원할까요?':mode==='delete'?'프로젝트를 삭제할까요?':project?.name??'프로젝트 관리'}</DialogTitle><DialogDescription>{undo?undo.name:mode==='delete'?project?.name:project?`${projectStatusLabel[projectStatus(project)]} · ${project.due} 목표`:''}</DialogDescription></DialogHeader>
+  return <Dialog open={!!target||!!undo} onOpenChange={open=>{if(!open)close()}}><DialogContent className="project-action-dialog" onEscapeKeyDown={e=>{if(working||pending.current)e.preventDefault()}} onInteractOutside={e=>{if(working||pending.current)e.preventDefault()}}><DialogHeader><DialogTitle>{undo?'프로젝트를 복원할까요?':mode==='delete'?'프로젝트를 삭제할까요?':'프로젝트 관리'}</DialogTitle><DialogDescription>{undo?undo.name:mode==='delete'?project?.name:project?`${project.name} · ${projectStatusLabel[projectDisplayStatus(project,snapshot.data.tasks)]}`:''}</DialogDescription></DialogHeader>
     {mode==='menu'&&project&&<><div className="project-action-list">{[
-      {label:'프로젝트 열기',icon:FolderOpen,run:()=>props.onOpen(project.id,'overview')},
-      {label:'할 일 관리',icon:ListChecks,run:()=>props.onOpen(project.id,'tasks')},
-      {label:'이름·목표 수정',icon:Pencil,run:()=>props.onEdit(project.id)},
-      {label:'기한·상태 변경',icon:CalendarDays,run:()=>props.onOpen(project.id,'settings')},
-      {label:'프로젝트 대화',icon:MessageSquare,run:()=>props.onChat(project.id)},
+      {label:'프로젝트 수정',icon:Pencil,run:()=>props.onEdit(project.id)},
+      {label:'기한·우선순위 변경',icon:CalendarDays,run:()=>props.onOpen(project.id,'settings')},
+      {label:projectStatus(project)==='active'?'보류·완료 관리':'다시 진행하기',icon:RotateCcw,run:()=>props.onOpen(project.id,projectStatus(project)==='active'?'settings':'resume')},
     ].map(({label,icon:Icon,run})=><button key={label} disabled={busy} onClick={()=>go(run)}><Icon size={19}/><span>{label}</span><ChevronRight size={16}/></button>)}<button className="project-delete-action" disabled={busy} onClick={askDelete}><Trash2 size={19}/><span>프로젝트 삭제</span></button></div><button className="secondary-button" onClick={close}>닫기</button></>}
     {(mode==='delete'||undo)&&<>
       {!undo&&counts&&<><p className="project-delete-explainer">프로젝트와 아래 항목을 함께 휴지통으로 옮깁니다. 나중에 복원할 수 있습니다.</p><div className="project-delete-counts"><span>할 일 <strong>{counts.tasks}</strong></span><span>기록 <strong>{counts.notes}</strong></span><span>일정 <strong>{counts.events}</strong></span>{counts.decisions+counts.delegations>0&&<span>결정·위임 <strong>{counts.decisions+counts.delegations}</strong></span>}</div>{counts.events>0&&<p className="form-hint">Google 캘린더에 등록된 원본 일정은 유지됩니다.</p>}</>}

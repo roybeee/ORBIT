@@ -25,6 +25,7 @@ import {
   CalendarDays,
   CheckCheck,
   FolderKanban,
+  MoreHorizontal,
   BookOpen,
   Library,
   Moon,
@@ -75,7 +76,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {Choice} from './choice';
 import {WorkspaceSettings} from './workspace-settings';
@@ -922,7 +923,7 @@ function WorkspaceContent({
     return ok;
   };
   return (
-    <SidebarProvider className="galaxy-workspace" style={{ '--sidebar-width': '248px' } as CSSProperties}>
+    <SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''}`} style={{ '--sidebar-width': '248px' } as CSSProperties}>
       <CosmicBackdrop/>
       {!demo && <InstallRootHint />}
       <a href="#main-content" className="skip-link">
@@ -1024,17 +1025,17 @@ function WorkspaceContent({
                     ? koreanDate(proposalDate)
                     : pageInfo[view].eyebrow}
               </div>
-              <h1>{view==='today'?'오늘':view==='projects'?'업무':view==='wiki'||view==='knowledge'?'기록':pageInfo[view].title}</h1>
+              <h1>{view==='today'?'오늘':view==='projects'?'프로젝트':view==='wiki'||view==='knowledge'?'기록':pageInfo[view].title}</h1>
               {!['today','projects','wiki','knowledge'].includes(view)&&<p>{pageInfo[view].subtitle}</p>}
             </div>
-            {view === 'projects' ? <div className="heading-actions"><button className="primary-button" disabled={busy||!loaded} onClick={()=>openCreate('project')}><Plus size={16}/>프로젝트 추가</button><DropdownMenu><DropdownMenuTrigger asChild><button className="secondary-button">보기·정리</button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>setProjectsMode(projectsMode==='cards'?'graph':'cards')}>{projectsMode==='cards'?'관계 그래프':'프로젝트 목록'}</DropdownMenuItem><DropdownMenuItem onSelect={()=>setAssignOpen(true)}>프로젝트 자동 분류</DropdownMenuItem><DropdownMenuItem onSelect={()=>setBrainyOpen(true)}>목표 관리</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div> : view==='wiki'||view==='knowledge'?<DropdownMenu><DropdownMenuTrigger asChild><button className="primary-button"><Plus size={16}/>기록 추가</button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>openCreate('wiki')}>문서</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('meeting')}>회의록</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('knowledge')}>참고 자료</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : view === 'calendar' ? (
+            {view === 'projects' ? <div className="heading-actions"><button className="primary-button" aria-label="새 프로젝트 추가" disabled={busy||!loaded} onClick={()=>openCreate('project')}><Plus size={20}/><span>프로젝트 추가</span></button><DropdownMenu><DropdownMenuTrigger asChild><button className="secondary-button" aria-label="프로젝트 보기·정리"><MoreHorizontal size={20}/></button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>setProjectsMode(projectsMode==='cards'?'graph':'cards')}>{projectsMode==='cards'?'관계 그래프':'프로젝트 목록'}</DropdownMenuItem><DropdownMenuItem onSelect={()=>navigate('tasks')}>전체 할 일</DropdownMenuItem><DropdownMenuItem onSelect={()=>navigate('goals')}>목표</DropdownMenuItem><DropdownMenuItem onSelect={openProjectTrash}>휴지통</DropdownMenuItem><DropdownMenuItem onSelect={()=>setAssignOpen(true)}>프로젝트 자동 분류</DropdownMenuItem><DropdownMenuItem onSelect={()=>setBrainyOpen(true)}>목표 관리</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div> : view==='wiki'||view==='knowledge'?<DropdownMenu><DropdownMenuTrigger asChild><button className="primary-button"><Plus size={16}/>기록 추가</button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>openCreate('wiki')}>문서</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('meeting')}>회의록</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('knowledge')}>참고 자료</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : view === 'calendar' ? (
               <button className="secondary-button" onClick={() => openCreate('event')}>
                 <Plus size={16} />
                 일정 추가
               </button>
             ) : null}
           </div>
-          <WorkspaceSections view={view} navigate={navigate}/>
+          {view!=='projects'&&<WorkspaceSections view={view} navigate={navigate}/>}
           {!loaded && (
             <section className="load-state" role="status">
               <RefreshCw size={22} />
@@ -1337,12 +1338,13 @@ function WorkspaceContent({
           if (!open) {if(projectDetail&&dataEditing){toast('작성 중인 설정이나 단계를 먼저 저장하거나 취소해 주세요.');return;}setDetail(null);}
         }}
       >
-        <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right">
-          <SheetHeader className="px-7 pt-9 pb-5 border-b">
+        <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right" showCloseButton={!projectDetail}>
+          <SheetHeader className={`px-7 pt-9 pb-5 border-b ${projectDetail?'project-flow-sheet-header':''}`}>
+            {projectDetail&&<SheetClose className="project-detail-back" disabled={dataEditing} aria-label="프로젝트 목록으로 돌아가기"><ChevronLeft size={22}/></SheetClose>}
             <SheetTitle className="text-xl leading-relaxed">
               {taskDetail?.title ??
                 noteDetail?.title ??
-                projectDetail?.name ??
+                (projectDetail?'프로젝트':undefined) ??
                 eventDetail?.title ??
                 '상세 보기'}
             </SheetTitle>

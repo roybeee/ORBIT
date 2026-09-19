@@ -23,7 +23,7 @@ export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,
   <section className="today-section today-projects" aria-labelledby="today-projects-title">
    <div className="section-title"><h2 id="today-projects-title">진행 중인 프로젝트 <span>{d.projects.length}</span></h2><button className="text-button" onClick={()=>navigate('projects')}>프로젝트 관리<ChevronRight size={15}/></button></div>
    <div className="today-project-grid">{d.projects.slice(0,4).map(({project:p,total,done})=><button className="today-project-card" key={p.id} onClick={()=>onOpen({kind:'project',id:p.id})}>
-    <div><strong>{p.name}</strong><ChevronRight size={18}/></div><span>{p.due.slice(5).replace('-','/')} 목표 · {total?`${done}/${total} 완료`:'첫 할 일을 정해 보세요'}</span>
+    <img className="today-project-art" src="/orbit-projects/orbital-card.png" width="278" height="214" alt=""/><div><strong>{p.name}</strong><ChevronRight size={18}/></div><span>{p.due.slice(5).replace('-','/')} 목표 · {total?`${done}/${total} 완료`:'첫 할 일을 정해 보세요'}</span>
     <Progress value={total?done/total*100:0} aria-label={`${p.name} 등록 업무 ${done}/${total} 완료`}/>
    </button>)}</div>
    {!d.projects.length&&<p className="today-empty">진행 중인 프로젝트가 없어요. 프로젝트 관리에서 새로 시작하거나 완료된 결과를 확인하세요.</p>}

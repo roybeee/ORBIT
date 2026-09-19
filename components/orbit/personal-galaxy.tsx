@@ -10,7 +10,7 @@ const positions = [[25,22],[75,22],[77,65],[50,85],[23,65]];
 /** A view of canonical workspace records; selecting a satellite opens that record. */
 export function PersonalGalaxy({data,navigate,onOpen}:{data:WorkspaceData;navigate:(view:View)=>void;onOpen:(target:{kind:'project';id:string})=>void}) {
   const [focused,setFocused]=useState<string|null>(null);
-  const activeProjects=projectBuckets(data.projects).active;
+  const activeProjects=projectBuckets(data.projects,data.tasks).active;
   const projects=[...activeProjects].sort((a,b)=>b.priority-a.priority).slice(0,5);
   const remaining=data.tasks.filter(t=>t.status!=='done').length;
   return <section className="personal-galaxy" aria-labelledby="galaxy-title">

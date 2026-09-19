@@ -24,6 +24,6 @@ export function workspaceDashboard(data:WorkspaceData,now:Date){
   const care=careEvents(data,today).map(e=>({event:e,routine:data.careRoutines!.find(r=>e.id===`care:${r.id}:${today}`)!}));
   const completed=data.tasks.filter(t=>t.status==='done'&&t.completedOn===today);
   const week=Array.from({length:7},(_,i)=>{const date=addDays(today,i-6);return {date,count:data.tasks.filter(t=>t.status==='done'&&t.completedOn===date).length}});
-  const projects=projectBuckets(data.projects).active.map(p=>{const tasks=data.tasks.filter(t=>t.projectId===p.id);return {project:p,total:tasks.length,done:tasks.filter(t=>t.status==='done').length,blocked:tasks.filter(t=>['blocked','waiting'].includes(questReadiness(data,t,today).state)).length}}).sort((a,b)=>b.blocked-a.blocked||a.project.due.localeCompare(b.project.due)||b.project.priority-a.project.priority);
+  const projects=projectBuckets(data.projects,data.tasks).active.map(p=>{const tasks=data.tasks.filter(t=>t.projectId===p.id);return {project:p,total:tasks.length,done:tasks.filter(t=>t.status==='done').length,blocked:tasks.filter(t=>['blocked','waiting'].includes(questReadiness(data,t,today).state)).length}}).sort((a,b)=>b.blocked-a.blocked||a.project.due.localeCompare(b.project.due)||b.project.priority-a.project.priority);
   return {today,chief,goals,activeGoals,active,ready,attention,focusTasks,todayEvents,upcoming,care,completed,week,projects};
 }

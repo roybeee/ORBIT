@@ -1,0 +1,134 @@
+/* Project Flow: the Figma poster, detail surface, and management sheet. */
+.project-flow-workspace .cosmic-nebula{display:none}
+.project-flow-workspace .page-heading{align-items:center;margin-bottom:6px}
+.project-flow-workspace .page-heading .eyebrow{display:none}
+.project-flow-workspace .page-heading h1{font-size:1.9rem;letter-spacing:-.045em}
+.project-flow-workspace .heading-actions{gap:8px}
+.project-flow-workspace .heading-actions .primary-button{min-width:44px;min-height:44px;border-radius:14px}
+.project-flow-workspace .heading-actions .secondary-button{width:44px;min-height:44px;border-radius:14px;padding:0}
+.project-flow{gap:14px;min-width:0}
+.project-flow-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--muted-foreground);font-size:.875rem}
+.project-flow-summary p{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.project-flow-summary strong{font-weight:500;color:var(--foreground)}
+.project-flow-summary p>span{margin:0 3px}
+.project-flow-summary .text-button{font-size:.875rem;min-height:44px}
+.project-flow .project-status-tabs{gap:22px}
+.project-flow .project-status-tabs>[data-slot=tabs-list]{display:flex;justify-content:flex-start;background:transparent;border:0;padding:0;gap:8px;min-height:44px;border-radius:0}
+.project-flow .project-status-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{flex:0 1 auto;border:0;background:var(--card);color:var(--muted-foreground);border-radius:24px;padding:10px 16px;min-height:44px;font-size:.875rem;gap:6px}
+.project-flow .project-status-tabs>[data-slot=tabs-list]>[data-state=active]{background:#f4f6fb;color:#182139;box-shadow:none}
+.project-flow .project-status-tabs>[data-slot=tabs-content]{gap:16px}
+.project-flow-tools{display:grid;gap:10px;padding:14px;border:1px solid var(--border);background:var(--card);border-radius:16px}
+.project-flow-tools .project-search{width:100%;min-height:44px;margin:0}
+.project-flow-tools>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.project-flow-tools select{min-height:44px;min-width:0;max-width:100%;flex:1;padding:8px;background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:10px;font-size:.875rem;color-scheme:dark}
+.project-flow-tools .text-button{padding:0 8px}
+.project-search-count{display:flex;align-items:center;justify-content:space-between;font-size:.875rem;color:var(--muted-foreground)}
+.project-poster-track{position:relative;display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:24px;min-width:0;align-items:stretch}
+.project-poster,.project-detail-surface,.project-action-dialog[data-slot=dialog-content]{--foreground:#182139;--background:#f4f6fb;--card:#e8ecf5;--muted:#e8ecf5;--muted-foreground:#56647e;--secondary:#e8ecf5;--accent:#e3def8;--accent-foreground:#5944b4;--primary:#6653cc;--primary-foreground:#fff;--border:#d8dce8;--input:#c9cddb;--ring:#8470e1;--galaxy-violet:#6653cc;--galaxy-green:#257358;--galaxy-rose:#ac3556;--galaxy-amber:#93691c;--galaxy-green-surface:#e1f1e9;--galaxy-warm-surface:#fff0d6;color:var(--foreground);color-scheme:light}
+.project-poster{background:#f4f6fb;border:0;border-radius:32px;padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0;box-shadow:0 16px 45px #00000017;touch-action:pan-x pan-y pinch-zoom;user-select:none;-webkit-touch-callout:none;transition:box-shadow .2s}
+.project-poster.is-held{box-shadow:0 0 0 3px #9c8cff,0 16px 45px #00000017}
+.project-poster-art{position:relative;background:#11182a;border-radius:20px;overflow:hidden}
+.project-poster-art>button:first-child{display:block;width:100%;padding:0;background:transparent;border:0}
+.project-poster-art img{display:block;width:100%;height:auto;aspect-ratio:278/214;object-fit:cover;pointer-events:none}
+.project-poster-menu{position:absolute;top:8px;right:8px;width:44px;height:44px;display:grid;place-items:center;border:1px solid #aab6d030;background:#11182adb;color:#f4f6ff;border-radius:14px}
+.project-poster-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#6653cc;font-size:.75rem;font-weight:650;letter-spacing:.025em;padding-top:3px}
+.project-poster-meta>span:last-child{letter-spacing:0;text-align:right}
+.project-poster-title{display:block;width:100%;text-align:left;color:#182139;padding:0;background:none;border:0}
+.project-poster-title h2{font-size:1.45rem;line-height:1.4;font-weight:750;letter-spacing:-.04em;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.project-poster-goal{color:#56647e;font-size:.875rem;line-height:1.6;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+.project-poster-progress{display:flex;justify-content:space-between;gap:10px;font-size:.875rem;color:#56647e;padding-top:3px;font-variant-numeric:tabular-nums}
+.project-poster-progress strong{color:#6653cc;font-weight:650}
+.project-poster>[data-slot=progress]{height:5px;background:#d8d9e9;flex-shrink:0}
+.project-poster [data-slot=progress-indicator]{background:#7962dd}
+.project-poster-action{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:50px;margin-top:2px;padding:12px 14px;background:#182139;color:#f4f6ff;border:0;border-radius:14px;font-size:.9375rem;font-weight:600}
+.project-poster-action>span{flex:1;text-align:center}
+.project-poster-action:hover{background:#293451}
+.project-poster button:focus-visible{outline:3px solid #8470e1;outline-offset:3px}
+.project-carousel-controls{display:none}
+.project-flow .project-press-hint{font-size:.8125rem;margin-top:0}
+/* Real project detail keeps task, resource, and outcome editing in one sheet. */
+.project-detail-sheet[data-slot=sheet-content]{width:min(600px,100vw);max-width:600px;background:#080b16;gap:0;border-left-color:#20273b}
+.project-detail-sheet [data-slot=sheet-header].project-flow-sheet-header{display:flex;flex-direction:row;align-items:center;justify-content:center;position:relative;min-height:64px;padding:12px 64px;border:0;background:#080b16;color:#aab6d0;flex-shrink:0}
+.project-flow-sheet-header [data-slot=sheet-title]{font-size:.9375rem;color:#aab6d0;font-weight:500}
+.project-flow-sheet-header [data-slot=sheet-description]{display:none}
+.project-detail-back{position:absolute;left:16px;top:10px;display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#182139;color:#f4f6ff}
+.project-detail-sheet .sheet-body{padding:0;scroll-padding-top:16px}
+.project-detail-art{height:180px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#080b16}
+.project-detail-art img{width:278px;height:214px;object-fit:contain;max-width:100%}
+.project-detail-surface{border-radius:32px 32px 0 0;padding:24px 24px max(24px,env(safe-area-inset-bottom));background:#f4f6fb;min-height:calc(100dvh - 244px)}
+.project-detail-heading>span{color:#6653cc;font-size:.75rem;font-weight:650;letter-spacing:.03em}
+.project-detail-heading h2{font-size:1.625rem;line-height:1.4;letter-spacing:-.035em;margin:8px 0;overflow-wrap:anywhere;font-weight:750}
+.project-detail-heading>p{font-size:.9375rem;line-height:1.65;color:#56647e;overflow-wrap:anywhere}
+.project-detail-heading>div:not([data-slot]){display:flex;justify-content:space-between;gap:12px;margin:16px 0 10px;font-size:.875rem;color:#56647e}
+.project-detail-heading strong{color:#6653cc}
+.project-detail-heading>[data-slot=progress]{height:5px;background:#d8d9e9;margin-bottom:12px}
+.project-detail-surface [data-slot=progress-indicator]{background:#7962dd}
+.project-flow-detail .project-detail-quickbar{gap:4px;margin:0 0 10px}
+.project-flow-detail .project-detail-quickbar button{border:0;padding:4px 6px;color:#56647e;font-size:.875rem;background:transparent}
+.project-flow-detail .project-detail-quickbar button:first-child{color:#6653cc}
+.project-flow-detail .project-detail-tabs>[data-slot=tabs-list]{position:static;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:0;gap:7px;background:transparent;border:0;margin:0 0 6px;border-radius:0}
+.project-flow-detail .project-detail-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{background:#e8ecf5;color:#56647e;border:0;border-radius:13px;font-size:.875rem;min-height:46px;padding:8px 6px;white-space:normal}
+.project-flow-detail .project-detail-tabs>[data-slot=tabs-list]>[data-state=active]{background:#182139;color:#fff;box-shadow:none}
+.project-flow-detail .project-task-row{background:#e8ecf5;border:0;border-radius:14px;padding:14px;margin:10px 0}
+.project-flow-detail .project-task-main>button{color:#182139}
+.project-flow-detail .project-task-main strong{font-size:.9375rem;line-height:1.5}
+.project-flow-detail .project-task-main>button>span{font-size:.8125rem;color:#56647e}
+.project-flow-detail .project-task-filters{gap:6px;flex-wrap:wrap}
+.project-flow-detail .project-task-filters button{color:#56647e;background:transparent;min-height:40px;font-size:.875rem;padding:7px 12px;border:1px solid transparent}
+.project-flow-detail .project-task-filters button[aria-pressed=true]{color:#5944b4;background:#e3def8;border-color:#d5ccee}
+.project-flow-detail .project-task-guide{font-size:.8125rem;line-height:1.6;color:#56647e;margin:8px 0 12px}
+.project-flow-detail .project-detail-footer{position:static;display:flex;flex-wrap:wrap;padding:16px 0 0;background:transparent;border:0;gap:8px;margin-top:6px}
+.project-flow-detail .project-detail-footer .primary-button{flex:1 1 100%;min-height:52px;background:#9c8cff;color:#182139;border-radius:14px;font-size:1rem;justify-content:center}
+.project-flow-detail .project-detail-footer .secondary-button{flex:1;min-height:44px;border:0;background:transparent}
+.project-flow-detail .project-inline-form input,.project-flow-detail .project-inline-form textarea{color-scheme:light}
+.project-flow-detail .overdue{color:#ac3556}
+/* Context menu matches the Figma bottom sheet; deletion keeps its confirmation. */
+.project-action-dialog[data-slot=dialog-content]{background:#f4f6fb;border:0;border-radius:28px;padding:28px 24px;gap:16px}
+.project-action-dialog .project-action-list{gap:8px}
+.project-action-dialog .project-action-list>button{background:#e8ecf5;border:0;border-radius:14px;min-height:48px;font-size:.9375rem}
+.project-action-dialog .project-action-list>.project-delete-action{background:#fbe7ee;color:#ac3556;margin:4px 0 0;padding:12px}
+.project-action-dialog .project-action-error{background:#fff0d6;color:#93691c;border-color:#e8cb92}
+.project-action-dialog>.secondary-button{background:transparent;border:0;color:#56647e}
+.today-project-card{background:#f4f6fb;color:#182139;border:0;padding:16px;border-radius:24px;gap:12px}
+.today-project-art{display:block;width:100%;height:124px;object-fit:cover;object-position:center;border-radius:14px;background:#11182a}
+.today-project-card strong{color:#182139}.today-project-card>span,.today-project-card svg{color:#56647e}
+.today-project-card [data-slot=progress]{background:#d8d9e9}.today-project-card [data-slot=progress-indicator]{background:#7962dd}
+@media(min-width:768px){.project-flow-workspace .content{max-width:1320px}.project-poster{max-width:420px}.project-flow .project-press-hint{text-align:left;margin:8px 0}}
+@media(max-width:767px){
+ .project-flow-workspace .topbar{border:0;min-height:64px;background:var(--background)}
+ .project-flow-workspace .breadcrumb{gap:10px;min-width:0}
+ .project-flow-workspace .breadcrumb-brand{display:block;font-size:1.25rem;font-weight:750;color:var(--foreground);letter-spacing:-.04em}
+ .project-flow-workspace .breadcrumb>svg,.project-flow-workspace .breadcrumb>strong{display:none}
+ .project-flow-workspace .all-menu-trigger{width:44px;height:44px;min-height:44px;padding:0;display:grid;place-items:center;border:0;background:var(--card);border-radius:14px}
+ .project-flow-workspace .all-menu-trigger>span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .project-flow-workspace .share-intake-button{width:44px;height:44px;padding:0;justify-content:center;font-size:0;gap:0;background:var(--card);border:0;border-radius:14px}
+ .project-flow-workspace .share-intake-button>svg{width:20px;height:20px}
+ .project-flow-workspace .top-actions>.icon-button{border:0;background:var(--card);border-radius:14px;width:44px;height:44px}
+ .project-flow-workspace .content{padding:12px 24px calc(112px + env(safe-area-inset-bottom));overflow:hidden}
+ .project-flow-workspace .page-heading{margin:0 0 2px;gap:12px}
+ .project-flow-workspace .page-heading h1{font-size:1.875rem}
+ .project-flow-workspace .heading-actions .primary-button{padding:0;width:44px;background:#182139;color:#f4f6ff}
+ .project-flow-workspace .heading-actions .primary-button>span{display:none}
+ .project-flow-workspace .heading-actions .secondary-button{border:0;background:var(--card);color:var(--muted-foreground)}
+ .project-flow .project-status-tabs{gap:22px}
+ .project-flow .project-status-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{padding:10px 13px;gap:5px}
+ .project-flow-summary{font-size:.8125rem}
+ .project-flow-summary .text-button{font-size:.8125rem}
+ .project-poster-track{display:flex;align-items:stretch;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-left:24px;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -24px;padding:0 24px 16px}
+ .project-poster-track::-webkit-scrollbar{display:none}
+ .project-poster{flex:0 0 calc(100% - 20px);width:calc(100% - 20px);scroll-snap-align:start;scroll-snap-stop:always;padding:20px;gap:11px;border-radius:30px;max-width:380px}
+ .project-poster-track:has(>.project-poster:only-child)>.project-poster{flex-basis:100%;width:100%}
+ .project-carousel-controls{display:flex;align-items:center;justify-content:center;gap:20px;margin-top:-8px;color:#b9aeff;font-size:.875rem;font-weight:650;font-variant-numeric:tabular-nums}
+ .project-carousel-controls>span>span{color:var(--muted-foreground);font-weight:400}
+ .project-carousel-controls button{min-width:44px;min-height:44px;display:grid;place-items:center;background:transparent;border:0;border-radius:14px;color:var(--muted-foreground)}
+ .project-flow-workspace .mobile-nav{left:14px;right:14px;bottom:max(10px,env(safe-area-inset-bottom));width:auto;border:1px solid var(--border);border-radius:24px;padding:6px;background:var(--card);box-shadow:0 8px 30px #00000030}
+ .project-flow-workspace .mobile-nav button{min-height:52px;font-size:.75rem;border-radius:18px}
+ .project-action-dialog[data-slot=dialog-content]{border-radius:30px 30px 0 0;padding-top:32px}
+ .project-action-dialog[data-slot=dialog-content]::before{content:'';position:absolute;top:10px;left:calc(50% - 20px);width:40px;height:4px;border-radius:2px;background:#c9cddb}
+ .project-detail-sheet .sheet-body{padding:0}
+ .project-detail-surface{padding:22px 24px max(24px,env(safe-area-inset-bottom))}
+ .today-project-grid{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px}
+ .today-project-card{flex:0 0 86%;scroll-snap-align:start}
+}
+@media(max-width:360px){.project-flow-workspace .content{padding-inline:18px}.project-flow .project-status-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{padding-inline:10px;font-size:.8125rem}.project-poster{padding:16px}.project-poster-title h2{font-size:1.25rem}.project-detail-surface{padding-inline:18px}}
+@media(prefers-reduced-motion:reduce){.project-poster{transition:none}}
