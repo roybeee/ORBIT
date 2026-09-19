@@ -21,12 +21,12 @@ on:
         description: 'Unique increasing Play Store version code'
         required: true
         type: string
-        default: '1'
+        default: '2'
       version_name:
         description: 'User-visible version'
         required: true
         type: string
-        default: '0.1.0'
+        default: '0.1.1'
 
 permissions:
   contents: read
