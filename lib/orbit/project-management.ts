@@ -3,6 +3,14 @@ import {workEligibility} from './work-policy.ts';
 
 export const projectStatusLabel: Record<ProjectStatus,string> = {planned:'준비',active:'진행 중',paused:'보류',completed:'완료'};
 export const projectStatus = (project: Project): ProjectStatus => project.status ?? 'active';
+export type ProjectBucket = 'active' | 'completed' | 'pending';
+export function projectBuckets(projects: Project[]) {
+  return {
+    active: projects.filter(p=>projectStatus(p)==='active'),
+    completed: projects.filter(p=>projectStatus(p)==='completed'),
+    pending: projects.filter(p=>['planned','paused'].includes(projectStatus(p))),
+  };
+}
 export const priorityLabel = (priority: number) => priority >= 4 ? '높음' : priority <= 2 ? '낮음' : '보통';
 
 export function projectSummary(data: WorkspaceData,project:Project,today:string) {

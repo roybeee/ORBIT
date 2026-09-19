@@ -1,5 +1,23 @@
 /* Project management: compact overview and a focused, mobile-ready workspace. */
 .project-hub{display:grid;gap:16px;min-width:0}
+.project-status-tabs{gap:16px;min-width:0}
+.project-status-tabs>[data-slot=tabs-list]{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;height:auto;min-height:52px;padding:4px;gap:4px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.project-status-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{min-width:0;min-height:44px;height:auto;padding:8px 6px;gap:6px;font-size:14px;border-radius:10px;color:var(--muted-foreground)}
+.project-status-tabs>[data-slot=tabs-list]>[data-state=active]{background:var(--accent);color:var(--accent-foreground);border-color:var(--ring)}
+.project-status-tabs [data-slot=tabs-trigger]>span{font-variant-numeric:tabular-nums;font-size:13px}
+.project-status-tabs>[data-slot=tabs-content]{display:grid;gap:16px;min-width:0;margin:0}
+.project-list-caption{flex-wrap:wrap}
+.today-projects .section-title{flex-wrap:wrap;gap:10px}
+.today-projects h2>span{margin-left:6px;color:var(--galaxy-violet);font-variant-numeric:tabular-nums}
+.today-project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.today-project-card{display:grid;gap:10px;min-width:0;padding:16px;text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--background);color:var(--foreground)}
+.today-project-card>div:first-child{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.today-project-card strong{font-size:16px;line-height:1.55;overflow-wrap:anywhere}
+.today-project-card svg{flex-shrink:0;color:var(--muted-foreground)}
+.today-project-card>span{font-size:14px;color:var(--muted-foreground);line-height:1.6}
+.today-project-card [data-slot=progress]{height:5px}
+.today-project-card:hover{border-color:var(--ring)}
+@media(max-width:600px){.today-project-grid{grid-template-columns:minmax(0,1fr)}.project-list-caption>div{margin-left:auto}.project-status-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{gap:4px}}
 .project-hub button,.project-detail-panel button{min-height:44px}
 .project-hub button:focus-visible,.project-detail-panel button:focus-visible{outline:2px solid var(--ring);outline-offset:3px}
 .project-overview-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}

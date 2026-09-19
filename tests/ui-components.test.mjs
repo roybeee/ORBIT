@@ -99,3 +99,25 @@ test('historical note view never flashes the latest body while loading its recor
  const html=renderToStaticMarkup(React.createElement(NoteDetail,{requestedRevision:1,meta:{id:'n',revision:2,bodyStored:false,title:'최신',body:'LATEST_BODY_MUST_NOT_APPEAR',kind:'wiki',updated:'2026-09-17',tags:[]},notes:[],tasks:[],demo:false,busy:false,defaultDue:'2026-09-17'}));
  assert.doesNotMatch(html,/LATEST_BODY_MUST_NOT_APPEAR/);assert.match(html,/불러오는 중/);
 });
+
+test('project management opens on active projects and home never displays completed project cards',async()=>{
+ const {emptyWorkspace}=await vite.ssrLoadModule('/lib/orbit/model.ts');
+ const {ProjectHub}=await vite.ssrLoadModule('/components/orbit/project-hub.tsx');
+ const {TodayHome}=await vite.ssrLoadModule('/components/orbit/today-home.tsx');
+ const {PersonalGalaxy}=await vite.ssrLoadModule('/components/orbit/personal-galaxy.tsx');
+ const data=emptyWorkspace(),noop=()=>{},now=new Date('2026-09-19T01:00:00Z');
+ data.projects=['active','completed','planned','paused'].map(status=>({id:status,name:`PROJECT_${status.toUpperCase()}`,status,color:'#7451dc',symbol:'O',goal:'검토한 결과 전달',due:'2026-09-30',priority:3}));
+ const props={data,today:'2026-09-19',now,busy:false,demo:true,pendingAI:0,onOpen:noop,navigate:noop,perform:async()=>true,onOpenTask:noop,onCreateTask:noop,onCreateProject:noop,onManage:noop,onTrash:noop};
+ for(const Component of [ProjectHub,TodayHome,PersonalGalaxy]){
+  const html=renderToStaticMarkup(React.createElement(Component,props));
+  assert.match(html,/PROJECT_ACTIVE/);
+  assert.doesNotMatch(html,/PROJECT_(COMPLETED|PLANNED|PAUSED)/);
+  if(Component===ProjectHub){assert.match(html,/role="tab"[^>]*aria-selected="true"[^>]*[\s\S]*?진행 중/);assert.match(html,/완료 <span>1<\/span>/);}
+ }
+ data.projects=data.projects.filter(p=>p.status!=='active');
+ for(const Component of [ProjectHub,TodayHome,PersonalGalaxy]){
+  const html=renderToStaticMarkup(React.createElement(Component,props));
+  assert.match(html,/진행 중인 프로젝트가 없어요/);
+  assert.doesNotMatch(html,/PROJECT_(COMPLETED|PLANNED|PAUSED)/);
+ }
+});

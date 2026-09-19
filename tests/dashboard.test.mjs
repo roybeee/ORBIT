@@ -2,11 +2,36 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {emptyWorkspace} from '../lib/orbit/model.ts';
 import {workspaceDashboard} from '../lib/orbit/dashboard.ts';
+import {projectBuckets} from '../lib/orbit/project-management.ts';
+import {applyAction} from '../lib/orbit/reducer.ts';
 const now=new Date('2026-09-08T01:00:00Z'),date='2026-09-08';
 const task=(id,rest={})=>({id,title:id,projectId:'p',status:'todo',duration:30,due:date,impact:3,focus:false,definition:'완료 기준',...rest});
 const project={id:'p',name:'프로젝트',color:'#5558e8',symbol:'O',goal:'결과물',goalId:'g',due:'2026-09-30',priority:3};
 const goal={id:'g',kind:'short',sentence:'실제 성과',deadline:'2026-09-30',progress:{baseline:0,current:2,target:10,unit:'개',startedOn:'2026-09-01',updatedOn:date}};
 const fixture=(rest={})=>({...emptyWorkspace(),goals:[goal],projects:[project],tasks:[],...rest});
+test('home includes active and legacy projects only without changing completed or pending records',()=>{
+ const projects=[project,...['active','completed','planned','paused'].map(status=>({...project,id:status,status,priority:5}))];
+ const data=fixture({projects}),original=structuredClone(data),groups=projectBuckets(projects);
+ assert.deepEqual(workspaceDashboard(data,now).projects.map(x=>x.project.id).sort(),['active','p']);
+ assert.deepEqual(groups.completed.map(x=>x.id),['completed']);
+ assert.deepEqual(groups.pending.map(x=>x.id),['planned','paused']);
+ assert.equal(new Set(Object.values(groups).flat().map(x=>x.id)).size,projects.length);
+ assert.deepEqual(data,original);
+ assert.deepEqual(workspaceDashboard({...data,projects:projects.filter(p=>p.status&&p.status!=='active')},now).projects,[]);
+});
+test('completing and reopening moves a project between home and completed while preserving its work',()=>{
+ const data=fixture({tasks:[task('one')]});
+ const change=status=>({type:'project.manage',id:'p',status,priority:3,goalId:'g',result:'최종 결과 전달'});
+ const completed=applyAction(data,change('completed'),now);
+ assert.deepEqual(workspaceDashboard(completed,now).projects,[]);
+ assert.deepEqual(projectBuckets(completed.projects).completed.map(p=>p.id),['p']);
+ assert.equal(completed.tasks[0].status,'todo');
+ const reopened=applyAction(completed,change('active'),now);
+ assert.deepEqual(workspaceDashboard(reopened,now).projects.map(x=>x.project.id),['p']);
+ assert.equal(projectBuckets(reopened.projects).completed.length,0);
+ assert.equal(reopened.projects[0].result,'최종 결과 전달');
+ assert.equal(reopened.tasks[0].id,'one');
+});
 test('overview derives local dates and counts dated completions once without changing workspace',()=>{
  const data=fixture({tasks:[task('today',{status:'done',completedOn:date}),task('future',{status:'done',completedOn:'2026-09-09'}),task('undated',{status:'done'}),task('yesterday',{status:'done',completedOn:'2026-09-07'})]});const original=structuredClone(data),d=workspaceDashboard(data,new Date('2026-09-07T15:30:00Z'));
  assert.equal(d.today,date);assert.equal(d.completed.length,1);assert.equal(d.week.reduce((n,x)=>n+x.count,0),2);assert.deepEqual(data,original);assert.equal(d.goals[0].goal.progress.current,2);
