@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ORBIT</string>
+    <string name="shortcut_today">오늘의 업무</string>
+    <string name="shortcut_inbox">받은 파일</string>
+</resources>

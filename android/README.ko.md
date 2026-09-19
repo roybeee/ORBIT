@@ -1,0 +1,103 @@
+# ORBIT 안드로이드 앱
+
+기존 ORBIT 계정과 업무 데이터를 사용하는 Android 앱입니다. 웹 업무 화면은 Android Browser Helper의 Trusted Web Activity(TWA)로 연결하며, 안드로이드 공유 메뉴와 받은 파일 보관함은 앱이 직접 제공합니다. 연결된 브라우저의 로그인 세션을 사용하므로 별도의 앱용 비밀번호나 서버 토큰을 저장하지 않습니다.
+
+현재 ORBIT 주소는 로그인으로 보호된 Sites입니다. 도메인 소유 확인 파일을 브라우저가 공개적으로 확인할 수 없으면 안전한 Custom Tab으로 열리며 주소 표시줄이 보입니다. 이때도 기존 소유자 인증을 그대로 거칩니다. 주소 표시줄 없는 TWA 실행은 공개된 Digital Asset Links 설정이 가능한 도메인으로 연결한 뒤 활성화할 수 있습니다. 앱에서 사이트 접근 제한을 우회하지 않습니다.
+
+## 구성
+
+| 항목 | 값 |
+| --- | --- |
+| 정식 패키지 | `co.mealzip.orbit` |
+| 베타 패키지 | `co.mealzip.orbit.debug` |
+| 최소 버전 | Android 8.0, API 26 |
+| 컴파일·대상 버전 | API 36 |
+| Java | 17 |
+| Gradle / Android Gradle Plugin | 8.11.1 / 8.10.1 |
+| Android Browser Helper | 2.7.3 |
+| 연결 주소 | `https://orbit-personal-os.hflameb.chatgpt.site/` |
+
+앱을 설치해도 PC의 Hermes·ASIDE 실행 환경이 자동으로 휴대폰으로 옮겨지지는 않습니다. ORBIT에 연결한 서버 또는 켜진 PC가 계속 해당 작업을 수행합니다. 푸시 알림·기기 백그라운드 작업·오프라인 업무 편집은 이번 패키지에서 추가하지 않습니다.
+
+## 베타 빌드와 설치
+
+Android Studio에서 이 `android` 폴더를 프로젝트로 엽니다. SDK Manager에서 Android SDK Platform 36과 Build Tools 35.0.0을 설치하고 Gradle JDK를 17로 설정합니다. 명령행에서는 `ANDROID_HOME`을 SDK 위치로 지정하거나, 추적하지 않는 `local.properties`에 `sdk.dir`을 적습니다.
+
+macOS / Linux:
+
+```bash
+cd android
+./gradlew testDebugUnitTest lintDebug assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Windows PowerShell:
+
+```powershell
+cd android
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+APK를 휴대폰에서 직접 열어 설치할 수도 있습니다. 휴대폰의 설치 안내에 따라 해당 다운로드 앱의 설치를 허용하면 **ORBIT Beta** 아이콘이 추가됩니다. 베타와 향후 정식 ORBIT은 별도 패키지이므로 함께 설치할 수 있으며, 앱의 로컬 공유 보관함도 서로 독립적입니다. 웹 업무 데이터는 같은 계정에 연결됩니다.
+
+디버그 인증서는 개발 환경별로 다릅니다. 서로 다른 컴퓨터·CI에서 만든 베타 APK가 같은 서명이라고 가정하면 안 됩니다. 업데이트 시 서명 불일치가 나오면 이전 베타의 받은 파일을 먼저 처리한 후 제거하고 다시 설치합니다. 앱 제거는 로컬 받은 파일을 삭제합니다. 정식 배포에서는 아래의 고정된 업로드 키와 Play App Signing을 사용합니다.
+
+## 휴대폰에서 확인할 동작
+
+1. ORBIT Beta를 열고 기존 ORBIT 소유자 계정으로 로그인합니다. 대화·일정·프로젝트 데이터가 기존 웹과 같은지 확인합니다.
+2. 갤러리·파일 앱·브라우저에서 공유를 눌러 ORBIT Beta가 표시되는지 확인합니다. 텍스트, 링크, 이미지, PDF, 복수 파일을 각각 보냅니다.
+3. 받은 파일 보관함에서 파일 목록을 확인합니다. 현재 비공개 Sites 연결에서는 보관함의 안내에 따라 ORBIT의 첨부 선택기에서 **ORBIT 받은 파일**을 선택합니다. 공유한 텍스트·링크도 텍스트 파일로 받아 첨부할 수 있습니다. 서버 업로드와 메시지 전송은 기존 ORBIT 화면에서 확정합니다.
+4. 파일 선택기에 표시된 문서를 연 뒤 실제 전송·업로드까지 확인합니다. 앱 종료 후 다시 열어 받은 파일이 남아 있는지도 확인합니다.
+5. 뒤로 가기, 화면 회전, 로그인 만료, 연결 끊김 후 재시도, 파일 삭제를 확인합니다. 인증 만료 또는 첨부 취소 시 업무가 완료되었다고 표시되지 않아야 합니다.
+
+자동 빌드와 단위 검사는 실제 갤럭시 기기의 OS 공유 목록·Chrome 로그인·파일 선택기 동작 검증을 대신하지 않습니다.
+
+## 정식 서명과 Play Store AAB
+
+릴리스 빌드는 네 가지 환경 변수가 모두 있어야 실행됩니다. 서명 값이 없으면 명시적으로 실패하며 디버그 키를 정식 키로 재사용하지 않습니다.
+
+| 환경 변수 | 내용 |
+| --- | --- |
+| `ORBIT_KEYSTORE_FILE` | 업로드용 JKS 또는 keystore의 절대 경로 |
+| `ORBIT_KEYSTORE_PASSWORD` | 저장소 비밀번호 |
+| `ORBIT_KEY_ALIAS` | 업로드 키 별칭 |
+| `ORBIT_KEY_PASSWORD` | 키 비밀번호 |
+
+비밀 저장소 또는 로컬 셸에서 위 값을 주입한 후 실행합니다. 서명 파일·비밀번호·실제 사용자 데이터를 저장소에 커밋하지 않습니다. Play Console 신규 업로드마다 `orbitVersionCode`를 증가시킵니다.
+
+```bash
+cd android
+./gradlew lintRelease bundleRelease -PorbitVersionCode=1 -PorbitVersionName=0.1.0
+```
+
+출력은 `app/build/outputs/bundle/release/app-release.aab`입니다. AAB는 휴대폰에 직접 설치하는 파일이 아니라 Play Console에 업로드하는 배포 묶음입니다. Play 내부 테스트 → 기기 점검 → 운영 출시 순서로 진행합니다. 개발자 계정, 업로드 키, 앱 설명·스크린샷, 개인정보처리방침, 데이터 보안 정보와 심사 제출이 별도로 필요합니다. 현재 저장소의 빌드 워크플로는 Play에 자동 게시하지 않습니다.
+
+## GitHub Actions
+
+`Android app` 워크플로는 Android 코드의 PR과 `main` 변경 시 단위 검사·Lint·베타 APK 빌드·APK 서명 검사를 수행하고 결과를 보관합니다. 새 개발은 기능 브랜치와 PR로 검토합니다.
+
+서명된 AAB는 `workflow_dispatch`에서 `signed_release=true`로 실행할 때만 만듭니다. `android-release` Environment에 다음 Secrets를 등록합니다.
+
+- `ORBIT_KEYSTORE_BASE64`: 업로드 키 파일 바이트를 Base64로 인코딩한 값.
+- `ORBIT_KEYSTORE_PASSWORD`
+- `ORBIT_KEY_ALIAS`
+- `ORBIT_KEY_PASSWORD`
+
+워크플로가 임시 키 파일을 생성하고 빌드 후 삭제합니다. AAB와 난독화 매핑만 결과물에 포함합니다. 비밀 값이 하나라도 없으면 릴리스 작업은 실패합니다. 조직 정책에 맞게 Environment의 배포 브랜치·검토자 제한을 설정할 수 있습니다.
+
+## 도메인 변경과 전체 화면 TWA
+
+서버와 인증을 해당 도메인에 실제 배포한 다음 `-PorbitOrigin=https://선택한-도메인`으로 빌드할 수 있습니다. 값은 경로·쿼리·인증 정보 없는 HTTPS origin이어야 합니다. 앱 내부 URL과 딥 링크 호스트는 동일한 값으로 생성됩니다.
+
+공개적으로 접근 가능한 `https://선택한-도메인/.well-known/assetlinks.json`에 앱 패키지와 **Play 앱 서명 인증서** SHA-256 지문을 연결합니다. 업로드 인증서와 Play 앱 서명 인증서는 다를 수 있습니다. 직접 배포한 APK나 베타 테스트는 그 APK를 서명한 인증서와 해당 패키지 이름을 별도로 등록해야 합니다. 인증된 업무 화면이나 API를 공개로 전환할 필요는 없습니다.
+
+참고: [AGP 8.10 호환성](https://developer.android.com/build/releases/agp-8-10-0-release-notes), [Android Browser Helper 릴리스](https://github.com/GoogleChrome/android-browser-helper/releases), [TWA 개요](https://developer.chrome.com/docs/android/trusted-web-activity/overview).
+
+## 이번 개발의 검증 결과 — 2026-09-19
+
+`testDebugUnitTest lintDebug assembleDebug`를 함께 실행해 성공했습니다. 단위 검사 24개(공유 보관함 16개, 문서 제공자 5개, URL 정책 3개)가 모두 통과했습니다. 경로 이탈, 취소, 읽기 권한, 원자적 파일 보관과 만료 처리를 포함합니다. Android Lint는 오류 0개, 경고 9개, 참고 1개입니다. 경고에는 한국어 전용 UI의 번역·아이콘 관련 항목과 최신 백업 설정 권고가 포함되며, 임시 공유 파일은 백업 대상에서 제외되는 `noBackupFilesDir`에 저장합니다.
+
+생성한 베타 APK는 서명 검사를 통과했으며 `co.mealzip.orbit.debug`, 버전 `0.1.0-beta`, 최소 API 26·대상 API 36입니다. 빌드 시점 파일 크기는 5,225,823바이트, SHA-256은 `c229616dee6208eafc9d66740a54b327f81b97c6cd3d983b430ff8cae7aa2405`입니다. 재빌드 시 서명 키와 빌드 환경에 따라 해시는 달라질 수 있습니다. 정식 서명 변수가 없을 때 릴리스가 실패하는 보호 동작도 확인했습니다.
+
+실제 휴대폰 또는 에뮬레이터에서 로그인·공유·첨부 흐름을 실행한 상태는 아닙니다. 정식 업로드 키가 제공되지 않아 서명된 AAB를 만들지 않았고, Play Store에 게시하지 않았습니다. APK 설치 후 위의 휴대폰 확인 절차가 남아 있습니다.

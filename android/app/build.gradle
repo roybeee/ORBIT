@@ -1,0 +1,114 @@
+plugins {
+    id 'com.android.application'
+}
+
+def orbitOrigin = providers.gradleProperty('orbitOrigin')
+    .getOrElse('https://orbit-personal-os.hflameb.chatgpt.site').replaceAll('/+$', '')
+def originUri = new URI(orbitOrigin)
+if (originUri.scheme != 'https' || !originUri.host || originUri.userInfo ||
+    (originUri.path && originUri.path != '/') || originUri.query || originUri.fragment ||
+    (originUri.port != -1 && originUri.port != 443)) {
+    throw new GradleException('orbitOrigin must be a plain HTTPS origin, without credentials, path, query, or custom port.')
+}
+def orbitVersionCode = providers.gradleProperty('orbitVersionCode').getOrElse('1').toInteger()
+def orbitVersionName = providers.gradleProperty('orbitVersionName').getOrElse('0.1.0')
+if (orbitVersionCode < 1 || orbitVersionCode > 2100000000) {
+    throw new GradleException('orbitVersionCode must be between 1 and 2100000000.')
+}
+
+def signingEnv = [
+    storeFile: System.getenv('ORBIT_KEYSTORE_FILE'),
+    storePassword: System.getenv('ORBIT_KEYSTORE_PASSWORD'),
+    keyAlias: System.getenv('ORBIT_KEY_ALIAS'),
+    keyPassword: System.getenv('ORBIT_KEY_PASSWORD')
+]
+def hasReleaseSigning = signingEnv.values().every { it != null && !it.isBlank() }
+
+android {
+    namespace 'co.mealzip.orbit'
+    compileSdk 36
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'co.mealzip.orbit'
+        minSdk 26
+        targetSdk 36
+        versionCode orbitVersionCode
+        versionName orbitVersionName
+        buildConfigField 'String', 'ORBIT_ORIGIN', groovy.json.JsonOutput.toJson(orbitOrigin)
+        buildConfigField 'String', 'ORBIT_START_URL', groovy.json.JsonOutput.toJson(orbitOrigin + '/')
+        resValue 'string', 'asset_statements', groovy.json.JsonOutput.toJson([[
+            relation: ['delegate_permission/common.handle_all_urls'],
+            target: [namespace: 'web', site: orbitOrigin]
+        ]]).replace('"', '\\"')
+        manifestPlaceholders = [orbitHost: originUri.host, orbitOrigin: orbitOrigin, appLabel: 'ORBIT']
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(signingEnv.storeFile)
+                storePassword signingEnv.storePassword
+                keyAlias signingEnv.keyAlias
+                keyPassword signingEnv.keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-beta'
+            manifestPlaceholders.appLabel = 'ORBIT Beta'
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+        htmlReport true
+        xmlReport true
+    }
+}
+
+// A release build must never silently fall back to debug signing or produce an
+// unsigned artifact. Debug builds remain usable without any release secrets.
+tasks.register('requireReleaseSigning') {
+    doLast {
+        if (!hasReleaseSigning) {
+            throw new GradleException('Release signing requires ORBIT_KEYSTORE_FILE, ORBIT_KEYSTORE_PASSWORD, ORBIT_KEY_ALIAS, and ORBIT_KEY_PASSWORD. Use assembleDebug for a local beta build.')
+        }
+        if (!file(signingEnv.storeFile).isFile()) {
+            throw new GradleException('ORBIT_KEYSTORE_FILE does not identify an existing keystore.')
+        }
+    }
+}
+tasks.configureEach {
+    if (name == 'preReleaseBuild') {
+        dependsOn tasks.named('requireReleaseSigning')
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.3'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
