@@ -3,6 +3,7 @@
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
 import {detectInstallEnvironment,type InstallPlatform,type InstallBrowser} from '@/lib/orbit/installation';
 import {APP_BUILD,availableUpdate} from '@/lib/orbit/app-version';
+import {trackMobileViewport} from '@/lib/orbit/mobile-viewport';
 
 interface InstallPrompt extends Event {
   prompt:()=>Promise<void>;
@@ -59,17 +60,10 @@ export function PwaProvider({children}:{children:ReactNode}){
     if(location.pathname!=='/demo'&&'serviceWorker' in navigator){
       void navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(()=>{console.warn('Orbit share receiver registration failed. Open /install#share-setup to check installation.');});
     }
-    const viewport=window.visualViewport;
-    const updateViewport=()=>{
-      const height=viewport?.height??window.innerHeight;
-      document.documentElement.style.setProperty('--phone-viewport-height',`${height}px`);
-      document.documentElement.style.setProperty('--phone-viewport-top',`${viewport?.offsetTop??0}px`);
-      document.documentElement.dataset.keyboard=window.innerHeight-height>140?'open':'closed';
-    };
-    updateViewport();viewport?.addEventListener('resize',updateViewport);viewport?.addEventListener('scroll',updateViewport);window.addEventListener('resize',updateViewport);
+    const stopViewport=trackMobileViewport(window,document);
     return()=>{
       window.removeEventListener('beforeinstallprompt',capture);window.removeEventListener('appinstalled',complete);display.removeEventListener('change',updateDisplay);
-      viewport?.removeEventListener('resize',updateViewport);viewport?.removeEventListener('scroll',updateViewport);window.removeEventListener('resize',updateViewport);
+      stopViewport();
     };
   },[]);
 

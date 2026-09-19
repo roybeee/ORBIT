@@ -1,0 +1,17 @@
+@media(max-width:767px){
+  /* Follow the visible screen origin as well as its height when the IME pans. */
+  [data-slot=sheet-content][data-side=right],
+  [data-slot=sheet-content][data-side=left]{
+    top:var(--phone-viewport-top,0px);bottom:auto;
+    height:var(--phone-viewport-height,100dvh);max-height:var(--phone-viewport-height,100dvh);
+    overflow:hidden;gap:0;transition-property:transform,opacity;
+  }
+  [data-slot=sheet-content]>.sheet-body{flex:1 1 0%;min-height:0;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:auto;scroll-padding:16px;padding-bottom:max(24px,env(safe-area-inset-bottom))}
+  [data-slot=sheet-content]>[data-slot=sheet-header]{flex-shrink:0;max-height:35%;overflow-y:auto}
+  html[data-keyboard=open] [data-slot=sheet-content]>[data-slot=sheet-header]{padding:12px 52px 12px 18px;max-height:25%}
+  html[data-keyboard=open] [data-slot=sheet-header] [data-slot=sheet-title]{font-size:1rem;line-height:1.5}
+  html[data-keyboard=open] [data-slot=sheet-header] [data-slot=sheet-description]{display:none}
+  html[data-keyboard=open] .project-detail-tabs>[data-slot=tabs-list]{position:static}
+  html[data-keyboard=open] .project-detail-sheet .sheet-body{scroll-padding-top:16px}
+  html[data-keyboard=open] [data-slot=sheet-content] textarea{max-height:max(96px,calc(var(--phone-viewport-height,100dvh) * .35));scroll-margin:16px}
+}
