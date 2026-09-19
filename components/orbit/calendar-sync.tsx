@@ -22,8 +22,8 @@ export function CalendarSyncStatus({active,demo,loaded,date,timeZone,paused,work
   });
   poller.current=sync;
   const resume=()=>{void sync.wake()};
-  window.addEventListener('focus',resume);window.addEventListener('online',resume);document.addEventListener('visibilitychange',resume);
-  return()=>{sync.stop();poller.current=null;window.removeEventListener('focus',resume);window.removeEventListener('online',resume);document.removeEventListener('visibilitychange',resume)};
+  window.addEventListener('focus',resume);window.addEventListener('online',resume);window.addEventListener('orbit:calendar-changed',resume);document.addEventListener('visibilitychange',resume);
+  return()=>{sync.stop();poller.current=null;window.removeEventListener('focus',resume);window.removeEventListener('online',resume);window.removeEventListener('orbit:calendar-changed',resume);document.removeEventListener('visibilitychange',resume)};
  },[]);
  useEffect(()=>{void poller.current?.wake()},[active,demo,loaded,date,paused,connections]);
  async function loadConnections(){const response=await agentRequest('/api/integrations');setConnections(response.connections)}
@@ -31,16 +31,18 @@ export function CalendarSyncStatus({active,demo,loaded,date,timeZone,paused,work
  if(!active)return null;
  const lastChecked=result?.updatedAt?new Date(result.updatedAt).toLocaleTimeString('ko-KR',{timeZone,hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
  return <>
-  <section className="calendar-sync-panel" aria-label="Google 캘린더 동기화">
-   <div className="calendar-sync-copy"><strong><CalendarDays size={19}/>Google 캘린더</strong>
-    <p role="status">{demo?'예시 일정입니다. 내 계정에서 Google 캘린더를 연결할 수 있습니다.':!loaded?'저장된 일정을 불러오는 중…':checking?'변경된 일정을 확인하는 중…':paused?'작성 중인 내용을 저장하면 자동 갱신을 이어갑니다.':result?.connected===false?'Google 계정을 연결하면 ORBIT에서 저장한 일정도 자동 등록됩니다.':'화면을 보는 동안 자동 갱신 · 30초 간격'}</p>
-    <p>ORBIT 일정 저장 → Google 기본 캘린더에 자동 등록·수정</p>
-    {result?.delivery&&<p role="status">{result.delivery.pending?`전송 대기 ${result.delivery.pending}건 · 자동 확인 중`:result.delivery.failed?`Google 반영 확인 필요 ${result.delivery.failed}건`:result.delivery.verified?`Google 등록 확인 ${result.delivery.verified}건`:null}</p>}
-    {result?.delivery?.message&&<p role="alert" className="calendar-sync-error">{result.delivery.message} ORBIT에는 저장되어 있습니다.</p>}
-    {lastChecked&&<p>Google 확인 {lastChecked}</p>}
-    {error&&<p role="alert" className="calendar-sync-error">{error} 저장된 일정은 유지됩니다.</p>}
+  <section className="calendar-sync-panel calendar-sync-compact" aria-label="Google 캘린더 동기화">
+   <div className="calendar-sync-line"><CalendarDays size={18}/><strong>Google 캘린더</strong><span role="status">{demo?'체험 중':error||result?.delivery?.failed?'확인 필요':!loaded||(!result&&checking)?'연결 확인 중':result?.connected===false?'연결 필요':result?.delivery?.pending?'반영 중':result?.connected?'연결됨':'연결 확인 대기'}</span>
+    <button className="icon-button" aria-label="Google 일정 새로고침" title="새로고침" disabled={demo||!loaded||checking||paused||workspaceBusy} onClick={()=>void poller.current?.wake()}><RefreshCw size={16} className={checking?'animate-spin':''}/></button>
    </div>
-   <div className="calendar-sync-actions"><button className="secondary-button" disabled={demo||!loaded||checking||paused||workspaceBusy} onClick={()=>void poller.current?.wake()}><RefreshCw size={16} className={checking?'animate-spin':''}/>새로고침</button><button className="secondary-button" disabled={demo||!loaded||opening||checking} onClick={()=>void openConnections()}><Link2 size={16}/>{opening?'여는 중…':result?.connected===false?'Google 연결':'연결 관리'}</button></div>
+   <details className="calendar-sync-details"><summary>동기화 상세</summary><div className="calendar-sync-copy">
+    <p>{demo?'예시 일정입니다.':checking?'변경된 일정을 확인하는 중…':paused?'시간 변경 후 자동으로 동기화합니다.':result?.connected===false?'Google 계정을 연결하면 저장한 일정도 자동 등록됩니다.':'일정을 저장하면 Google에도 등록·수정됩니다.'}</p>
+    {lastChecked&&<p>마지막 확인 {lastChecked}</p>}
+    {!!result?.delivery?.pending&&<p>Google 반영 대기 {result.delivery.pending}건</p>}
+    <button className="text-button" disabled={demo||!loaded||opening} onClick={()=>void openConnections()}><Link2 size={16}/>{opening?'여는 중…':result?.connected===false?'Google 연결':'연결 관리'}</button>
+   </div></details>
+   {(error||result?.delivery?.message)&&<p role="alert" className="calendar-sync-error">{error||result?.delivery?.message} ORBIT 일정은 유지됩니다.</p>}
+   {!demo&&result?.connected===false&&<button className="text-button" disabled={opening} onClick={()=>void openConnections()}>Google 연결하기</button>}
   </section>
   {connections&&<Connections calendarOnly connections={connections} onClose={()=>setConnections(null)} onChange={loadConnections}/>}
  </>;

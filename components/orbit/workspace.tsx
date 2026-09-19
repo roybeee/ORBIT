@@ -87,6 +87,9 @@ import { InstallRootHint } from '@/components/orbit/install-app';
 import {WorkspaceDashboard} from './dashboard';
 import {TodayHome} from './today-home';
 import {CalendarSyncStatus} from './calendar-sync';
+import {CalendarAgenda} from './calendar-agenda';
+import {eventCommand,moveConflict,moveRestriction} from '@/lib/orbit/calendar-move';
+import type {CalendarEvent} from '@/lib/orbit/model';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {GoalDashboard} from './coach/goal-dashboard';
 import {Understanding} from './coach/understanding';
@@ -333,6 +336,10 @@ function WorkspaceContent({
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
   useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched]);
+  const [calendarInteracting, setCalendarInteracting] = useState(false);
+  const [unconfirmedCalendarMove, setUnconfirmedCalendarMove] = useState<CalendarEvent | null>(null);
+  const liveCalendar = useRef({events,data,busy,hasPending});
+  liveCalendar.current = {events,data,busy,hasPending};
   const [energy, setEnergy] = useState<Proposal['energy']>('normal'),
     [reviewDate, setReviewDate] = useState(TODAY);
   const [deferId, setDeferId] = useState<string | null>(null),
@@ -363,7 +370,7 @@ function WorkspaceContent({
   };
   useEffect(() => {
     pauseRefresh(
-      !!create ||
+      !!create || calendarInteracting ||
         dataEditing ||
         settingsOpen ||
         brainyOpen ||
@@ -373,7 +380,7 @@ function WorkspaceContent({
         detail?.kind === 'note',
     );
     return () => pauseRefresh(false);
-  }, [create, dataEditing, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
+  }, [create, calendarInteracting, dataEditing, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
@@ -411,6 +418,38 @@ function WorkspaceContent({
     if (ok && message) toast.success(message);
     return ok;
   };
+  const moveCalendarEvent = async (before: CalendarEvent, after: CalendarEvent): Promise<boolean> => {
+    const current = liveCalendar.current;
+    const saved = current.events.find(e => e.id === before.id);
+    if (!saved || saved.start !== before.start || saved.end !== before.end || saved.date !== before.date) {
+      toast.error('일정이 변경되었습니다. 최신 시간을 확인한 뒤 다시 옮겨 주세요.'); return false;
+    }
+    if (current.busy || current.hasPending || moveRestriction(saved)) {
+      toast.error('저장 상태를 확인한 뒤 다시 옮겨 주세요.'); return false;
+    }
+    const target = {...saved,start:after.start,end:after.end};
+    const conflict = moveConflict(target,[...current.events,...protectedEvents(current.data,target.date)]);
+    if (conflict) { toast.error(`‘${conflict.title}’ 일정과 겹쳐 원래 시간으로 돌아왔습니다.`); return false; }
+    const ok = await perform(eventCommand(target));
+    if (ok) {
+      setUnconfirmedCalendarMove(null);
+      toast.success(`${formatTime(target.start)}–${formatTime(target.end)}로 변경했습니다.`,{
+        duration:8000,
+        action:{label:'실행 취소',onClick:()=>{void (async()=>{
+          const latest=liveCalendar.current;
+          const event=latest.events.find(e=>e.id===target.id);
+          if(!event||event.start!==target.start||event.end!==target.end||event.date!==target.date){toast.error('일정이 다시 변경되어 취소할 수 없습니다.');return;}
+          const original={...event,start:before.start,end:before.end};
+          if(moveConflict(original,[...latest.events,...protectedEvents(latest.data,original.date)])){toast.error('원래 시간에 다른 일정이 있어 되돌릴 수 없습니다.');return;}
+          if(await perform(eventCommand(original),'원래 시간으로 되돌렸습니다.')) window.dispatchEvent(new Event('orbit:calendar-changed'));
+        })();}},
+      });
+      window.dispatchEvent(new Event('orbit:calendar-changed'));
+    } else {
+      setUnconfirmedCalendarMove(target);
+    }
+    return ok;
+  };
   const toggleTask = async (id: string) => {
     const original = tasks.find((t) => t.id === id);
     if (!original) return;
@@ -441,7 +480,7 @@ function WorkspaceContent({
             : (projects[0]?.id ?? ''),
     );
     setNewDuration('45');
-    setNewDate(TODAY);
+    setNewDate(kind === 'event' && view === 'calendar' ? calendarDate : TODAY);
     setNewTime('10:00');
     setNewFocus(kind === 'task' && focus.filter((t) => t.status !== 'done').length < preferences.focusLimit);
     setNewBlocker('');
@@ -602,6 +641,7 @@ function WorkspaceContent({
     } else if (create === 'event') {
       const [h, m] = newTime.split(':').map(Number);
       const start = h * 60 + m;
+      if (!Number.isFinite(start) || start + Number(newDuration) > 1440) { toast.error('종료 시간은 같은 날 자정 이전으로 선택해 주세요.'); return; }
       const old = events.find((e) => e.id === id);
       action = {
         type: 'event.upsert',
@@ -1211,7 +1251,7 @@ function WorkspaceContent({
             </>
           )}
           {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
-          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
+          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={calendarInteracting||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
           {loaded && view === 'calendar' && (
             <div className="calendar-two-col">
               <section className="full-card calendar-main">
@@ -1247,8 +1287,9 @@ function WorkspaceContent({
                       className={calendarDate === date ? 'active' : ''}
                       aria-pressed={calendarDate === date}
                     >
-                      {['일', '월', '화', '수', '목', '금', '토'][weekday(date)]}
+                      <span>{['일', '월', '화', '수', '목', '금', '토'][weekday(date)]}</span>
                       <strong>{Number(date.slice(-2))}</strong>
+                      <span className={`calendar-day-dot ${events.some(e=>e.date===date)?'has-events':''}`} aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -1256,7 +1297,8 @@ function WorkspaceContent({
                   <h2>{Number(calendarDate.slice(-2))}일 일정</h2>
                   <span className="muted">{selectedEvents.length}개</span>
                 </div>
-                <div className="calendar-full-events">{renderTimeline(calendarDate)}</div>
+                {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
+                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
               </section>
               <aside className="review-summary">
                 <h2>시간을 비워두는 것도 계획</h2>
@@ -1774,7 +1816,7 @@ function WorkspaceContent({
           if (!open) setCreate(null);
         }}
       >
-        <DialogContent className="bg-white">
+        <DialogContent className={`orbit-create-dialog ${create === 'event' ? 'event-create-dialog' : ''}`}>
           <DialogHeader>
             <DialogTitle>
               {editingId
@@ -1794,10 +1836,10 @@ function WorkspaceContent({
             <DialogDescription>
               {demo
                 ? '예시 체험의 변경은 저장되지 않습니다.'
-                : '연결된 프로젝트와 함께 내 워크스페이스에 저장합니다.'}
+                : create === 'event' ? '언제, 무엇을 할지 정해 보세요.' : '내 워크스페이스에 저장합니다.'}
             </DialogDescription>
           </DialogHeader>
-          <form className="dialog-form" onSubmit={submitCreate}>{formDraftError&&<p role="alert">{formDraftError}</p>}{!editingId&&<p className="form-hint">작성 중인 내용은 이 기기에 임시 보관됩니다. 저장을 눌러 서버 반영을 확인하세요.</p>}
+          <form className="dialog-form" onSubmit={submitCreate}>{formDraftError&&<p role="alert">{formDraftError}</p>}
             <label className="form-label" htmlFor="new-title">
               {create === 'task' ? '무엇을 끝내야 하나요?' : '제목'}
             </label>
@@ -1810,7 +1852,7 @@ function WorkspaceContent({
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder={create === 'task' ? '예: 가맹 제안서 초안 완성' : '제목을 입력하세요'}
             />
-            {create !== 'project' && (
+            {create !== 'project' && create !== 'event' && (
               <>
                 <label className="form-label">연결 프로젝트</label>
                 <Choice
@@ -1821,7 +1863,6 @@ function WorkspaceContent({
                   }}
                   label="연결 프로젝트"
                   items={[
-                    ...(create === 'event' ? [{ value: 'none', label: '개인 일정 · 프로젝트 없음' }] : []),
                     ...projects.map((p) => ({ value: p.id, label: p.name })),
                     ...(create === 'task' && newProjectCandidate ? [{ value: newProjectCandidate.id, label: `${newProjectCandidate.name} · 새 프로젝트` }] : []),
                   ]}
@@ -1838,11 +1879,11 @@ function WorkspaceContent({
                   )}
               </>
             )}
-            {(create === 'task' || create === 'event' || create === 'project') && (
+            {(create === 'task' || create === 'project') && (
               <div className="field-grid">
                 <div>
                   <label className="form-label" htmlFor="new-date">
-                    {create === 'event' ? '날짜' : '목표일'}
+                    목표일
                   </label>
                   <input
                     id="new-date"
@@ -1870,18 +1911,15 @@ function WorkspaceContent({
             )}
             {create === 'event' && (
               <>
-                <p className="form-hint">저장하면 연결된 Google 계정의 기본 캘린더에도 자동 등록됩니다. 연결이 필요하거나 전송 중이면 일정 화면에 상태가 표시됩니다.</p>
-                <label className="form-label" htmlFor="new-time">
-                  시작 시간
-                </label>
-                <input
-                  type="time"
-                  id="new-time"
-                  required
-                  className="form-field"
-                  value={newTime}
-                  onChange={(e) => setNewTime(e.target.value)}
-                />
+                <label className="form-label" htmlFor="event-date">날짜</label>
+                <input id="event-date" type="date" className="form-field" value={newDate} required onChange={e=>setNewDate(e.target.value)}/>
+                <div className="field-grid event-time-fields">
+                  <div><label className="form-label" htmlFor="new-time">시작</label><input type="time" id="new-time" required className="form-field" value={newTime} onChange={e=>setNewTime(e.target.value)}/></div>
+                  <div><label className="form-label">소요 시간</label><Choice value={newDuration} onChange={setNewDuration} label="소요 시간" items={[...new Set([15,30,45,60,90,120,180,240,Number(newDuration)||45])].sort((a,b)=>a-b).map(v=>({value:String(v),label:durationText(v)}))}/></div>
+                </div>
+                <p className="event-end-summary"><Clock3 size={15}/>{(()=>{const [h,m]=newTime.split(':').map(Number);const end=h*60+m+Number(newDuration);return Number.isFinite(end)?end<=1440?`${formatTime(end)}에 끝나요`:'종료 시간이 다음 날을 넘어요. 시간을 조정해 주세요.':''})()}</p>
+                <label className="form-label">프로젝트 <span className="optional-label">선택</span></label>
+                <Choice value={newProject} onChange={v=>{setProjectTouched(true);setNewProject(v)}} label="연결 프로젝트" items={[{value:'none',label:'개인 일정'},...projects.map(p=>({value:p.id,label:p.name}))]}/>
               </>
             )}
             {create === 'task' && (
@@ -1998,17 +2036,19 @@ function WorkspaceContent({
               />
             )}
             {create === 'event' && !editingId && (
-              <AttachmentInput scope={attachmentDraft} disabled={demo || busy} />
+              <details className="event-attachments"><summary><Plus size={15}/>파일 첨부{eventUploads.ready.length ? ` · ${eventUploads.ready.length}개` : ' (선택)'}</summary><AttachmentInput scope={attachmentDraft} disabled={demo || busy} /></details>
             )}
+            <div className="create-form-footer">
+            {create==='event'&&<p className="form-hint event-sync-hint"><CalendarDays size={14}/>연결된 Google 캘린더에도 반영됩니다.</p>}
             <button
               type="submit"
               disabled={busy || !loaded || (create === 'event' && !editingId && eventUploads.busy)}
               className="primary-button full-width"
-              style={{ marginTop: 23 }}
             >
               <Check size={16} />
-              {busy ? '저장 중…' : editingId ? '수정 저장' : '추가하기'}
+              {busy ? '저장 중…' : editingId ? '변경 저장' : create==='event' ? '일정 저장' : '추가하기'}
             </button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
