@@ -62,6 +62,20 @@ test('manual runtime checks cannot imitate scheduler health',()=>fixture(async d
  await tickRuntime(db,'a',{}, {scheduled:true});const scheduled=(await runtimeStatus(db,'a')).config.lastSchedulerTick;assert.ok(scheduled);
  await tickRuntime(db,'a',{});assert.equal((await runtimeStatus(db,'a')).config.lastSchedulerTick,scheduled);
 }));
+test('atomic settings retain JSON booleans and preserve runtime progress',()=>fixture(async db=>{
+ await runtimeSettings(db,'a',{enabled:true,eveningHour:21});
+ await tickRuntime(db,'a',{}, {scheduled:true});
+ const before=(await runtimeStatus(db,'a')).config;
+ assert.equal(before.enabled,true);
+ await runtimeSettings(db,'a',{enabled:false,eveningHour:20});
+ let row=await db.prepare('SELECT config_json FROM orbit_daily_runtime WHERE owner_id=?').bind('a').first();
+ let config=JSON.parse(row.config_json);
+ assert.equal(config.enabled,false);assert.equal(config.syncCursor,before.syncCursor);assert.equal(config.lastSchedulerTick,before.lastSchedulerTick);
+ await runtimeSettings(db,'a',{enabled:true,eveningHour:20});await tickRuntime(db,'a',{});
+ row=await db.prepare('SELECT config_json FROM orbit_daily_runtime WHERE owner_id=?').bind('a').first();config=JSON.parse(row.config_json);assert.equal(config.enabled,true);
+ await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(config_json,'$.enabled',1) WHERE owner_id=?").bind('a').run();
+ assert.equal((await runtimeStatus(db,'a')).config.enabled,true);
+}));
 test('storage measurement excludes external cache and stored bodies, counts UTF-8 exactly',()=>{
  const d=data();d.notes=[{id:'n',body:'원문'.repeat(10000)}];d.events=[{id:'google:cached',title:'busy'}];
  assert.equal(workspaceUsage(d).bytes,new TextEncoder().encode(JSON.stringify(persistedWorkspace(d))).length);

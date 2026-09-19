@@ -14,15 +14,22 @@ import {AgentError} from './agent/errors.ts';
 import {recordSource,sourceStatuses} from './source-status.ts';
 export type RuntimeConfig={enabled:boolean;eveningHour:number;syncAt?:string;syncCursor?:number;metricCursor?:number;advanceCursor?:number;lastError?:string;workFirst?:boolean;lastSchedulerTick?:string};
 export const runtimeDefaults:RuntimeConfig={enabled:true,eveningHour:21};
-export async function runtimeStatus(db:Database,owner:string){const row=await db.prepare('SELECT config_json,last_tick FROM orbit_daily_runtime WHERE owner_id=?').bind(owner).first<{config_json:string;last_tick:string|null}>();const runs=await db.prepare('SELECT date,state_json FROM orbit_daily_runs WHERE owner_id=? ORDER BY date DESC LIMIT 7').bind(owner).all<{date:string;state_json:string}>();return {config:row?JSON.parse(row.config_json) as RuntimeConfig:runtimeDefaults,lastTick:row?.last_tick??null,sources:await sourceStatuses(db,owner),runs:runs.results.map(r=>({date:r.date,...JSON.parse(r.state_json)}))};}
-export async function runtimeSettings(db:Database,owner:string,input:{enabled:boolean;eveningHour:number}){await db.prepare("INSERT INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0) ON CONFLICT(owner_id) DO UPDATE SET config_json=json_set(orbit_daily_runtime.config_json,'$.enabled',json_extract(excluded.config_json,'$.enabled'),'$.eveningHour',json_extract(excluded.config_json,'$.eveningHour'))").bind(owner,JSON.stringify({...runtimeDefaults,...input})).run();}
+export async function runtimeStatus(db:Database,owner:string){
+ const row=await db.prepare('SELECT config_json,last_tick FROM orbit_daily_runtime WHERE owner_id=?').bind(owner).first<{config_json:string;last_tick:string|null}>();
+ const runs=await db.prepare('SELECT date,state_json FROM orbit_daily_runs WHERE owner_id=? ORDER BY date DESC LIMIT 7').bind(owner).all<{date:string;state_json:string}>();
+ const config:RuntimeConfig=row?JSON.parse(row.config_json):{...runtimeDefaults};
+ // SQLite JSON extraction may expose legacy booleans as 0/1. Keep API settings typed.
+ config.enabled=Boolean(config.enabled);
+ return {config,lastTick:row?.last_tick??null,sources:await sourceStatuses(db,owner),runs:runs.results.map(r=>({date:r.date,...JSON.parse(r.state_json)}))};
+}
+export async function runtimeSettings(db:Database,owner:string,input:{enabled:boolean;eveningHour:number}){await db.prepare("INSERT INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0) ON CONFLICT(owner_id) DO UPDATE SET config_json=json_set(orbit_daily_runtime.config_json,'$.enabled',json(CASE WHEN json_extract(excluded.config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(excluded.config_json,'$.eveningHour'))").bind(owner,JSON.stringify({...runtimeDefaults,...input})).run();}
 export function eveningDue(now:Date,timeZone:string,hour:number){const localHour=Number(new Intl.DateTimeFormat('en',{timeZone,hour:'numeric',hourCycle:'h23'}).format(now));return localHour>=hour;}
 export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{scheduled?:boolean}={}){
  await db.prepare('INSERT OR IGNORE INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0)').bind(owner,JSON.stringify(runtimeDefaults)).run();
  const lease=Date.now()+180000,claimed=await db.prepare('UPDATE orbit_daily_runtime SET lease_until=? WHERE owner_id=? AND lease_until<?').bind(lease,owner,Date.now()).run();if(claimed.meta?.changes!==1)return {busy:true,active:true};
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
- const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json_extract(config_json,'$.enabled'),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active};};
+ const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active};};
  const advance=async()=>{const result=await advanceRuntimeWork(db,owner,env,config.advanceCursor);if(result.active){config.advanceCursor=result.cursor;config.lastError=result.error;config.workFirst=false;}return result.active;};
  // Alternate active work with housekeeping: collection can never starve research.
  if(config.workFirst!==false&&await advance())return await finish(true);
