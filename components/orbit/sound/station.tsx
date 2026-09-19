@@ -5,18 +5,20 @@ import {Slider} from '@/components/ui/slider';
 import {agentRequest} from '@/components/orbit/agent/connections';
 import {emptySound,reduceSound,soundAction} from '@/lib/orbit/sound/state';
 
+import {SoundMini} from './mini';
+
 const protocol='orbit.sound.v1';
 type Playback={ready:boolean;activated:boolean;busy:boolean;playing:boolean;active:boolean;title:string;mode:string;duration:number;elapsed:number;volume:number;needsFeedback:boolean};
 const idle:Playback={ready:false,activated:false,busy:false,playing:false,active:false,title:'사운드스테이션',mode:'focus',duration:1500,elapsed:0,volume:35,needsFeedback:false};
 const time=(seconds:number)=>`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
 
 export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:boolean;onOpen:()=>void}){
-  const [mounted,setMounted]=useState(false),[playback,setPlayback]=useState(idle),[loadError,setLoadError]=useState('');
+  const [mounted,setMounted]=useState(false),[playback,setPlayback]=useState(idle),[loadError,setLoadError]=useState(''),[dismissed,setDismissed]=useState(false),[dismissError,setDismissError]=useState('');
   const frame=useRef<HTMLIFrameElement>(null),queue=useRef<Promise<void>>(Promise.resolve());
   const localDemo=useRef(emptySound()),prefill=useRef<{goal:string;minutes:number}|null>(null);
   const open=useRef(onOpen);open.current=onOpen;
   const command=(name:string,value?:unknown)=>frame.current?.contentWindow?.postMessage({protocol,type:'command',command:name,value},'*');
-  useEffect(()=>{if(visible)setMounted(true)},[visible]);
+  useEffect(()=>{if(visible){setMounted(true);setDismissed(false)}},[visible]);
   useEffect(()=>{
     const show=(event:Event)=>{
       const input=(event as CustomEvent).detail;
@@ -32,6 +34,8 @@ export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:
     const receive=(event:MessageEvent)=>{
       if(event.source!==frame.current?.contentWindow||event.origin!=='null'||event.data?.protocol!==protocol)return;
       const message=event.data;
+      if(message.type==='dismissed'){setDismissed(true);setDismissError('');return}
+      if(message.type==='dismiss-error'){setDismissError('재생은 종료됐지만 기록 저장에 실패했습니다. 사운드를 열어 다시 저장해 주세요.');return}
       if(message.type==='state'){
         const s=message.state;
         if(!s||typeof s.title!=='string'||s.title.length>120||![s.duration,s.elapsed,s.volume].every(Number.isFinite))return;
@@ -71,10 +75,11 @@ export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:
         sandbox="allow-scripts allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
         allow="autoplay; fullscreen" allowFullScreen onLoad={()=>command('state')} onError={()=>setLoadError('사운드 화면을 열지 못했습니다. 인터넷 연결을 확인한 뒤 Orbit을 새로고침해 주세요.')}/>
     </section>
-    {!visible&&playback.active&&<aside className="sound-mini" aria-label="사운드 재생 제어">
+    {dismissError&&<button className="sound-dismiss-error" role="alert" onClick={onOpen}>{dismissError}</button>}
+    {!visible&&playback.active&&!dismissed&&<SoundMini onDismiss={()=>command('dismiss')}>
       <button className="sound-mini-open" onClick={onOpen}><span className={`sound-mini-icon ${playback.playing?'playing':''}`}><Headphones size={19}/></span><span><strong>{playback.title}</strong><small>{playback.needsFeedback?'세션을 마치고 기록해 주세요':`${playback.playing?'재생 중':'일시정지'} · ${time(remaining)} 남음`}</small></span></button>
       <div className="sound-mini-volume"><Volume2 size={15}/><Slider aria-label="사운드 음량" min={0} max={100} step={1} value={[playback.volume]} onValueChange={value=>command('volume',value[0])}/></div>
       <button className="sound-mini-toggle" aria-label={playback.needsFeedback?'사운드 세션 기록하기':playback.playing?'사운드 일시정지':'사운드 이어 듣기'} disabled={playback.busy||!playback.ready} onClick={()=>{if(playback.needsFeedback||!playback.activated)onOpen();else command('toggle')}}>{playback.busy?<LoaderCircle className="animate-spin" size={18}/>:playback.playing?<Pause size={19}/>:<Play size={19}/>}</button>
-    </aside>}
+    </SoundMini>}
   </>;
 }

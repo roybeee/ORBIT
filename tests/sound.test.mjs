@@ -80,3 +80,21 @@ test('playback bridge drives original controls and never starts audio on mount o
   bridge.volume(900);bridge.toggle();bridge.pause();
   assert.deepEqual(calls.slice(-3),[['volume',100],'toggle','pause']);
 });
+
+test('dismiss stops audio before saving and reports a failed save without resuming',async()=>{
+  for(const fail of [false,true]){
+    const calls=[],messages=[];
+    const noop=()=>{};
+    const context=vm.createContext({Z:{useEffect:fn=>fn()},Q:false,C:false,A:true,D:'session',r:{title:'코드',mode:'focus'},Me:false,l:25,b:10,f:35,Zt:false,
+      Fe:{current:{ctx:{},elapsed:()=>12.9,stop:async()=>calls.push('stop')}},St:{current:false},R:noop,w:noop,L:noop,
+      navigator:{mediaSession:{}},vo:async action=>{calls.push(action);if(fail)throw Error('offline')},ps:()=>({}),X:noop,fs:{current:'session'},_:noop,ds:noop,se:noop,uo:async()=>{},
+      orbitSend:value=>{messages.push(value);if(value.type==='dismissed')calls.push('hidden')},window:{},eu:noop,$i:noop,p:noop,
+      u:noop,o:noop,n:noop,c:noop,s:noop,sa:noop,t:noop,go:[],Math,Number});
+    vm.runInContext(readFileSync(new URL('../components/orbit/sound/hook.js',import.meta.url),'utf8'),context);
+    await context.window.__orbitSoundBridge.dismiss();
+    assert.deepEqual(calls.slice(0,2),['stop','hidden']);
+    assert.equal(calls[2].action,'finish');assert.equal(calls[2].elapsed,12);assert.equal(calls[2].id,'session');
+    assert.equal(context.navigator.mediaSession.playbackState,'none');
+    assert.equal(messages.some(x=>x.type==='dismiss-error'),fail);assert.equal(context.St.current,false);
+  }
+});
