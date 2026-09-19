@@ -1,3 +1,5 @@
+import {taskCalendarSource} from '../lib/orbit/calendar-categories.ts';
+import {addDays} from '../lib/orbit/dates.ts';
 import {WORKSPACE_LIMIT_BYTES} from '../lib/orbit/storage-usage.ts';
 import {
   attachmentGate,
@@ -312,7 +314,8 @@ export async function writeCommand(
   // the Google write, and replaying the command cannot enqueue it twice.
   const calendarEventId = action.type === 'event.upsert' ? action.event.id
     : action.type === 'proposal.approve' ? 'approved:' + action.itemId : undefined;
-  if (calendarEventId && !calendarEventId.startsWith('google:')) {
+  const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories))?next.events.filter(e=>!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
+  for (const calendarEventId of calendarEventIds.filter(id=>!id.startsWith('google:'))) {
     // Keep existing, explicitly exported focus blocks on their original flow.
       const state = {eventId:calendarEventId, automatic:true, status:'pending',
         fingerprint:'', leaseUntil:0, queuedAt:timestamp, message:'Google 등록 대기'};
@@ -323,6 +326,9 @@ export async function writeCommand(
         WHERE json_extract(orbit_calendar_exports.state_json,'$.automatic')=1`)
         .bind(ownerId, calendarEventId, JSON.stringify(state), ...gateValues));
   }
+  const taskDeliveries = next.tasks.filter(t=>{const old=working.tasks.find(o=>o.id===t.id);return !old||taskCalendarSource(old,working.preferences)!==taskCalendarSource(t,next.preferences)}).map(t=>({eventId:'task-due:'+t.id,sourceKey:taskCalendarSource(t,next.preferences)}));
+  for(const old of working.tasks)if(!next.tasks.some(t=>t.id===old.id))taskDeliveries.push({eventId:'task-due:'+old.id,sourceKey:'deleted'});
+  if(taskDeliveries.length)statements.push(taskCalendarQueueStatement(db,ownerId,taskDeliveries,gate,gateValues,timestamp));
   // Lazy v2 migration and the first v3 edit share the winning transaction. No data in SQL migrations.
   if (legacy.length)
     statements.push(
@@ -410,4 +416,19 @@ export async function writeCommand(
       );
   }
   return readWorkspace(db, ownerId);
+}
+
+function taskCalendarQueueStatement(db:Database,owner:string,items:{eventId:string;sourceKey:string}[],gate:string,gateValues:SqlValue[],timestamp:string){
+ const rows=items.map(item=>({...item,automatic:true,status:'pending',fingerprint:'',leaseUntil:0,queuedAt:timestamp,message:'할 일 Google 등록 대기'}));
+ return db.prepare(`INSERT INTO orbit_calendar_exports(owner_id,event_id,state_json)
+ SELECT ?,json_extract(value,'$.eventId'),value FROM json_each(?) WHERE ${gate}
+ ON CONFLICT(owner_id,event_id) DO UPDATE SET state_json=json_set(orbit_calendar_exports.state_json,'$.status','pending','$.sourceKey',json_extract(excluded.state_json,'$.sourceKey'),'$.leaseUntil',0,'$.queuedAt',json_extract(excluded.state_json,'$.queuedAt'))
+ WHERE json_extract(orbit_calendar_exports.state_json,'$.automatic')=1 AND COALESCE(json_extract(orbit_calendar_exports.state_json,'$.sourceKey'),'')<>json_extract(excluded.state_json,'$.sourceKey') AND COALESCE(json_extract(orbit_calendar_exports.state_json,'$.leaseUntil'),0)<=?`)
+ .bind(owner,JSON.stringify(rows),...gateValues,Date.now());
+}
+// Existing dated tasks are reconciled when the user opens a calendar range.
+export async function queueTaskCalendarBackfill(db:Database,owner:string,date:string){
+ const snapshot=await readWorkspace(db,owner),from=addDays(date,-7),to=addDays(date,31);
+ const items=snapshot.data.tasks.filter(t=>t.due>=from&&t.due<to).map(t=>({eventId:'task-due:'+t.id,sourceKey:taskCalendarSource(t,snapshot.data.preferences)}));
+ if(items.length)await taskCalendarQueueStatement(db,owner,items,'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=?)',[owner,snapshot.revision],new Date().toISOString()).run();
 }

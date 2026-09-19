@@ -8,7 +8,7 @@ export const SWIPE_ACTION_WIDTH = 144;
 export const SWIPE_OPEN_THRESHOLD = 48;
 
 export function canEditCalendarEvent(event: CalendarEvent): boolean {
-  return !/^(google:|approved:|protected:)/.test(event.id);
+  return !/^(google:|approved:|protected:|task-due:)/.test(event.id);
 }
 
 // Decide once before the hold starts; a vertical or diagonal scroll never becomes a swipe later.
@@ -22,6 +22,7 @@ export function swipeOffset(initial: number, dx: number): number {
 }
 
 export function moveRestriction(event: CalendarEvent): string | null {
+  if (event.id.startsWith('task-due:')) return '할 일에서 날짜 변경';
   if (event.id.startsWith('google:')) return 'Google에서 시간 변경';
   if (event.id.startsWith('approved:')) return '내일 제안에서 시간 변경';
   if (event.id.startsWith('protected:')) return '보호 시간 설정에서 변경';
@@ -37,12 +38,12 @@ export function shiftedEvent(event: CalendarEvent, deltaY: number): CalendarEven
 }
 
 export function moveConflict(event: CalendarEvent, events: CalendarEvent[]): CalendarEvent | undefined {
-  return events.find(other => other.id !== event.id && other.google?.orbitEventId !== event.id &&
+  return events.find(other => !other.id.startsWith('task-due:') && other.id !== event.id && other.google?.orbitEventId !== event.id &&
     other.date === event.date && other.start < event.end && other.end > event.start);
 }
 
 // Google metadata belongs to imported records, not the strict workspace command schema.
 export function eventCommand(event: CalendarEvent) {
-  const { id, title, date, start, end, kind, projectId, taskId } = event;
-  return { type: 'event.upsert' as const, event: { id, title, date, start, end, kind, projectId, taskId } };
+  const { id, title, date, start, end, kind, projectId, taskId, category } = event;
+  return { type: 'event.upsert' as const, event: { id, title, date, start, end, kind, projectId, taskId, category } };
 }

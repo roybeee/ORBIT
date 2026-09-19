@@ -428,6 +428,7 @@ export function applyAction(
       t.noteCitation = old?.noteId === t.noteId ? old?.noteCitation : undefined;
       // Execution history survives edits that omit it (agent proposals send full records).
       for (const key of [
+        'category',
         'actualMinutes',
         'outcome',
         'outcomeReason',

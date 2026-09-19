@@ -93,8 +93,11 @@ import {CalendarSyncStatus} from './calendar-sync';
 import {CalendarAgenda} from './calendar-agenda';
 import {ProjectHub} from './project-hub';
 import {ProjectActions,type ProjectIntent} from './project-actions';
+import {CalendarDateStrip} from './calendar-date-strip';
+import {CalendarColors} from './calendar-colors';
+import {taskCalendarEvents,calendarCategories,categoryLabels,categoryOf,categoryColor,type CalendarCategory} from '@/lib/orbit/calendar-categories';
 import {ProjectDetailPanel} from './project-detail';
-import {eventCommand,moveConflict,moveRestriction} from '@/lib/orbit/calendar-move';
+import {eventCommand,moveConflict,moveRestriction,canEditCalendarEvent} from '@/lib/orbit/calendar-move';
 import type {CalendarEvent} from '@/lib/orbit/model';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {GoalDashboard} from './coach/goal-dashboard';
@@ -316,6 +319,7 @@ function WorkspaceContent({
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
+  const [newCategory,setNewCategory]=useState<CalendarCategory>('work');
   const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string; revision?:number; projectIntent?:ProjectIntent } | null>(
     null,
   );
@@ -344,7 +348,7 @@ function WorkspaceContent({
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
-  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched]);
+  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched]);
   const [calendarInteracting, setCalendarInteracting] = useState(false);
   const [unconfirmedCalendarMove, setUnconfirmedCalendarMove] = useState<CalendarEvent | null>(null);
   const liveCalendar = useRef({events,data,busy,hasPending});
@@ -477,7 +481,7 @@ function WorkspaceContent({
     createId.current=crypto.randomUUID();
     setEditingId(null);
     setEditingNoteRevision(undefined);
-    setNewTitle('');
+    setNewTitle('');setNewCategory(kind==='event'?'meeting':'work');
     setNewBody('');
     setNewProject(
       kind === 'event'
@@ -501,7 +505,7 @@ function WorkspaceContent({
     setProjectTouched(false);
     const restored=!demo&&readDraft<any>(ownerId,'form',kind);
     if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
-      createId.current=restored.id;setNewTitle(restored.newTitle);setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
+      createId.current=restored.id;setNewTitle(restored.newTitle);setNewCategory(restored.newCategory??(kind==='event'?'meeting':'work'));setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
     }
     if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);if((projects.find(p=>p.id===contextProjectId)?.status??'active')!=='active')setNewFocus(false);}
     setCreate(kind);
@@ -626,6 +630,7 @@ function WorkspaceContent({
           status: old?.status ?? 'todo',
           duration: Number(newDuration),
           due: newDate,
+          category:newCategory,
           impact: old?.impact ?? 3,
           focus: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active',
           focusDate: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active' ? (old?.focusDate ?? TODAY) : undefined,
@@ -674,6 +679,7 @@ function WorkspaceContent({
           start,
           end: start + Number(newDuration),
           kind: old?.kind ?? 'meeting',
+          category:newCategory,
           projectId: newProject === 'none' ? undefined : newProject,
         },
       };
@@ -718,7 +724,7 @@ function WorkspaceContent({
     if (kind === 'task') {
       const t = tasks.find((t) => t.id === id)!;
       setCreate('task');
-      setNewTitle(t.title);
+      setNewTitle(t.title);setNewCategory(categoryOf(t));
       setNewBody(t.definition);
       setNewProject(t.projectId);
       setNewDuration(String(t.duration));
@@ -750,7 +756,7 @@ function WorkspaceContent({
     } else {
       const e = events.find((e) => e.id === id)!;
       setCreate('event');
-      setNewTitle(e.title);
+      setNewTitle(e.title);setNewCategory(categoryOf(e));
       setNewProject(e.projectId ?? 'none');
       setNewDate(e.date);
       setNewTime(formatTime(e.start));
@@ -805,10 +811,11 @@ function WorkspaceContent({
   const miniWeek = weekDates(TODAY);
   const reviewCompleted = tasks.filter((t) => t.status === 'done' && t.completedOn === reviewDate);
   const reviewFocus = tasks.filter((t) => focusIds(data, reviewDate).has(t.id));
-  const selectedEvents = [...events,...protectedEvents(data,calendarDate)].filter((e) => e.date === calendarDate).sort((a, b) => a.start - b.start);
+  const calendarTaskEvents=taskCalendarEvents(data);
+  const selectedEvents = [...events,...calendarTaskEvents,...protectedEvents(data,calendarDate)].map(e=>({...e,category:preferences.eventCategories?.[e.id]??e.category})).filter((e) => e.date === calendarDate).sort((a, b) => Number(!!b.allDay)-Number(!!a.allDay)||a.start - b.start);
   const todayRemaining = focus.filter((t) => t.status !== 'done').reduce((s, t) => s + t.duration, 0);
   const renderTimeline = (date: string) => {
-    const list = [...events,...protectedEvents(data,date)].filter((e) => e.date === date).sort((a, b) => a.start - b.start);
+    const list = [...events,...protectedEvents(data,date)].filter((e) => e.date === date).sort((a, b) => Number(!!b.allDay)-Number(!!a.allDay)||a.start - b.start);
     return list.length ? (
       list.map((e) => (
         <div className="timeline-item" key={e.id}>
@@ -1134,7 +1141,7 @@ function WorkspaceContent({
               <section className="full-card">
                 {filteredTasks.length ? (
                   filteredTasks.map((t) => (
-                    <div className={`task-list-row ${t.status === 'done' ? 'task-done' : ''}`} key={t.id}>
+                    <div className={`task-list-row ${t.status === 'done' ? 'task-done' : ''}`} key={t.id} style={{borderLeft:`4px solid ${categoryColor(categoryOf(t),preferences)}`}}>
                       <div className="task-check">
                         <Checkbox
                           checked={t.status === 'done'}
@@ -1148,7 +1155,7 @@ function WorkspaceContent({
                         </button>
                         <div className="task-meta">
                           <ProjectLabel project={projectById(t.projectId)} />
-                          <span>{t.due.slice(5).replace('-', '/')} 마감</span>
+                          <span>{t.due.slice(5).replace('-', '/')} 마감 · {categoryLabels[categoryOf(t)]}</span>
                           {t.dependsOn?.length ? <span>선행 작업 {t.dependsOn.length}개</span> : null}
                         </div>
                       </div>
@@ -1213,7 +1220,7 @@ function WorkspaceContent({
                     </button>
                   </div>
                 </div>
-                <div className="calendar-days">
+                <CalendarDateStrip onStep={days=>setCalendarDate(date=>addDays(date,days))}><div className="calendar-days">
                   {currentWeek.map((date) => (
                     <button
                       key={date}
@@ -1223,16 +1230,18 @@ function WorkspaceContent({
                     >
                       <span>{['일', '월', '화', '수', '목', '금', '토'][weekday(date)]}</span>
                       <strong>{Number(date.slice(-2))}</strong>
-                      <span className={`calendar-day-dot ${events.some(e=>e.date===date)?'has-events':''}`} aria-hidden="true" />
+                      <span className={`calendar-day-dot ${[...events,...calendarTaskEvents].some(e=>e.date===date)?'has-events':''}`} aria-hidden="true" />
                     </button>
                   ))}
                 </div>
+                </CalendarDateStrip>
+                <CalendarColors preferences={preferences} disabled={busy||hasPending||demo} onSave={p=>void perform({type:'preferences.update',preferences:p},'카테고리 색상을 저장했습니다.')}/>
                 <div className="section-title">
                   <h2>{Number(calendarDate.slice(-2))}일 일정</h2>
                   <span className="muted">{selectedEvents.length}개</span>
                 </div>
                 {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
-                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
+                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
               </section>
               <aside className="review-summary">
                 <h2>시간을 비워두는 것도 계획</h2>
@@ -1595,6 +1604,7 @@ function WorkspaceContent({
             {projectDetail && <ProjectDetailPanel key={projectDetail.id+':'+(detail?.projectIntent??'overview')} intent={detail?.projectIntent} onManage={()=>setProjectAction({id:projectDetail.id,mode:'menu'})} project={projectDetail} data={data} today={TODAY} busy={busy||hasPending||!loaded} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onCreate={openCreate} onEdit={()=>openEdit('project',projectDetail.id)} onDelete={()=>setProjectAction({id:projectDetail.id,mode:'delete'})} onChat={()=>openProjectChat(projectDetail.id)} onEditing={setDataEditing} followup={<FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}/>}
             {eventDetail && (
               <>
+                <label className="form-label">카테고리</label><Choice value={preferences.eventCategories?.[eventDetail.id]??categoryOf(eventDetail)} label="일정 카테고리" onChange={v=>{if(!busy&&!hasPending)void perform(canEditCalendarEvent(eventDetail)?eventCommand({...eventDetail,category:v as CalendarCategory}):{type:'preferences.update',preferences:{...preferences,eventCategories:{...preferences.eventCategories,[eventDetail.id]:v as CalendarCategory}}},'일정 카테고리를 저장했습니다.')}} items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><p className="form-hint">Google에서 가져온 일정도 ORBIT에서 카테고리별로 구분할 수 있어요.</p>
                 <EventFiles
                   key={eventDetail.id}
                   eventId={eventDetail.id}
@@ -1791,6 +1801,7 @@ function WorkspaceContent({
                 <Choice value={newProject} onChange={v=>{setProjectTouched(true);setNewProject(v)}} label="연결 프로젝트" items={[{value:'none',label:'개인 일정'},...projects.map(p=>({value:p.id,label:p.name}))]}/>
               </>
             )}
+            {(create==='task'||create==='event')&&<><label className="form-label">카테고리</label><Choice value={newCategory} onChange={v=>setNewCategory(v as CalendarCategory)} label="카테고리" items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><p className="form-hint">{create==='task'?'지정한 날짜의 종일 할 일로 일정과 Google 캘린더에 자동 연결됩니다.':'카테고리 색상은 일정 화면에서 변경할 수 있습니다.'}</p></>}
             {create === 'task' && (
               <>
                 <div className="field-grid">

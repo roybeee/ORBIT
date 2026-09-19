@@ -1,0 +1,4 @@
+'use client';
+import {calendarCategories,categoryLabels,categoryColor,calendarPalette} from '@/lib/orbit/calendar-categories';
+import type {Preferences} from '@/lib/orbit/model';
+export function CalendarColors({preferences,disabled,onSave}:{preferences:Preferences;disabled:boolean;onSave:(p:Preferences)=>void}){return <details className="calendar-color-settings"><summary>카테고리 색상</summary><div>{calendarCategories.map(category=><label key={category}><span className="category-swatch" style={{background:categoryColor(category,preferences)}}/>{categoryLabels[category]}<select aria-label={`${categoryLabels[category]} 색상`} disabled={disabled} value={categoryColor(category,preferences)} onChange={e=>onSave({...preferences,categoryColors:{...preferences.categoryColors,[category]:e.target.value}})}>{calendarPalette.map(([color,label])=><option key={color} value={color}>{label}</option>)}</select></label>)}</div></details>}

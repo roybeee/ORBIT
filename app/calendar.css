@@ -100,3 +100,14 @@
   .calendar-two-col .review-summary h2 { font-size: 1rem; }
 }
 @media (prefers-reduced-motion: reduce) { .agenda-card, .agenda-event { transition: none; } }
+
+.calendar-date-strip{touch-action:pan-y pinch-zoom;user-select:none;-webkit-user-select:none}
+.calendar-date-hint{font-size:.875rem;color:var(--muted-foreground);text-align:center;margin:-12px 0 18px}
+.calendar-color-settings{border-top:1px solid var(--border);padding:12px 0;margin-bottom:18px;font-size:.875rem}
+.calendar-color-settings summary{cursor:pointer;min-height:36px;color:var(--muted-foreground)}
+.calendar-color-settings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.calendar-color-settings label{display:flex;align-items:center;gap:7px;min-width:0}
+.category-swatch{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.calendar-color-settings select{min-width:0;min-height:44px;margin-left:auto;background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:8px;padding:6px;font-size:14px}
+.project-task-row{border-left:4px solid var(--task-category-color,var(--border))!important}
+@media(max-width:370px){.calendar-color-settings>div{grid-template-columns:1fr}}

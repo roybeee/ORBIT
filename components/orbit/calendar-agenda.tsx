@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownUp, ArrowLeft, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole } from 'lucide-react';
-import type { CalendarEvent, Project } from '@/lib/orbit/model';
+import type { CalendarEvent, Project, Preferences } from '@/lib/orbit/model';
+import {categoryOf,categoryColor,categoryLabels} from '@/lib/orbit/calendar-categories';
 import { formatTime } from '@/lib/orbit/model';
 import { HOLD_MS, MOVE_SLOP, SWIPE_ACTION_WIDTH, SWIPE_OPEN_THRESHOLD, canEditCalendarEvent, calendarGestureIntent, swipeOffset, moveConflict, moveRestriction, shiftedEvent } from '@/lib/orbit/calendar-move';
 
 type Props = {
-  events: CalendarEvent[]; projects: Project[]; disabled: boolean;
+  events: CalendarEvent[]; preferences?:Preferences; projects: Project[]; disabled: boolean;
   onOpen: (event: CalendarEvent) => void;
   onEdit: (id: string) => void;
   onDelete: (event: CalendarEvent) => void;
@@ -229,7 +230,7 @@ export function CalendarAgenda(props: Props) {
       const offset = swiping ? swipe.offset : actionsOpen ? -SWIPE_ACTION_WIDTH : 0;
       const project = props.projects.find(p => p.id === event.projectId);
       return <div className={`agenda-row ${active ? 'agenda-moving' : ''}`} key={event.id} data-agenda-row={event.id}>
-        <time className="agenda-time">{formatTime(shown.start)}<span>{formatTime(shown.end)}</span></time>
+        <time className="agenda-time">{shown.allDay?<>종일<span>할 일</span></>:<>{formatTime(shown.start)}<span>{formatTime(shown.end)}</span></>}</time>
         <div className="agenda-swipe-shell" style={{transform: active && !preview.saving ? `translateY(${preview.delta}px)` : undefined}}>
         <div className={`agenda-swipe-clip ${swiping ? 'is-swiping' : ''} ${actionsOpen ? 'actions-open' : ''}`}>
           {editable && <div id={`agenda-actions-${event.id}`} className="agenda-swipe-actions" role="group" aria-label={`${event.title} 수정 및 삭제`} aria-hidden={!actionsOpen} style={{visibility: offset < 0 ? 'visible' : 'hidden'}}>
@@ -237,13 +238,13 @@ export function CalendarAgenda(props: Props) {
             <button type="button" className="agenda-action-delete" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 삭제`} onClick={()=>{showActions(null);props.onDelete(event)}}><Trash2 size={18}/><span>삭제</span></button>
           </div>}
         <div className={`agenda-card ${active && conflict ? 'has-conflict' : ''}`}
-          style={{ '--event-color': project?.color ?? (event.kind === 'focus' ? '#74ddef' : event.kind === 'break' ? '#7ee0b6' : '#bbadff'), transform: `translateX(${offset}px)` } as CSSProperties}>
+          style={{ '--event-color': categoryColor(categoryOf(event),props.preferences), transform: `translateX(${offset}px)` } as CSSProperties}>
           <button type="button" className="agenda-event" data-move-event={event.id}
             aria-describedby={!restriction ? 'calendar-move-help' : undefined}
-            aria-label={`${event.title}, ${formatTime(shown.start)}부터 ${formatTime(shown.end)}까지${restriction ? ', ' + restriction : ''}`}
+            aria-label={`${event.title}, ${shown.allDay?'종일 할 일':formatTime(shown.start)+'부터 '+formatTime(shown.end)+'까지'}${restriction ? ', ' + restriction : ''}`}
             onClick={e => { if (Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } if(openActions.current === event.id){showActions(null);return;} props.onOpen(event); }}>
             <strong>{event.title}</strong>
-            <span className="agenda-meta">{project?.name ?? (event.kind === 'focus' ? '집중 시간' : event.kind === 'break' ? '휴식' : '개인 일정')}<span>·</span>{event.end - event.start}분</span>
+            <span className="agenda-meta">{project?.name ?? (event.kind === 'focus' ? '집중 시간' : event.kind === 'break' ? '휴식' : '개인 일정')}<span>·</span>{event.allDay?categoryLabels[categoryOf(event)]:`${event.end - event.start}분 · ${categoryLabels[categoryOf(event)]}`}</span>
             {restriction && <span className="agenda-restriction"><LockKeyhole size={12}/>{restriction}</span>}
             {active && <span className="agenda-new-time">{formatTime(shown.start)}–{formatTime(shown.end)}{preview.saving ? ' · 저장 중…' : ''}</span>}
           </button>

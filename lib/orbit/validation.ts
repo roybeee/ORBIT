@@ -1,3 +1,4 @@
+import {calendarCategories,calendarPalette} from './calendar-categories.ts';
 import {phase4Actions} from './phase4-schema.ts';
 import { z } from 'zod';
 import {phase3Actions} from './phase3-schema.ts';
@@ -38,6 +39,7 @@ export const projectSchema = z
   .strict();
 export const taskSchema = z
   .object({
+    category:z.enum(calendarCategories).optional(),
     id,
     title,
     projectId: id,
@@ -135,6 +137,7 @@ export const noteSchema = z
   .strict();
 export const eventSchema = z
   .object({
+    category:z.enum(calendarCategories).optional(),
     id,
     title,
     date: dateSchema,
@@ -152,6 +155,8 @@ const rhythmSchema = z
   .refine((r) => r.peakEnd > r.peakStart && r.lunchEnd >= r.lunchStart, '리듬 구간을 확인해 주세요.');
 export const preferencesSchema = z
   .object({
+    eventCategories:z.record(z.string().max(200),z.enum(calendarCategories)).refine(v=>Object.keys(v).length<=2000).optional(),
+    categoryColors:z.record(z.enum(calendarCategories),z.string().refine(v=>calendarPalette.some(p=>p[0]===v))).optional(),
     timeZone: z.string().refine((value) => {
       try {
         new Intl.DateTimeFormat('ko', { timeZone: value });

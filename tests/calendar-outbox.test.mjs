@@ -15,6 +15,7 @@ function google({lose=false}={}){let remote=null,posts=0,patches=0,account='owne
  globalThis.fetch=async(url,init={})=>{
   if(url.endsWith('/calendarList/primary'))return Response.json({id:account});
   if(init.method==='POST'){posts++;const value=JSON.parse(init.body);assert.equal(value.attendees,undefined);assert.ok(url.includes('sendUpdates=none'));remote={...value,etag:'"1"',htmlLink:'https://calendar.google.com/calendar/event?eid=test'};if(lose){lose=false;throw new Error('lost ack')}return Response.json(remote)}
+  if(init.method==='DELETE'){assert.equal(init.headers['If-Match'],remote.etag);remote=null;return new Response(null,{status:204})}
   if(init.method==='PATCH'){patches++;assert.equal(init.headers['If-Match'],remote.etag);if(edited)return Response.json({}, {status:412});remote={...remote,...JSON.parse(init.body),etag:'"2"'};return Response.json(remote)}
   if(url.includes('/events/'))return remote?Response.json(remote):Response.json({}, {status:404});
   throw new Error('Unexpected request '+url);
@@ -75,4 +76,40 @@ test('a delivery completed immediately before the workspace transaction retains 
   await db.prepare("UPDATE orbit_calendar_exports SET state_json=json_set(state_json,'$.calendarId','bound@example.test','$.lastSignature','verified-signature','$.status','verified') WHERE owner_id=?").bind('a').run();return db.batch(statements);
  }};
  await save(wrapped,{...event,title:'New local edit'});const receipt=(await calendarExports(db,'a'))[0];assert.equal(receipt.status,'pending');assert.equal(receipt.calendarId,'bound@example.test');assert.equal(receipt.lastSignature,'verified-signature');
+}));
+
+async function taskFixture(db){
+ let snapshot=await readWorkspace(db,'a');
+ snapshot=await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'project.upsert',project:{id:'hr',name:'채용',goal:'채용 제안',due:'2026-09-30',priority:3,color:'#5484ed',symbol:'H'}}});
+ const task={id:'recruit',title:'마케터1명 채용 제안',projectId:'hr',status:'todo',due:'2026-09-21',duration:45,impact:3,focus:false,definition:'제안 전달',category:'work'};
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task}});return task;
+}
+test('dated project task creates one transparent all-day Google event and changing its date patches the same ID',()=>fixture(async db=>{
+ const task=await taskFixture(db);assert.equal((await calendarExports(db,'a'))[0].eventId,'task-due:recruit');
+ await connect(db);const g=google({lose:true});await flushCalendarOutbox(db,'a',env,'task-due:recruit');await flushCalendarOutbox(db,'a',env,'task-due:recruit');
+ assert.equal(g.posts,1);assert.deepEqual(g.remote.start,{date:'2026-09-21'});assert.deepEqual(g.remote.end,{date:'2026-09-22'});assert.equal(g.remote.transparency,'transparent');assert.equal(g.remote.colorId,'9');const id=g.remote.id;
+ const snapshot=await readWorkspace(db,'a');assert.equal(snapshot.data.events.length,0,'due reminders must not reserve the entire day in the planner');
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task:{...task,due:'2026-09-22',category:'health'}}});
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.posts,1);assert.equal(g.patches,1);assert.equal(g.remote.id,id);assert.equal(g.remote.start.date,'2026-09-22');assert.equal(g.remote.end.date,'2026-09-23');assert.equal(g.remote.colorId,'2');
+}));
+test('existing dated task backfill is idempotent and completion updates the same reminder',()=>fixture(async db=>{
+ const {queueTaskCalendarBackfill}=await import('../db/repository.ts');
+ await taskFixture(db);await db.prepare('DELETE FROM orbit_calendar_exports WHERE owner_id=?').bind('a').run();
+ await queueTaskCalendarBackfill(db,'b','2026-09-21');assert.equal((await calendarExports(db,'b')).length,0);
+ await queueTaskCalendarBackfill(db,'a','2026-09-21');await queueTaskCalendarBackfill(db,'a','2026-09-21');assert.equal((await calendarExports(db,'a')).length,1);
+ await connect(db);const g=google();await flushCalendarOutbox(db,'a',env,'task-due:recruit');
+ await queueTaskCalendarBackfill(db,'a','2026-09-21');assert.equal((await calendarExports(db,'a'))[0].status,'verified');
+ const snapshot=await readWorkspace(db,'a');await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.status',id:'recruit',status:'done'}});
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.remote.summary,'✓ 마케터1명 채용 제안');assert.equal(g.posts,1);
+}));
+test('category palette changes update queued task colors and local event colors',()=>fixture(async db=>{
+ await taskFixture(db);await connect(db);const g=google();await flushCalendarOutbox(db,'a',env,'task-due:recruit');
+ const snapshot=await readWorkspace(db,'a');await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'preferences.update',preferences:{...snapshot.data.preferences,categoryColors:{work:'#ffb878'}}}});
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.remote.colorId,'6');assert.equal(g.posts,1);assert.equal(g.patches,1);
+}));
+
+test('deleting a task removes only its unchanged owned Google reminder',()=>fixture(async db=>{
+ await taskFixture(db);await connect(db);const g=google();await flushCalendarOutbox(db,'a',env,'task-due:recruit');
+ const snapshot=await readWorkspace(db,'a');await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.delete',id:'recruit'}});
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.remote,null);assert.equal((await calendarExports(db,'a'))[0].status,'cancelled');
 }));

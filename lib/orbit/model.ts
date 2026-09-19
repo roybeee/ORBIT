@@ -31,6 +31,7 @@ export interface Project {
   milestones?: ProjectMilestone[];
 }
 export interface Task {
+  category?: import('./calendar-categories').CalendarCategory;
   id: string;
   title: string;
   projectId: string;
@@ -141,6 +142,8 @@ export interface NoteRevision {
   updatedAt: string;
 }
 export interface CalendarEvent {
+  allDay?: boolean;
+  category?: import('./calendar-categories').CalendarCategory;
   google?:{calendarId:string;eventId:string;orbitEventId?:string};
   id: string;
   title: string;
@@ -187,6 +190,8 @@ export interface Rhythm {
   lunchEnd: number;
 }
 export interface Preferences {
+  eventCategories?: Record<string,import('./calendar-categories').CalendarCategory>;
+  categoryColors?: Partial<Record<import('./calendar-categories').CalendarCategory,string>>;
   timeZone: string;
   workStart: number;
   workEnd: number;
@@ -307,6 +312,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
 // Older stored preferences predate the BRAINY fields; fill them without persisting anything.
 export const withDefaults = (p: Preferences): Required<Preferences> => ({
   ...p,
+  categoryColors:p.categoryColors??{},
+  eventCategories:p.eventCategories??{},
   rhythm: p.rhythm ?? { ...DEFAULT_RHYTHM },
   laserMinutes: p.laserMinutes ?? 180,
   travelMinutes: p.travelMinutes ?? 0,
