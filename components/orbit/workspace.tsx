@@ -1,6 +1,8 @@
 'use client';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import {OrbitWordmark} from './brand';
+import {AppearanceShortcut} from './appearance';
 import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {ExperimentsPanel,ContactsPanel,MonthlyPanel} from './phase4/workbench';
 import {VoicePanel} from './phase4/voice';
@@ -236,7 +238,7 @@ function primaryView(view:View){return primaryNavigation.find(n=>n.children.incl
 function AppNavigation({view,navigate,pending,displayName,onSettings,onAllMenu}:{view:View;navigate:(v:View)=>void;pending:number;displayName:string;onSettings:()=>void;onAllMenu:()=>void}){
  const {setOpenMobile}=useSidebar();
  const go=(v:View)=>{navigate(v);setOpenMobile(false)};
- return <><Sidebar className="app-sidebar"><SidebarHeader className="p-0"><div className="brand"><span className="brand-mark"><Orbit size={25}/></span>ORBIT</div></SidebarHeader><SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent><SidebarMenu>{primaryNavigation.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton className="nav-item" isActive={primaryView(view).id===n.id} onClick={()=>go(n.id)}><n.icon/><span>{n.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu><button className="all-menu-sidebar secondary-button" onClick={onAllMenu}><Menu size={18}/>전체 메뉴</button></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="p-0"><div className="user-box"><div className="avatar">{displayName.slice(0,1)}</div><div><strong>{displayName}</strong></div><button className="settings-link" aria-label="설정 열기" onClick={onSettings}><Settings2 size={19}/></button></div></SidebarFooter></Sidebar><nav className="mobile-nav" aria-label="주요 화면">{primaryNavigation.map(n=><button key={n.id} className={primaryView(view).id===n.id?'active':''} onClick={()=>go(n.id)} aria-current={primaryView(view).id===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav></>;
+ return <><Sidebar className="app-sidebar"><SidebarHeader className="p-0"><div className="brand"><OrbitWordmark/></div></SidebarHeader><SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent><SidebarMenu>{primaryNavigation.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton className="nav-item" isActive={primaryView(view).id===n.id} onClick={()=>go(n.id)}><n.icon/><span>{n.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu><button className="all-menu-sidebar secondary-button" onClick={onAllMenu}><Menu size={18}/>전체 메뉴</button></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="p-0"><div className="user-box"><div className="avatar">{displayName.slice(0,1)}</div><div><strong>{displayName}</strong></div><button className="settings-link" aria-label="설정 열기" onClick={onSettings}><Settings2 size={19}/></button></div></SidebarFooter></Sidebar><nav className="mobile-nav" aria-label="주요 화면">{primaryNavigation.map(n=><button key={n.id} className={primaryView(view).id===n.id?'active':''} onClick={()=>go(n.id)} aria-current={primaryView(view).id===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav></>;
 }
 function WorkspaceSections({view,navigate}:{view:View;navigate:(v:View)=>void}){
  const group=primaryView(view);
@@ -951,7 +953,7 @@ function WorkspaceContent({
             <ChevronRight size={13} />
             <strong>{primaryNavigation.some(n=>n.id===view)?primaryView(view).label:navigation.find((n) => n.id === view)?.label}</strong>
           </div>
-          <div className="top-actions">
+          <div className="top-actions"><AppearanceShortcut/>
             <button className="icon-button" onClick={openSettings} aria-label="설정 열기"><Settings2 size={20}/></button>
 
             {loaded && (

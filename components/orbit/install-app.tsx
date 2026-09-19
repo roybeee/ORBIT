@@ -1,4 +1,5 @@
 'use client';
+import {OrbitMark} from './brand';
 
 import {useEffect,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check,CheckCircle2,Copy,Download,ExternalLink,Laptop,Monitor,Orbit,ShieldCheck,Smartphone,Wifi,X} from 'lucide-react';
@@ -66,7 +67,7 @@ export default function InstallApp(){
   <header className="install-header"><a href="/" className="text-button"><ArrowLeft size={17}/>내 워크스페이스</a><span>MAC · WINDOWS · MOBILE</span></header>
   <div className="install-layout">
    <section className="install-hero" aria-labelledby="install-title">
-    <div className="install-logo"><Orbit size={40}/></div>
+    <div className="install-logo"><OrbitMark size={64}/></div>
     <h1 id="install-title">Orbit을<br/>내 기기에.</h1>
     <p>컴퓨터에서 정리하고,<br/>폰에서 이어서 실행하세요.</p>
     <div className="install-device-summary"><Monitor size={18}/><span>독립된 앱 창 · 같은 계정의 기록</span></div>

@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useState,type CSSProperties} from 'react';
+import {useOrbitAppearance} from './appearance';
 import {Sparkles,Pause} from 'lucide-react';
 
 const preferenceKey='orbit:cosmic-motion';
@@ -35,5 +36,7 @@ export function CosmicBackdrop(){
 }
 
 export function CosmicMotionToggle({enabled,reduced,onToggle}:{enabled:boolean;reduced:boolean;onToggle:()=>void}){
+  const {theme}=useOrbitAppearance();
+  if(theme==='focus')return <p className="form-hint">집중 테마에서는 우주 효과가 정지됩니다.</p>;
   return <button type="button" className="cosmic-toggle" aria-pressed={enabled} aria-label="우주 애니메이션" title={reduced?'기기의 동작 줄이기 설정에 따라 정지된 배경을 표시합니다.':enabled?'우주 애니메이션 끄기':'우주 애니메이션 켜기'} disabled={reduced} onClick={onToggle}>{enabled?<Sparkles size={16}/>:<Pause size={16}/>}<span>우주 효과</span><small>{enabled?'ON':'OFF'}</small></button>;
 }

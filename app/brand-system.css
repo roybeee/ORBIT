@@ -1,0 +1,68 @@
+/* ORBIT · Quiet momentum. Semantic identity tokens, shared by all screens. */
+:root{--background:#080B16;--foreground:#F4F6FF;--card:#11182A;--card-foreground:#F4F6FF;--popover:#182137;--popover-foreground:#F4F6FF;--primary:#9C8CFF;--primary-foreground:#080B16;--secondary:#1B253D;--secondary-foreground:#DCE3F5;--muted:#151E32;--muted-foreground:#AAB6D0;--accent:#282345;--accent-foreground:#D1C9FF;--border:#2C3853;--input:#52607D;--ring:#B6AAFF;--sidebar:#0C1120;--sidebar-foreground:#AAB6D0;--sidebar-primary:#9C8CFF;--sidebar-primary-foreground:#080B16;--sidebar-accent:#24213E;--sidebar-accent-foreground:#E4DEFF;--sidebar-border:#26304A;--sidebar-ring:#B6AAFF;--galaxy-violet:#B9AEFF;--galaxy-cyan:#72DDF5;--galaxy-green:#83DEBA;--galaxy-amber:#F6CC84;--galaxy-rose:#FFA0B2;--destructive:#FFA0B2;--orbit-logo-accent:#9C8CFF;--orbit-surface-shadow:0 8px 28px #00000016;--orbit-font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;--orbit-ease:cubic-bezier(.2,.8,.2,1)}
+html[data-orbit-theme=light]{color-scheme:light;--background:#F4F6FB;--foreground:#182139;--card:#FFFFFF;--card-foreground:#182139;--popover:#FFFFFF;--popover-foreground:#182139;--primary:#6653CC;--primary-foreground:#FFFFFF;--secondary:#E9EDF6;--secondary-foreground:#33425E;--muted:#EEF1F8;--muted-foreground:#56647E;--accent:#EDE9FF;--accent-foreground:#5841B1;--border:#D1D8E6;--input:#8490A8;--ring:#6653CC;--sidebar:#FFFFFF;--sidebar-foreground:#56647E;--sidebar-primary:#6653CC;--sidebar-primary-foreground:#FFFFFF;--sidebar-accent:#EEEAFE;--sidebar-accent-foreground:#5841B1;--sidebar-border:#D1D8E6;--sidebar-ring:#6653CC;--galaxy-violet:#6653CC;--galaxy-cyan:#08778E;--galaxy-green:#16724F;--galaxy-amber:#855900;--galaxy-rose:#AE304B;--galaxy-warm-surface:#FFF4DE;--galaxy-green-surface:#E2F6ED;--galaxy-rose-surface:#FCE8EE;--destructive:#AE304B;--orbit-logo-accent:#6653CC;--orbit-surface-shadow:0 6px 24px #18213907}
+html[data-orbit-theme=focus]{--background:#0D1119;--card:#151B25;--muted:#191F2B;--secondary:#222B39;--sidebar:#10151E;--border:#384355;--primary:#C1B8F4;--galaxy-violet:#C1B8F4;--orbit-surface-shadow:none}
+body,input,textarea,select,button{font-family:var(--orbit-font)}
+body{line-height:1.6;letter-spacing:-.015em;-webkit-font-smoothing:antialiased}
+button,a,input,textarea,select{transition:background-color 160ms var(--orbit-ease),border-color 160ms var(--orbit-ease),box-shadow 160ms var(--orbit-ease)}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:3px}
+.orbit-mark{flex-shrink:0;overflow:visible}.orbit-mark circle,.orbit-mark ellipse{stroke-width:revert-layer}
+.orbit-mark circle:first-child{stroke-width:10}.orbit-mark ellipse{stroke-width:2.5}
+.orbit-wordmark{display:inline-flex;align-items:center;gap:12px;color:var(--foreground);font-size:25px;font-weight:750;letter-spacing:.13em;line-height:1}
+.brand{padding:30px 24px 32px;letter-spacing:normal}.brand .orbit-mark{width:42px;height:42px}
+.breadcrumb-brand{font-size:14px;font-weight:750;letter-spacing:.12em}
+.app-sidebar [data-slot=sidebar-inner]{background:var(--sidebar);border-right:0}
+.galaxy-workspace .topbar{background:var(--background);border-color:var(--border);height:auto;min-height:76px;padding-block:12px}
+.nav-item{border-radius:12px!important}.nav-item[data-active=true]{background:var(--accent)!important;color:var(--accent-foreground)!important;font-weight:650}
+.user-box{margin-inline:24px}.avatar{background:var(--accent);color:var(--accent-foreground)}
+.primary-button,.new-button{background:var(--primary);color:var(--primary-foreground);border-radius:12px;min-height:46px;font-weight:650;box-shadow:none;padding-inline:18px}
+.primary-button:hover,.new-button:hover{background:var(--primary);filter:brightness(1.07);box-shadow:none}
+.secondary-button,.icon-button{border-radius:12px;min-height:44px}.icon-button{min-width:44px}.secondary-button{color:var(--foreground)}
+.galaxy-workspace .content{padding-top:30px}.page-heading{margin-bottom:26px}.page-heading h1{font-weight:720;letter-spacing:-.035em;text-shadow:none}
+.galaxy-workspace .page-heading h1{font-size:clamp(1.65rem,2.2vw,2rem)}
+.galaxy-workspace .cosmic-backdrop{background:var(--background);opacity:1}
+.cosmic-nebula{background-image:url('/brand/orbit-atmosphere.webp');opacity:.18;inset:0;animation:none;background-position:right top}
+.cosmic-shade{background:linear-gradient(90deg,var(--background) 10%,transparent 100%)}.cosmic-stars{display:none}
+.today-next{position:relative;isolation:isolate;overflow:hidden;border-color:var(--border);border-radius:24px;padding:28px;background:var(--card);box-shadow:var(--orbit-surface-shadow)}
+.today-next::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,var(--card) 40%,transparent),url('/brand/orbit-atmosphere.webp') right center/cover no-repeat;opacity:.55;pointer-events:none}
+.today-next h2{max-width:42rem;font-size:1.6rem}.today-next>p{max-width:45rem}.today-next .today-eyebrow{font-size:.875rem;letter-spacing:.035em;font-weight:650}
+.today-section,.today-review,.wd-panel,.focus-panel,.project-hub-card,.document-card,.phase2-record{border-radius:18px;box-shadow:var(--orbit-surface-shadow);background:var(--card)}
+.today-section,.today-review{padding:24px}.today-home{gap:24px}.today-row{min-height:78px}.today-row:hover{background:var(--muted)}
+.project-hub-card{border-left-width:3px;padding:20px 20px 0}.project-hub-list{gap:18px}.project-overview-counts button{border-radius:16px}
+.project-next-action{border-radius:12px;background:var(--muted);font-size:14px}.project-hub-title h2{font-size:19px}.project-hub-outcome{margin-block:8px 16px}
+.project-state-label,.project-card-top,.project-card-bottom,.project-next-label,.project-detail-meta{font-size:13px}
+.calendar-main .calendar-days button.active,.calendar-main .calendar-days button.active strong{background:var(--primary);color:var(--primary-foreground)}
+.calendar-main .calendar-days button.active .calendar-day-dot{background:var(--primary-foreground)}
+.agenda-card{background:var(--card);border-color:var(--border);border-left-color:var(--event-color)}
+.agent-toolbar{background:var(--card)}.agent-identity>span{background:transparent!important;border:0!important;box-shadow:none}.agent-identity strong{letter-spacing:.12em;font-size:14px}
+.agent-welcome{background:var(--card);border:1px solid var(--border);padding:30px 24px;border-radius:20px;box-shadow:none}.agent-welcome h1{font-size:1.5rem!important;text-shadow:none}.agent-welcome p{color:var(--muted-foreground)}
+.agent-suggestions button{background:var(--muted);border-color:var(--border);border-radius:12px}.agent-composer{background:var(--card);border:1px solid var(--input);border-radius:20px;box-shadow:var(--orbit-surface-shadow)}
+.agent-composer:focus-within{border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 15%,transparent)}
+.personal-galaxy{background:var(--card);border-color:var(--border)}.galaxy-command .wd-next{background:var(--card);border-color:var(--border);box-shadow:none}.galaxy-footer{background:var(--muted)}
+.graph-view{background:var(--card)}.sync-bar{background:var(--background)}
+.settings-dialog[data-slot=dialog-content]{background:var(--card);border-color:var(--border);width:min(620px,calc(100vw - 32px))}
+.appearance-settings{padding:2px 0 16px;border-bottom:1px solid var(--border);margin-bottom:4px}.appearance-heading{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:14px}.appearance-heading h3{font-size:1rem;font-weight:650}.appearance-heading>span{font-size:12px;color:var(--muted-foreground)}
+.appearance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.appearance-option{padding:8px 8px 12px;background:var(--card);border:1px solid var(--border);border-radius:14px;text-align:left;color:var(--foreground);min-width:0}.appearance-option[aria-pressed=true]{border-color:var(--ring);box-shadow:0 0 0 1px var(--ring)}
+.appearance-preview{display:grid;grid-template-columns:18% 1fr;grid-template-rows:16px 1fr;gap:5px;height:65px;padding:8px;background:#080B16;border:1px solid #2C3853;border-radius:8px;margin-bottom:10px}.appearance-preview i{border-radius:3px;background:#26314D}.appearance-preview i:first-child{grid-row:1/3;background:#181F32}.appearance-preview i:nth-child(2){background:#9C8CFF;width:65%}.theme-preview-light .appearance-preview{background:#F4F6FB;border-color:#D1D8E6}.theme-preview-light .appearance-preview i{background:#E2E5F2}.theme-preview-light .appearance-preview i:nth-child(2){background:#6653CC}.theme-preview-focus .appearance-preview{background:#0D1119}.theme-preview-focus .appearance-preview i{background:#333D4E}.theme-preview-system .appearance-preview{background:linear-gradient(90deg,#080B16 50%,#F4F6FB 50%)}
+.appearance-name{display:flex;align-items:center;gap:5px;font-size:14px;font-weight:600;white-space:nowrap}.appearance-name>svg:last-child:not(:first-child){margin-left:auto;color:var(--galaxy-violet)}.appearance-option small{display:block;font-size:12px;line-height:1.5;color:var(--muted-foreground);margin-top:5px;word-break:keep-all}
+.mobile-nav{background:var(--card);border-top:1px solid var(--border);box-shadow:0 -8px 24px #00000010}.mobile-nav button{position:relative;color:var(--muted-foreground);gap:5px}.mobile-nav button.active{color:var(--galaxy-violet);font-weight:650;background:var(--accent);border-radius:14px}
+html[data-orbit-theme=light] .cosmic-backdrop,html[data-orbit-theme=focus] .cosmic-backdrop,html[data-orbit-theme=light] .today-next::before,html[data-orbit-theme=focus] .today-next::before{display:none}
+html[data-orbit-theme=light] .form-field,html[data-orbit-theme=light] .form-select,html[data-orbit-theme=light] select{color-scheme:light}
+html[data-orbit-theme=light] .galaxy-self,html[data-orbit-theme=light] .galaxy-satellite{background:var(--accent);color:var(--accent-foreground);box-shadow:none;border-color:var(--border)}
+html[data-orbit-theme=focus] .cosmic-motion,html[data-orbit-theme=focus] .agent-orbit::before,html[data-orbit-theme=focus] .agent-orbit::after{animation:none!important}
+@media(max-width:767px){.galaxy-workspace .topbar{min-height:68px;padding:10px 16px}.top-actions{gap:5px}.galaxy-workspace .content{padding-top:24px}.galaxy-workspace .page-heading h1{font-size:1.6rem}.today-next{padding:22px;border-radius:20px}.today-next h2{font-size:1.35rem}.today-section,.today-review{padding:20px}.today-columns{gap:16px}.project-hub-card{padding:16px 16px 0}.mobile-nav{padding:7px 8px calc(7px + env(safe-area-inset-bottom));gap:3px}.mobile-nav button{min-height:56px;font-size:12px}.appearance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.appearance-preview{height:68px}.appearance-heading{align-items:flex-start}.appearance-shortcut{display:none}.agent-welcome{padding:24px 18px}.project-hub-list{gap:14px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media(forced-colors:active){.appearance-preview,.today-next::before{display:none}.appearance-option[aria-pressed=true],.nav-item[data-active=true]{outline:2px solid Highlight}}
+
+/* Semantic state pairs stay readable in every theme, including older controls. */
+.calendar-drag-feedback{background:var(--accent);border-color:var(--ring)}
+.calendar-drag-feedback strong{color:var(--foreground)}
+.calendar-drag-feedback span{color:var(--muted-foreground)}
+.agenda-action-toggle:hover,.agenda-action-toggle[aria-expanded=true]{background:var(--muted);color:var(--foreground)}
+.cosmic-toggle{background:var(--muted);color:var(--foreground);border-color:var(--border);font-size:14px}
+.cosmic-toggle small{font-size:12px;color:var(--muted-foreground)}
+.cosmic-toggle[aria-pressed=true] small{color:var(--galaxy-cyan)}
+.cosmic-toggle:hover{background:var(--accent);border-color:var(--ring)}
+.week-day.active,.agent-composer-bottom>button,.wizard-steps li.active button span,.brainy-badge.is-laser,.app-update-notice button,.install-logo,.calendar-days button.active,.calendar-days button.active strong,[data-slot=checkbox][data-checked],[data-slot=checkbox][data-state=checked]{color:var(--primary-foreground)}
+
+.install-logo{background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:24px;box-shadow:none}

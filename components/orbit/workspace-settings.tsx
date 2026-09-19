@@ -5,6 +5,7 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@
 import {Checkbox} from '@/components/ui/checkbox';
 import {InstallSettings} from './install-app';
 import {Choice} from './choice';
+import {AppearanceSettings} from './appearance';
 import {CosmicMotionToggle} from './cosmic-skin';
 import type {View,Preferences} from '@/lib/orbit/model';
 import {formatTime,withDefaults} from '@/lib/orbit/model';
@@ -24,6 +25,7 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
             <DialogDescription>계정 연결과 업무 환경을 관리합니다.</DialogDescription>
           </DialogHeader>
           <div className="dialog-form">
+            <AppearanceSettings/>
             <div className="settings-connection-links"><button type="button" className="secondary-button" disabled={demo} onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:connections'))}}>계정·연결 관리</button><button type="button" className="secondary-button" disabled={demo} onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:runtime'))}}>자동 실행 설정</button></div>
             <details className="workspace-more"><summary>업무 시간·계획 기준</summary><div className="dialog-form">
             <label className="form-label">시간대</label>
@@ -226,6 +228,7 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
             </p>
             <div className="divider" />
             </div></details><details className="workspace-more"><summary>앱·화면</summary><div className="dialog-form"><CosmicMotionToggle enabled={cosmic.enabled} reduced={cosmic.reduced} onToggle={cosmic.toggle}/>
+            <a href="/design" className="secondary-button">로고·디자인 가이드 <ArrowUpRight size={16}/></a>
             <InstallSettings />
             <p className="form-hint">
               오프라인에서는 안내 화면이 표시됩니다. 업무 기록의 열람과 저장에는 연결이 필요합니다.

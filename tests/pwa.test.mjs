@@ -57,11 +57,11 @@ test('manual install opens the actual agent route with a supported browser for e
 test('installation fetches static assets with credentials and only stores valid types',async()=>{
  const fetched=[];const h=harness(async request=>{fetched.push(request);return new Response('static',{headers:{'content-type':request.url.endsWith('.html')?'text/html;charset=utf-8':request.url.endsWith('.svg')?'image/svg+xml':'image/png'}})});
  await h.lifecycle('install');assert.equal(fetched.length,6);for(const r of fetched){assert.equal(r.credentials,'same-origin');assert.equal(r.cache,'reload');assert.doesNotMatch(new URL(r.url).pathname,/^\/api\//)}
- assert.equal(h.stores.get('orbit-offline-v3').size,6);
+ assert.equal(h.stores.get('orbit-offline-v4').size,6);
 });
 test('redirected login pages and failed downloads never poison offline assets',async()=>{
  const h=harness(async request=>{if(request.url.endsWith('offline.html')){const response=new Response('private login',{headers:{'content-type':'text/html'}});Object.defineProperty(response,'redirected',{value:true});return response}if(request.url.endsWith('.svg'))throw new TypeError('offline');return new Response('login',{headers:{'content-type':'text/html'}})});
- await h.lifecycle('install');assert.equal(h.stores.get('orbit-offline-v3').size,0);
+ await h.lifecycle('install');assert.equal(h.stores.get('orbit-offline-v4').size,0);
 });
 test('all private APIs, authentication, writes and foreign requests bypass the worker',()=>{
  const h=harness(()=>{throw new Error('must bypass')});
@@ -73,11 +73,11 @@ test('successful private navigation is fetched each time and never cached',async
  assert.equal(await(await h.request('/',{mode:'navigate'})).text(),'private 1');assert.equal(await(await h.request('/',{mode:'navigate'})).text(),'private 2');assert.equal(h.stores.size,0);
 });
 test('offline navigation returns only the static fallback, including a cold-cache failure',async()=>{
- const h=harness(async()=>{throw new TypeError('offline')});const cache=await h.caches.open('orbit-offline-v3');await cache.put('/offline.html',new Response('연결 안내'));
+ const h=harness(async()=>{throw new TypeError('offline')});const cache=await h.caches.open('orbit-offline-v4');await cache.put('/offline.html',new Response('연결 안내'));
  assert.equal(await(await h.request('/#review',{mode:'navigate'})).text(),'연결 안내');h.stores.clear();const r=await h.request('/',{mode:'navigate'});assert.equal(r.status,503);assert.match(await r.text(),/인터넷 연결/);
 });
 test('activation removes old Orbit asset caches and preserves unrelated caches',async()=>{
- const h=harness(async()=>new Response());await h.caches.open('orbit-offline-v2');await h.caches.open('orbit-offline-v3');await h.caches.open('unrelated');await h.lifecycle('activate');assert.deepEqual(h.deleted,['orbit-offline-v2']);assert.ok(h.stores.has('unrelated'));
+ const h=harness(async()=>new Response());await h.caches.open('orbit-offline-v2');await h.caches.open('orbit-offline-v4');await h.caches.open('unrelated');await h.lifecycle('activate');assert.deepEqual(h.deleted,['orbit-offline-v2']);assert.ok(h.stores.has('unrelated'));
 });
 async function shareRows(idb){const db=await new Promise((resolve,reject)=>{const r=idb.open('orbit-share-drafts',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});try{return await new Promise((resolve,reject)=>{const r=db.transaction('shares').objectStore('shares').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}finally{db.close()}}
 function shareRequest(files){const form=new FormData();for(const file of files)form.append('files',file);return {method:'POST',headers:new Headers(),formData:async()=>form}}
