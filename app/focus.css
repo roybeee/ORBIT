@@ -1,0 +1,39 @@
+.focus-session-live{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:20px;border-radius:18px;background:var(--card);color:var(--foreground)}
+.focus-session-live.is-running{border-color:var(--ring)}
+.focus-clock-heading{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.875rem;color:var(--muted-foreground)}
+.focus-clock-heading>span:first-child{display:flex;align-items:center;gap:7px;color:var(--foreground);font-weight:600}
+.is-running .focus-clock-heading>span:first-child{color:var(--galaxy-violet)}
+.focus-clock-value{font-size:clamp(2.25rem,8vw,3.5rem);line-height:1.15;letter-spacing:.02em;font-weight:650;font-variant-numeric:tabular-nums;text-align:center;padding-top:8px}
+.focus-session-live .focus-clock-caption{font-size:.875rem;line-height:1.5;text-align:center;color:var(--muted-foreground)}
+.focus-clock-progress{height:5px;background:var(--secondary);border-radius:8px;overflow:hidden;margin:4px 0 8px}
+.focus-clock-progress>span{display:block;height:100%;background:var(--primary);border-radius:inherit}
+.focus-session-live .focus-session-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.focus-session-live .focus-session-buttons>button{min-height:48px;font-size:.9375rem;padding:10px;white-space:normal}
+.focus-session-live .focus-session-buttons>button:only-child{grid-column:1/-1}
+.focus-sound-button{align-self:center;justify-content:center;font-size:.875rem;min-height:40px}
+.focus-record-dialog[data-slot=dialog-content]{background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:20px;width:calc(100% - 24px);max-width:520px;max-height:calc(var(--phone-viewport-height,100dvh) - 24px);padding:24px;gap:20px;overflow:hidden;display:flex;flex-direction:column}
+.focus-record-dialog [data-slot=dialog-header]{text-align:left;padding-right:30px;flex-shrink:0;gap:8px}
+.focus-record-dialog [data-slot=dialog-title]{font-size:1.25rem;line-height:1.4;color:var(--foreground)}
+.focus-record-dialog [data-slot=dialog-description]{font-size:.9375rem;line-height:1.6;color:var(--muted-foreground);overflow-wrap:anywhere;max-height:5em;overflow-y:auto}
+.focus-record-dialog [data-slot=dialog-close]{width:40px;height:40px;display:grid;place-items:center;top:12px;right:12px;color:var(--foreground)}
+.focus-record-dialog .dialog-form{min-height:0;max-height:none;overflow:auto;overscroll-behavior:contain;padding:0 2px;scroll-padding-bottom:100px}
+.focus-record-dialog .form-label{font-size:.9375rem;margin:0 0 10px;color:var(--foreground);display:block}
+.focus-record-dialog .review-radio{margin-bottom:18px}
+.focus-record-dialog .review-radio label{min-height:48px;padding:12px 6px;background:var(--card);color:var(--muted-foreground);font-size:.9375rem;gap:6px;cursor:pointer}
+.focus-record-dialog .review-radio label.is-selected{border-color:var(--ring);background:var(--accent);color:var(--accent-foreground)}
+.focus-record-dialog .record-completion{padding:16px;background:var(--muted);border:1px solid var(--border);border-radius:12px;margin-bottom:20px}
+.focus-record-dialog .coach-handoff{margin:0;display:flex;gap:10px;align-items:flex-start;font-size:1rem;color:var(--foreground)}
+.focus-record-dialog .coach-handoff [data-slot=checkbox]{flex-shrink:0;width:22px;height:22px;margin-top:2px;border-color:var(--input)}
+.record-definition{margin-top:10px;font-size:.875rem;color:var(--muted-foreground)}
+.record-definition summary,.record-feedback summary{cursor:pointer;min-height:36px;padding:6px 0;color:var(--galaxy-violet)}
+.record-definition p{line-height:1.7;overflow-wrap:anywhere;margin-top:8px;white-space:normal}
+.focus-record-dialog .field-grid{grid-template-columns:1fr;gap:18px}
+.focus-record-dialog .form-field,.focus-record-dialog .form-select{background:var(--background);color:var(--foreground);border:1px solid var(--input);font-size:1rem;min-height:48px}
+.focus-record-dialog #record-actual{font-size:1.5rem;font-variant-numeric:tabular-nums}
+.focus-record-dialog .form-hint{font-size:.875rem;line-height:1.55;color:var(--muted-foreground)}
+.focus-record-dialog .record-feedback{margin-top:16px;padding:12px;background:var(--muted);border:1px solid var(--border);border-radius:12px;font-size:.875rem}
+.focus-record-dialog .record-feedback p{line-height:1.6;margin:8px 0 14px}
+.record-footer{position:sticky;bottom:0;background:var(--card);padding:16px 0 0;margin-top:8px;display:grid;gap:10px;border-top:1px solid var(--border)}
+.record-footer .primary-button{min-height:48px;font-size:1rem}
+@media(max-width:600px){.focus-record-dialog[data-slot=dialog-content]{padding:22px 18px;max-height:calc(var(--phone-viewport-height,100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)}}
+@media(max-width:360px){.focus-session-live{padding:16px}.focus-session-live .focus-session-buttons{grid-template-columns:1fr}.focus-record-dialog .review-radio label{font-size:.875rem;gap:4px}}

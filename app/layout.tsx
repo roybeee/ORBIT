@@ -6,6 +6,7 @@ import "./calendar.css";
 import "./projects.css";
 import "./brand-legacy.css";
 import "./brand-system.css";
+import "./focus.css";
 import {AppearanceProvider} from "@/components/orbit/appearance";
 export const metadata: Metadata = {
   title: "Orbit · 나의 페이스메이커",
