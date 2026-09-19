@@ -1,6 +1,7 @@
 import {calendarCategories,calendarPalette} from './calendar-categories.ts';
 import {phase4Actions} from './phase4-schema.ts';
 import { z } from 'zod';
+import {illustrationIds, illustrationScreens} from './city-themes.ts';
 import {phase3Actions} from './phase3-schema.ts';
 import type { DailyBrief } from './brief/schema';
 import { validDate } from './dates.ts';
@@ -153,10 +154,17 @@ const rhythmSchema = z
   .object({ peakStart: minute, peakEnd: minute, lunchStart: minute, lunchEnd: minute })
   .strict()
   .refine((r) => r.peakEnd > r.peakStart && r.lunchEnd >= r.lunchStart, '리듬 구간을 확인해 주세요.');
+const illustrationId = z.enum(illustrationIds);
+export const illustrationPreferencesSchema = z.object({
+  defaultTheme: illustrationId,
+  screens: z.record(z.enum(illustrationScreens), illustrationId),
+  projects: z.record(id, illustrationId).refine(p=>Object.keys(p).length<=2000),
+}).strict();
 export const preferencesSchema = z
   .object({
     eventCategories:z.record(z.string().max(200),z.enum(calendarCategories)).refine(v=>Object.keys(v).length<=2000).optional(),
     categoryColors:z.record(z.enum(calendarCategories),z.string().refine(v=>calendarPalette.some(p=>p[0]===v))).optional(),
+    illustrations: illustrationPreferencesSchema.optional(),
     timeZone: z.string().refine((value) => {
       try {
         new Intl.DateTimeFormat('ko', { timeZone: value });
@@ -228,6 +236,9 @@ export const reviewDetailSchema = z
 export const decisionSchema=z.object({id,title,projectId:id,choice:z.string().trim().min(1).max(2000),rationale:z.string().trim().min(1).max(2000),alternatives:z.string().max(2000),reviewDate:dateSchema,status:z.enum(['active','revised','closed']),outcome:z.string().max(2000),noteId:id.optional(),noteRevision:z.number().int().positive().optional(),taskId:id.optional()}).strict();
 export const delegationSchema=z.object({replyWatch:z.object({senderEmail:z.string().trim().email().max(254),threadId:z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/)}).strict().optional(),id,title,projectId:id,assignee:z.string().trim().min(1).max(100),deliverable:z.string().trim().min(1).max(2000),due:dateSchema,checkDate:dateSchema,status:z.enum(['requested','accepted','working','blocked','delivered','verified','cancelled']),update:z.string().max(2000),evidence:z.string().max(2000),taskId:id.optional(),noteId:id.optional(),noteRevision:z.number().int().positive().optional()}).strict();
 export const actionSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('illustration.default'),theme:illustrationId}).strict(),
+  z.object({type:z.literal('illustration.screen'),screen:z.enum(illustrationScreens),theme:illustrationId.nullable()}).strict(),
+  z.object({type:z.literal('illustration.project'),id,theme:illustrationId.nullable()}).strict(),
   ...phase3Actions,
   ...phase4Actions,
   z.object({type:z.literal('decision.upsert'),record:decisionSchema,expectedUpdatedAt:z.string().datetime().optional()}).strict(),

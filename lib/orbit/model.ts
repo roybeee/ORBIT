@@ -1,4 +1,5 @@
 import type {Experiment,Contact,ExecutionRecord,MonthlyReport} from './phase4-schema';
+import {defaultIllustrations, type IllustrationPreferences} from './city-themes.ts';
 import type { DailyBrief } from './brief/schema';
 import type {WeeklyAllocation,OperatingMetric,MetricObservation,SignalFollowup,MeetingRecord} from './phase3-model';
 export type View =
@@ -192,6 +193,7 @@ export interface Rhythm {
 export interface Preferences {
   eventCategories?: Record<string,import('./calendar-categories').CalendarCategory>;
   categoryColors?: Partial<Record<import('./calendar-categories').CalendarCategory,string>>;
+  illustrations?: IllustrationPreferences;
   timeZone: string;
   workStart: number;
   workEnd: number;
@@ -314,6 +316,7 @@ export const withDefaults = (p: Preferences): Required<Preferences> => ({
   ...p,
   categoryColors:p.categoryColors??{},
   eventCategories:p.eventCategories??{},
+  illustrations: p.illustrations ?? defaultIllustrations(),
   rhythm: p.rhythm ?? { ...DEFAULT_RHYTHM },
   laserMinutes: p.laserMinutes ?? 180,
   travelMinutes: p.travelMinutes ?? 0,

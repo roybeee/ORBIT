@@ -1,6 +1,7 @@
 'use client';
 import {useMemo,type CSSProperties} from 'react';
 import {ArrowRight,Check,Clock3,Play,Plus,ChevronRight,Moon,Headphones,Orbit,CheckCheck,Flag,ArrowUpRight} from 'lucide-react';
+import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {projectWorld} from '@/lib/orbit/project-world';
 import {workspaceDashboard} from '@/lib/orbit/dashboard';
 import {protectedEvents} from '@/lib/orbit/allocation-policy';
@@ -26,7 +27,7 @@ export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,
  return <div className="today-home mission-dashboard">
   <div className="mission-overview">
   <section className="today-next mission-hero" aria-labelledby="today-next-title">
-   <img className="mission-hero-art" src="/orbit-worlds/mission.webp" width="1536" height="864" alt="" fetchPriority="high"/>
+   <img className="mission-hero-art" src={illustrationTheme(screenIllustration(data.preferences,'today')).image} width="1536" height="864" alt="" fetchPriority="high"/>
    <div className="mission-copy">
    <span className="today-eyebrow"><Orbit size={16}/> TODAY’S MISSION</span><p className="mission-intro">{d.active?'몰입의 궤도를 이어가세요':'오늘, 한 걸음 더 멀리'}</p>
    <h2 id="today-next-title">{next?.title??primary.title}</h2>
@@ -56,7 +57,7 @@ export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,
   <section className="today-section today-projects" aria-labelledby="today-projects-title">
    <div className="section-title"><h2 id="today-projects-title">진행 중인 프로젝트 <span>{d.projects.length}</span></h2><button className="text-button" onClick={()=>navigate('projects')}>프로젝트 관리<ChevronRight size={15}/></button></div>
    <div className="today-project-grid">{d.projects.slice(0,4).map(({project:p,total,done})=><button className="today-project-card" key={p.id} onClick={()=>onOpen({kind:'project',id:p.id})}>
-    <img className="today-project-art" src={projectWorld(p.id).image} width="960" height="720" loading="lazy" alt=""/><div className="today-project-name"><strong>{p.name}</strong><ArrowUpRight size={18}/></div><span>{p.due.slice(5).replace('-','/')} 목표 · {total?`${done}/${total} 완료`:'첫 할 일을 정해 보세요'}</span>
+    <img className="today-project-art" src={projectWorld(p.id,data.preferences).image} width="960" height="720" loading="lazy" alt=""/><div className="today-project-name"><strong>{p.name}</strong><ArrowUpRight size={18}/></div><span>{p.due.slice(5).replace('-','/')} 목표 · {total?`${done}/${total} 완료`:'첫 할 일을 정해 보세요'}</span>
     <Progress value={total?done/total*100:0} aria-label={`${p.name} 등록 업무 ${done}/${total} 완료`}/>
    </button>)}</div>
    {!d.projects.length&&<p className="today-empty">진행 중인 프로젝트가 없어요. 프로젝트 관리에서 새로 시작하거나 완료된 결과를 확인하세요.</p>}
