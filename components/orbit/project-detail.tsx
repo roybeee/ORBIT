@@ -1,4 +1,5 @@
 'use client';
+import {projectWorld} from '@/lib/orbit/project-world';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {Plus,Pencil,Trash2,Flag,Target,CalendarDays,FileText,CheckCheck,ChevronRight,MessageSquare,Settings2,MoreHorizontal,ChevronDown} from 'lucide-react';
 import type {Project,ProjectMilestone,ProjectStatus,Task,WorkspaceData} from '@/lib/orbit/model';
@@ -38,7 +39,7 @@ export function ProjectDetailPanel({intent='overview',onManage,project:p,data,to
     </article>;
   };
   return <div className="project-detail-panel project-flow-detail">
-    <div className="project-detail-art"><img src="/orbit-projects/orbital-hero.png" width="278" height="214" alt=""/></div>
+    <div className="project-detail-art"><img src={projectWorld(p.id).image} width="960" height="720" alt=""/></div>
     <div className="project-detail-surface">
     <div className="project-detail-heading"><span>ORBIT PROJECT · {projectStatusLabel[state]}</span><h2>{p.name}</h2><p>{p.goal||'완료 기준을 정해 보세요.'}</p><div><span>{s.done} / {s.tasks.length} 완료</span><strong>{s.progress??0}%</strong></div><Progress value={s.progress??0} aria-label="프로젝트 할 일 완료율"/></div>
     <div className="project-detail-quickbar"><button disabled={locked} className={`project-state-label state-${state}`} onClick={()=>openSettings()}>{projectStatusLabel[state]}<ChevronDown size={14}/></button><button disabled={locked} className={s.dueOver?'overdue':''} onClick={()=>openSettings()}><CalendarDays size={15}/>{p.due} 목표</button><button disabled={locked} className="icon-button" aria-label="프로젝트 관리 메뉴" aria-haspopup="dialog" onClick={onManage}><MoreHorizontal size={21}/></button></div>

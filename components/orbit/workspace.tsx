@@ -923,7 +923,7 @@ function WorkspaceContent({
     return ok;
   };
   return (
-    <SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''}`} style={{ '--sidebar-width': '248px' } as CSSProperties}>
+    <SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''}`} style={{ '--sidebar-width': '248px' } as CSSProperties}>
       <CosmicBackdrop/>
       {!demo && <InstallRootHint />}
       <a href="#main-content" className="skip-link">
