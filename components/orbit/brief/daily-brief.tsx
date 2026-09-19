@@ -26,14 +26,14 @@ export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,dem
   if(!validDate(date)){setError('유효한 계획 날짜를 선택해 주세요.');return}
   if(startingRef.current||running)return;startingRef.current=true;setStarting(true);setError('');
   const payload=request.current&&request.current.date===date&&request.current.energy===energy?request.current:{id:explicitId??crypto.randomUUID(),date,energy};request.current=payload;
-  try{const started=await agentRequest('/api/brief','POST',payload);if(started?.local){setNotice('Hermes가 연결되어 있지 않아 Orbit의 규칙 기반 계획(Goal Laser 우선 → 반드시 종결 → B → A → C)으로 시간을 배치했습니다. 연결하면 근거 기반 원페이지 제안을 받을 수 있습니다.');request.current=null;await onRefresh.current();return}setNotice('');if(currentDate.current===payload.date)setRun({id:payload.id,status:'running',progress:`${payload.date} 제안을 위해 진척과 회의 기록을 모으고 있습니다.`})}catch(e){setError(e instanceof Error?e.message:'분석을 시작하지 못했습니다.');try{const state=await agentRequest('/api/brief?date='+payload.date);if(currentDate.current===payload.date)setRun(state.run)}catch{}}finally{startingRef.current=false;setStarting(false)}
+  try{const started=await agentRequest('/api/brief','POST',payload);if(started?.local){setNotice('Hermes가 연결되어 있지 않아 Orbit의 규칙 기반 계획(Goal Laser 우선 → 반드시 종결 → B → A → C)으로 시간을 배치했습니다. 연결하면 근거 기반 원페이지 제안을 받을 수 있습니다.');request.current=null;await onRefresh.current();return}setNotice('');if(currentDate.current===payload.date)setRun({id:payload.id,status:'running',progress:`${payload.date} 제안을 위해 진척과 회의 기록을 모으고 있습니다.`})}catch(e){try{const state=await agentRequest('/api/brief?date='+payload.date);if(currentDate.current===payload.date&&state.run){setRun(state.run);if(state.run.status==='running'){setError('');setNotice('요청은 접수됐습니다. 연결이 잠시 지연되어도 분석 상태를 계속 확인합니다.');return}}}catch{}setError(e instanceof Error?e.message:'분석을 시작하지 못했습니다.')}finally{startingRef.current=false;setStarting(false)}
  }
  useEffect(()=>{if(!launch||launch.date!==date||launched.current===launch.id)return;launched.current=launch.id;void start(launch.id)},[launch,date]);
  useEffect(()=>{
   if(demo)return;let active=true,timer:ReturnType<typeof setTimeout>;setRun(null);setError('');refreshedRun.current='';
   const poll=async()=>{try{
-   const result=await agentRequest('/api/brief?date='+date);if(!active)return;setRun(result.run);
-   if(result.run?.status==='running'){try{await agentRequest('/api/agent/run','POST',{id:result.run.id,action:'poll'})}catch(e){if(active)setError(e instanceof Error?e.message:'연결을 다시 확인합니다.')}}
+   const result=await agentRequest('/api/brief?date='+date);if(!active)return;setRun(result.run);setError('');
+   if(result.run?.status==='running'){try{await agentRequest('/api/agent/run','POST',{id:result.run.id,action:'poll'});if(active)setNotice('')}catch{if(active)setNotice('분석은 서버에서 계속 진행 중입니다. 연결 상태를 다시 확인하고 있습니다.')}}
    else if(result.run?.status==='completed'){request.current=null;if(refreshedRun.current!==result.run.id){refreshedRun.current=result.run.id;await onRefresh.current()}}
    else if(result.run?.status==='failed'){request.current=null;}
   }catch(e){if(active)setError(e instanceof Error?e.message:'분석 상태를 불러오지 못했습니다.')}finally{if(active)timer=setTimeout(poll,3000)}};

@@ -40,6 +40,15 @@ test('Hermes creates a persistent evidence-based brief with no task/calendar wri
  const item=state.data.proposals[0].items[0];state=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:state.revision,action:{type:'proposal.approve',date,itemId:item.id}});assert.equal(state.data.events.length,1);
 }));
 
+test('deferred planning acknowledges durable storage before any slow Hermes work',()=>fixture(async db=>{
+ await seed(db);await hermes(db);let fetched=false;globalThis.fetch=async()=>{fetched=true;throw new Error('must not run during acknowledgement')};
+ const id=randomUUID(),status=await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env,{defer:true});
+ assert.equal(status,'running');assert.equal(fetched,false);
+ const turn=await db.prepare('SELECT status FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
+ const job=await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind('owner',id).first();
+ assert.equal(turn.status,'running');assert.equal(JSON.parse(job.job_json).phase,'prepare');
+}));
+
 test('strategic ranking controls allocation; new follow-ups stay drafts, defer without creating work, and materialize only on approval',()=>fixture(async db=>{
  const snapshot=await seed(db),ctx=await collectPlanningContext(db,'owner',snapshot,planning,[],env),c=content();c.priorities=[{...c.priorities[0],taskId:undefined,title:'가격 조건 확인',minutes:20},c.priorities[0]];
  const brief=completeBrief(c,ctx,planning,snapshot.revision,randomUUID());let data=applyAction(snapshot.data,{type:'proposal.brief',brief,energy:'normal'});const plan=data.proposals[0];assert.equal(data.tasks.length,2);assert.equal(plan.items[0].draftTask.title,'가격 조건 확인');assert.equal(plan.items[0].end-plan.items[0].start,20);

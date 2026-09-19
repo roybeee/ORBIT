@@ -9,7 +9,10 @@ import {localPlanning} from '@/lib/orbit/brief/start';
 const input=z.object({id:z.string().uuid(),date:dateSchema,energy:z.enum(['low','normal','high'])}).strict();
 export const dynamic='force-dynamic';
 export async function POST(request:Request){try{const user=await owner(request),parsed=input.safeParse(await body(request,1000));if(!parsed.success)throw new AgentError('제안 날짜와 컨디션을 확인해 주세요.');const {id,...planning}=parsed.data;
- try{await runAgent(getDatabase(),user.id,{id,message:briefMessage(planning),planning},env)}
+ // Persist the analysis request and acknowledge it immediately. The UI/runtime poller
+ // advances the resumable job in bounded steps, so a slow calendar or Hermes call
+ // cannot make the original mobile request look like a failed submission.
+ try{await runAgent(getDatabase(),user.id,{id,message:briefMessage(planning),planning},env,{defer:true})}
  catch(error){if(!(error instanceof AgentError&&error.code==='HERMES_SETUP'))throw error;await localPlanning(getDatabase(),user.id,id+':local',planning);return json({ok:true,id,local:true})}
  return json({ok:true,id,local:false})}catch(error){return failure(error)}}
 export async function GET(request:Request){try{const user=await owner(),parsed=dateSchema.safeParse(new URL(request.url).searchParams.get('date'));if(!parsed.success)throw new AgentError('제안 날짜를 확인해 주세요.');const date=parsed.data;
