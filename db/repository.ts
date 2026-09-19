@@ -1,5 +1,5 @@
-import {taskCalendarSource} from '../lib/orbit/calendar-categories.ts';
-import {addDays} from '../lib/orbit/dates.ts';
+import {taskCalendarSource,taskCalendarDate} from '../lib/orbit/calendar-categories.ts';
+import {addDays,todayInZone} from '../lib/orbit/dates.ts';
 import {WORKSPACE_LIMIT_BYTES} from '../lib/orbit/storage-usage.ts';
 import {
   attachmentGate,
@@ -428,7 +428,7 @@ function taskCalendarQueueStatement(db:Database,owner:string,items:{eventId:stri
 }
 // Existing dated tasks are reconciled when the user opens a calendar range.
 export async function queueTaskCalendarBackfill(db:Database,owner:string,date:string){
- const snapshot=await readWorkspace(db,owner),from=addDays(date,-7),to=addDays(date,31);
- const items=snapshot.data.tasks.filter(t=>t.due>=from&&t.due<to).map(t=>({eventId:'task-due:'+t.id,sourceKey:taskCalendarSource(t,snapshot.data.preferences)}));
+ const snapshot=await readWorkspace(db,owner),from=addDays(date,-7),to=addDays(date,31),today=todayInZone(snapshot.data.preferences.timeZone);
+ const items=snapshot.data.tasks.filter(t=>{const day=taskCalendarDate(t,today);return (day>=from&&day<to)||(t.status!=='done'&&t.due<today)}).map(t=>({eventId:'task-due:'+t.id,sourceKey:taskCalendarSource(t,snapshot.data.preferences,today)}));
  if(items.length)await taskCalendarQueueStatement(db,owner,items,'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=?)',[owner,snapshot.revision],new Date().toISOString()).run();
 }

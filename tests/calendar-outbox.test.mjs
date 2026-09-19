@@ -113,3 +113,23 @@ test('deleting a task removes only its unchanged owned Google reminder',()=>fixt
  const snapshot=await readWorkspace(db,'a');await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.delete',id:'recruit'}});
  await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.remote,null);assert.equal((await calendarExports(db,'a'))[0].status,'cancelled');
 }));
+
+test('midnight rollover moves the same Google task, includes old backlog, and stops after completion',t=>fixture(async db=>{
+ const {queueTaskCalendarBackfill}=await import('../db/repository.ts');
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-21T03:00:00Z')});
+ await taskFixture(db);await connect(db);const g=google();
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');const id=g.remote.id;
+ assert.equal(g.remote.start.date,'2026-09-21');
+ // Several days offline still produce just one carried item on return.
+ t.mock.timers.setTime(new Date('2026-10-03T03:00:00Z').getTime());await connect(db);
+ await queueTaskCalendarBackfill(db,'a','2026-10-03');
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');
+ assert.equal(g.remote.start.date,'2026-10-03');assert.equal(g.remote.id,id);assert.equal(g.posts,1);assert.equal(g.patches,1);
+ await queueTaskCalendarBackfill(db,'a','2026-10-03');assert.equal((await calendarExports(db,'a'))[0].status,'verified');
+ const snapshot=await readWorkspace(db,'a');assert.equal(snapshot.data.tasks[0].due,'2026-09-21');
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.status',id:'recruit',status:'done'}});
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.remote.start.date,'2026-10-03');
+ t.mock.timers.setTime(new Date('2026-10-04T03:00:00Z').getTime());
+ await queueTaskCalendarBackfill(db,'a','2026-10-04');assert.equal((await calendarExports(db,'a'))[0].status,'verified');
+ assert.equal(g.posts,1);assert.equal(g.remote.start.date,'2026-10-03');
+}));

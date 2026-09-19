@@ -1,5 +1,5 @@
 import {taskCalendarEvent,categoryOf,googleCategoryColor} from '../calendar-categories.ts';
-import {addDays} from '../dates.ts';
+import {addDays,todayInZone} from '../dates.ts';
 import {readWorkspace,type Database} from '../../../db/repository.ts';
 import {accessToken,fetchJson,type Runtime} from './integrations.ts';
 import {zonedInstant} from './calendar.ts';
@@ -32,7 +32,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
  const snapshot=await readWorkspace(db,owner);
  const taskId=state.eventId.startsWith('task-due:')?state.eventId.slice(9):undefined;
  const task=taskId?snapshot.data.tasks.find(t=>t.id===taskId):undefined;
- const event=task?taskCalendarEvent(task):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
+ const event=task?taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone)):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
  if(!event&&!taskId){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
    .bind(JSON.stringify({...state,status:'cancelled',leaseUntil:0,message:'Orbit에서 삭제되어 등록을 중단했습니다.'}),owner,state.eventId,row.state_json).run();return calendarDeliveryStatus(db,owner);}
  state.status='publishing';state.leaseUntil=Date.now()+60000;
