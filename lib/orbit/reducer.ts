@@ -1,5 +1,6 @@
 import {WORKSPACE_LIMIT_BYTES,workspaceUsage} from './storage-usage.ts';
 import {workEligibility} from './work-policy.ts';
+import {reconcileProjectWork} from './project-management.ts';
 import {monthlyReport} from './phase4.ts';
 import {prepareReplan,replanBasis} from './reschedule.ts';
 import {planningFloor,minuteInZone} from './dates.ts';
@@ -26,6 +27,16 @@ function replace<T extends { id: string }>(list: T[], record: T) {
 }
 export const LIMITS = { goals: 12, improvements: 40, habits: 3, risks: 10, habitLog: 400 };
 export function validateLinks(data: WorkspaceData) {
+  for(const p of data.projects){
+    if(p.status==='completed'&&!p.result?.trim())fail('완료한 프로젝트의 최종 결과를 기록해 주세요.');
+    if(p.nextTaskId&&!data.tasks.some(t=>t.id===p.nextTaskId&&t.projectId===p.id&&t.status!=='done'))fail('다음 행동은 같은 프로젝트의 미완료 할 일을 선택해 주세요.');
+    if((p.milestones??[]).length>30)fail('프로젝트마다 실행 단계는 30개까지 등록할 수 있습니다.');
+    if((p.milestones??[]).some(m=>m.done&&m.taskIds.some(id=>data.tasks.find(t=>t.id===id)?.status!=='done')))fail('연결된 할 일을 마친 뒤 단계를 완료해 주세요.');
+    if((p.milestones??[]).some(m=>m.taskIds.length>500))fail('한 단계에는 할 일을 500개까지 연결할 수 있습니다.');
+    const ids=(p.milestones??[]).flatMap(m=>m.taskIds);
+    if(new Set((p.milestones??[]).map(m=>m.id)).size!==(p.milestones??[]).length||new Set(ids).size!==ids.length)fail('같은 단계나 할 일을 중복 연결할 수 없습니다.');
+    if(ids.some(id=>!data.tasks.some(t=>t.id===id&&t.projectId===p.id)))fail('단계에는 같은 프로젝트의 할 일만 연결할 수 있습니다.');
+  }
   if((data.experiments??[]).length>100||(data.contacts??[]).length>200)fail('실험 100개·사람 200개까지 보관할 수 있습니다.');
   for(const e of data.experiments??[])if(!data.projects.some(p=>p.id===e.projectId)||!data.notes.some(n=>n.id===e.noteId)||!data.tasks.some(t=>t.id===e.taskId&&t.projectId===e.projectId))fail('실험의 프로젝트·근거·업무 연결을 확인해 주세요.');
   for(const c of data.contacts??[]){for(const [ids,records] of [[c.projectIds,data.projects],[c.noteIds,data.notes],[c.decisionIds,data.decisions??[]],[c.delegationIds,data.delegations??[]],[c.eventIds,data.events]] as [string[],{id:string}[]][])if(ids.some(id=>!records.some(r=>r.id===id)))fail('사람 카드의 연결 기록을 확인해 주세요.');}
@@ -145,6 +156,13 @@ export function applyAction(
     if (!t.startedAt) return;
     t.actualMinutes = (t.actualMinutes ?? 0) + elapsedMinutes(t.startedAt, now);
     delete t.startedAt;
+  };
+  const suspendProject = (id:string) => {
+    for(const t of data.tasks.filter(t=>t.projectId===id)){
+      finishSession(t);
+      if(t.focusDate&&t.focusDate>=today){t.focus=false;delete t.focusDate;}
+      if(t.laserDate&&t.laserDate>=today)delete t.laserDate;
+    }
   };
   const assertFocusRoom = (t: Task, date: string) => {
     if (
@@ -320,9 +338,50 @@ export function applyAction(
       routine.log = routine.log.sort().slice(-400);
       break;
     }
-    case 'project.upsert':
-      data.projects = replace(data.projects, action.project);
+    case 'project.upsert': {
+      const old=data.projects.find(p=>p.id===action.project.id);
+      const updated={...action.project};
+      // Legacy title/goal editors omit management fields; preserve only that new metadata.
+      for(const key of ['status','result','completedOn','nextTaskId','milestones'] as const)
+        if(updated[key]===undefined&&old?.[key]!==undefined)(updated as unknown as Record<string,unknown>)[key]=old[key];
+      if(updated.status==='completed')updated.completedOn=updated.completedOn??today;else delete updated.completedOn;
+      data.projects = replace(data.projects, updated);
+      if(updated.status&&updated.status!=='active')suspendProject(updated.id);
       break;
+    }
+    case 'project.manage': {
+      const p=data.projects.find(p=>p.id===action.id)??fail('프로젝트를 찾을 수 없습니다.');
+      if(action.status==='completed'&&!action.result.trim())fail('완료한 결과를 한 줄 이상 기록해 주세요.');
+      p.status=action.status;p.priority=action.priority;p.result=action.result.trim();
+      if(action.goalId)p.goalId=action.goalId;else delete p.goalId;
+      if(action.status==='completed')p.completedOn=p.completedOn??today;else delete p.completedOn;
+      if(action.status!=='active')suspendProject(p.id);
+      break;
+    }
+    case 'project.milestone.upsert': {
+      const p=data.projects.find(p=>p.id===action.id)??fail('프로젝트를 찾을 수 없습니다.');
+      const m=action.milestone;
+      if(m.taskIds.some(id=>!data.tasks.some(t=>t.id===id&&t.projectId===p.id)))fail('같은 프로젝트의 할 일을 선택해 주세요.');
+      if(m.done&&m.taskIds.some(id=>data.tasks.find(t=>t.id===id)?.status!=='done'))fail('연결된 할 일을 마친 뒤 단계를 완료해 주세요.');
+      p.milestones=replace(p.milestones??[],m);break;
+    }
+    case 'project.milestone.delete': {
+      const p=data.projects.find(p=>p.id===action.id)??fail('프로젝트를 찾을 수 없습니다.');
+      p.milestones=(p.milestones??[]).filter(m=>m.id!==action.milestoneId);break;
+    }
+    case 'project.task-stage': {
+      const p=data.projects.find(p=>p.id===action.id)??fail('프로젝트를 찾을 수 없습니다.');
+      if(task(action.taskId).projectId!==p.id)fail('같은 프로젝트의 할 일만 연결할 수 있습니다.');
+      if(action.milestoneId&&!(p.milestones??[]).some(m=>m.id===action.milestoneId))fail('단계를 찾을 수 없습니다.');
+      for(const m of p.milestones??[])m.taskIds=m.taskIds.filter(id=>id!==action.taskId);
+      if(action.milestoneId)p.milestones!.find(m=>m.id===action.milestoneId)!.taskIds.push(action.taskId);
+      break;
+    }
+    case 'project.next-task': {
+      const p=data.projects.find(p=>p.id===action.id)??fail('프로젝트를 찾을 수 없습니다.');
+      if(action.taskId){const t=task(action.taskId);if(t.projectId!==p.id||t.status==='done')fail('같은 프로젝트의 미완료 할 일을 선택해 주세요.');p.nextTaskId=t.id;}else delete p.nextTaskId;
+      break;
+    }
     case 'project.delete':
       if (
         data.tasks.some((t) => t.projectId === action.id) ||
@@ -386,6 +445,7 @@ export function applyAction(
       )
         t.unplanned = true;
       if (t.focus) {
+        if((!old?.focus||old.projectId!==t.projectId)&&(data.projects.find(p=>p.id===t.projectId)?.status??'active')!=='active')fail('진행 중인 프로젝트의 할 일만 집중할 일로 선택할 수 있습니다.');
         t.focusDate = t.focusDate ?? today;
         assertFocusRoom(t, t.focusDate);
       }
@@ -822,6 +882,7 @@ export function applyAction(
       break;
   }
   for(const t of data.tasks){const previous=current.tasks.find(x=>x.id===t.id);if(t.outcome&&t.outcomeOn&&(!previous||previous.outcome!==t.outcome||previous.outcomeOn!==t.outcomeOn||previous.actualMinutes!==t.actualMinutes||previous.outcomeReason!==t.outcomeReason)){data.executionHistory=[...data.executionHistory??[],{id:`execution:${crypto.randomUUID()}`,taskId:t.id,title:t.title,projectId:t.projectId,date:t.outcomeOn,at:now.toISOString(),due:t.due,outcome:t.outcome,reason:t.outcomeReason??'',estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes??null,impact:t.impact,buffer:data.preferences.bufferFraction}].slice(-1200);}}
+  if(!action.type.startsWith('project.')||action.type==='project.task-stage')reconcileProjectWork(data);
   validateLinks(data);
   if (
     workspaceUsage(data).bytes > WORKSPACE_LIMIT_BYTES

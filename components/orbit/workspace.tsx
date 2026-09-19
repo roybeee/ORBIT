@@ -88,6 +88,8 @@ import {WorkspaceDashboard} from './dashboard';
 import {TodayHome} from './today-home';
 import {CalendarSyncStatus} from './calendar-sync';
 import {CalendarAgenda} from './calendar-agenda';
+import {ProjectHub} from './project-hub';
+import {ProjectDetailPanel} from './project-detail';
 import {eventCommand,moveConflict,moveRestriction} from '@/lib/orbit/calendar-move';
 import type {CalendarEvent} from '@/lib/orbit/model';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
@@ -494,8 +496,17 @@ function WorkspaceContent({
     if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
       createId.current=restored.id;setNewTitle(restored.newTitle);setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
     }
-    if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);}
+    if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);if((projects.find(p=>p.id===contextProjectId)?.status??'active')!=='active')setNewFocus(false);}
     setCreate(kind);
+  };
+  const openProjectChat = (id:string) => {
+    setDetail(null);
+    const url=new URL(location.href);
+    url.searchParams.set('chatProject',id);
+    url.searchParams.delete('conversation');
+    history.replaceState(null,'',url.pathname+url.search+url.hash);
+    navigate('agent');
+    window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{projectId:id}}));
   };
   const saveReview = async (
     review: { date: string; win: string; block: string; energy: Proposal['energy'] },
@@ -607,8 +618,8 @@ function WorkspaceContent({
           duration: Number(newDuration),
           due: newDate,
           impact: old?.impact ?? 3,
-          focus: newFocus,
-          focusDate: newFocus ? (old?.focusDate ?? TODAY) : undefined,
+          focus: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active',
+          focusDate: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active' ? (old?.focusDate ?? TODAY) : undefined,
           definition: newBody.trim() || '결과물을 확인하고 완료 처리',
           blocker: newBlocker.trim() || undefined,
           checkDate: newCheckDate || undefined,
@@ -687,6 +698,7 @@ function WorkspaceContent({
         setCalendarDate(newDate);
         navigate('calendar');
       }
+      if(create==='project'&&!editingId){navigate('projects');setDetail({kind:'project',id});}
       if(!editingId&&create)clearDraft(ownerId,'form',create);
       setCreate(null);
     }
@@ -1161,95 +1173,7 @@ function WorkspaceContent({
             />
             </>
           )}
-          {view === 'projects' && projectsMode === 'cards' && (
-            <>
-              <div className="info-banner">
-                <Target size={18} />
-                <span>
-                  진척률은 등록된 업무의 완료 비율입니다. 프로젝트의 실제 성공 여부는 최종 결과물로
-                  확인합니다.
-                </span>
-              </div>
-              <div className="project-grid">
-                {projects.map((p) => (
-                  <article
-                    className="full-card project-card"
-                    key={p.id}
-                    style={{ '--project-color': p.color } as CSSProperties}
-                  >
-                    <div className="mini-top">
-                      <span className="project-square" style={{ background: `${p.color}19`, color: p.color }}>
-                        {p.symbol}
-                      </span>
-                      <span className="status status-gray">{p.due.slice(5).replace('-', '/')} 목표</span>
-                      {data.dominoProjectId === p.id && (
-                        <span className="status status-blue">
-                          <Crosshair size={11} /> 도미노
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setDetail({ kind: 'project', id: p.id })}
-                      style={{ textAlign: 'left' }}
-                    >
-                      <h2>{p.name}</h2>
-                    </button>
-                    <p className="project-goal">{p.goal}</p>
-                    {p.goalId && (
-                      <p className="form-hint">
-                        ↑ {(data.goals ?? []).find((g) => g.id === p.goalId)?.sentence}
-                      </p>
-                    )}
-                    <div style={{ marginTop: 22 }}>
-                      <div className="progress-label">
-                        <span>등록 업무 완료율</span>
-                        <span>{progress(p.id)}%</span>
-                      </div>
-                      <Progress
-                        className="project-progress"
-                        value={progress(p.id)}
-                        aria-label={`${p.name} 등록 업무 완료율`}
-                      />
-                    </div>
-                    <p className="project-next">
-                      다음 행동 ·{' '}
-                      {tasks.find((t) => t.projectId === p.id && t.status !== 'done')?.title ??
-                        '다음 행동을 정해 주세요'}
-                    </p>
-                    <div className="card-footer">
-                      <span>
-                        업무 {tasks.filter((t) => t.projectId === p.id).length} · 기록{' '}
-                        {notes.filter((n) => n.projectId === p.id).length}
-                      </span>
-                      <button
-                        className="text-button"
-                        onClick={() => {
-                          const url = new URL(location.href);
-                          url.searchParams.set('chatProject', p.id);
-                          url.searchParams.delete('conversation');
-                          history.replaceState(null, '', url.pathname + url.search + url.hash);
-                          navigate('agent');
-                          window.dispatchEvent(
-                            new CustomEvent('orbit:open-chat', { detail: { projectId: p.id } }),
-                          );
-                        }}
-                      >
-                        대화 보기
-                        <ChevronRight size={14} />
-                      </button>
-                      <button
-                        className="text-button"
-                        onClick={() => setDetail({ kind: 'project', id: p.id })}
-                      >
-                        프로젝트 열기
-                        <ChevronRight size={14} />
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
+          {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={id=>setDetail({kind:'project',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onChat={openProjectChat}/>}
           {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
           <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={calendarInteracting||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
           {loaded && view === 'calendar' && (
@@ -1400,10 +1324,10 @@ function WorkspaceContent({
       <Sheet
         open={!!detail}
         onOpenChange={(open) => {
-          if (!open) setDetail(null);
+          if (!open) {if(projectDetail&&dataEditing){toast('작성 중인 설정이나 단계를 먼저 저장하거나 취소해 주세요.');return;}setDetail(null);}
         }}
       >
-        <SheetContent className="w-full sm:max-w-[520px] p-0 flex flex-col" side="right">
+        <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right">
           <SheetHeader className="px-7 pt-9 pb-5 border-b">
             <SheetTitle className="text-xl leading-relaxed">
               {taskDetail?.title ??
@@ -1429,7 +1353,7 @@ function WorkspaceContent({
               <>
                 <div className="detail-keyvalue">
                   <span>연결 프로젝트</span>
-                  <strong>{projectById(taskDetail.projectId)?.name}</strong>
+                  <button className="text-button" onClick={()=>setDetail({kind:'project',id:taskDetail.projectId})}>{projectById(taskDetail.projectId)?.name}<ChevronRight size={14}/></button>
                 </div>
                 <div className="detail-keyvalue">
                   <span>마감일</span>
@@ -1656,74 +1580,7 @@ function WorkspaceContent({
                 onNewTask={() => openCreate('task')}
               />{noteDetail.kind==='wiki'&&<WikiRelated data={data} note={noteDetail} onOpen={(kind,id)=>setDetail({kind,id})}/>}</>
             )}
-            {projectDetail && (
-              <>
-                <div className="section-title">
-                  <button className="secondary-button" onClick={() => openEdit('project', projectDetail.id)}>
-                    <Pencil size={14} />
-                    프로젝트 수정
-                  </button>
-                  <button
-                    className="text-button danger-text"
-                    onClick={() =>
-                      setDeleteTarget({ kind: 'project', id: projectDetail.id, title: projectDetail.name })
-                    }
-                  >
-                    <Trash2 size={14} />
-                    삭제
-                  </button>
-                </div>
-                <h3>만들어야 할 결과</h3>
-                <p className="definition">{projectDetail.goal}</p>
-                <div className="detail-keyvalue">
-                  <span>목표일</span>
-                  <strong>{projectDetail.due}</strong>
-                </div>
-                <div className="detail-keyvalue">
-                  <span>등록 업무 완료율</span>
-                  <strong>{progress(projectDetail.id)}%</strong>
-                </div>
-                <h3>다음 행동</h3>
-                {tasks
-                  .filter((t) => t.projectId === projectDetail.id)
-                  .sort((a,b)=>Number(a.status==='done')-Number(b.status==='done')||a.due.localeCompare(b.due))
-                  .map((t) => (
-                    <button
-                      className="link-card"
-                      key={t.id}
-                      onClick={() => setDetail({ kind: 'task', id: t.id })}
-                    >
-                      <CheckCheck size={16} />
-                      <span style={{ flex: 1 }}>{t.title}</span>
-                      <Status status={t.status} />
-                    </button>
-                  ))}
-                <details className="workspace-more" key={'followup:'+projectDetail.id}><summary>위임·회신·결정 확인</summary><FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/></details>
-                <h3>연결된 일정</h3>
-                {events.filter(e=>e.projectId===projectDetail.id).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start).map(e=><button key={e.id} className="link-card" onClick={()=>setDetail({kind:'event',id:e.id})}><CalendarDays size={16}/><span>{e.title}<small>{e.date} · {formatTime(e.start)}</small></span></button>)}
-                {(data.meetingRecords??[]).some(r=>r.projectId===projectDetail.id)&&<><h3>확정한 회의 결과</h3>{(data.meetingRecords??[]).filter(r=>r.projectId===projectDetail.id).map(r=><button key={r.id} className="link-card" onClick={()=>setDetail({kind:'note',id:r.noteId,revision:r.noteRevision})}><CheckCheck size={16}/><span>{notes.find(n=>n.id===r.noteId)?.title??'회의 결과'} · 확정 당시 기록</span></button>)}</>}
-                <h3>회의록과 자료</h3>
-                {notes
-                  .filter((n) => n.projectId === projectDetail.id)
-                  .map((n) => (
-                    <button
-                      className="link-card"
-                      key={n.id}
-                      onClick={() => setDetail({ kind: 'note', id: n.id })}
-                    >
-                      <FileText size={16} />
-                      {n.title}
-                    </button>
-                  ))}
-                <div className="sheet-actions">
-                  <button className="primary-button" onClick={() => openCreate('task',projectDetail.id)}>
-                    <Plus size={16} />할 일 추가
-                  </button>
-                  <button className="secondary-button" onClick={()=>openCreate('meeting',projectDetail.id)}>회의록 추가</button>
-                  <button className="secondary-button" onClick={()=>openCreate('event',projectDetail.id)}>일정 추가</button>
-                </div>
-              </>
-            )}
+            {projectDetail && <ProjectDetailPanel key={projectDetail.id} project={projectDetail} data={data} today={TODAY} busy={busy||hasPending||!loaded} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onCreate={openCreate} onEdit={()=>openEdit('project',projectDetail.id)} onDelete={()=>setDeleteTarget({kind:'project',id:projectDetail.id,title:projectDetail.name})} onChat={()=>openProjectChat(projectDetail.id)} onEditing={setDataEditing} followup={<FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}/>}
             {eventDetail && (
               <>
                 <EventFiles
@@ -1958,7 +1815,7 @@ function WorkspaceContent({
                 </div>
                 <div className="choice-row">
                   <label className="focus-choice">
-                    <Checkbox checked={newFocus} onCheckedChange={(v) => setNewFocus(v === true)} />
+                    <Checkbox checked={newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active'} disabled={(projects.find(p=>p.id===taskProject)?.status??'active')!=='active'} onCheckedChange={(v) => setNewFocus(v === true)} />
                     핵심 결과물로 지정
                   </label>
                   <label className="focus-choice">

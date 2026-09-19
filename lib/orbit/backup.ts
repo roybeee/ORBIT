@@ -42,6 +42,7 @@ export function previewRestore(current:WorkspaceData,raw:unknown,selection:z.inf
   if(existing){conflicts.push(key);return;}
   if(category!=='executionHistory'&&'projectId'in record&&record.projectId)add('projects',record.projectId);
   if('goalId'in record&&record.goalId)add('goals',record.goalId);
+  if(category==='projects'){const p=record as WorkspaceData['projects'][number];if(p.nextTaskId)add('tasks',p.nextTaskId);for(const m of p.milestones??[])for(const id of m.taskIds)add('tasks',id);}
   if(category==='goals'&&'parentId'in record&&record.parentId)add('goals',record.parentId);
   if(category!=='executionHistory'&&'taskId'in record&&record.taskId)add('tasks',record.taskId);
   if('noteId'in record&&record.noteId)add('notes',record.noteId);

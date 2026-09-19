@@ -12,6 +12,8 @@ export type Cognition = 'high' | 'mid' | 'low' | 'external';
 export type Outcome = 'done' | 'partial' | 'skipped';
 export type OutcomeReason = 'time' | 'waiting' | 'priority' | 'scope' | 'energy' | 'other';
 export type ImprovementKind = 'buffer' | 'placement' | 'estimate' | 'habit' | 'decline' | 'other';
+export type ProjectStatus = 'planned' | 'active' | 'paused' | 'completed';
+export interface ProjectMilestone { id: string; title: string; due: string; done: boolean; taskIds: string[]; }
 export interface Project {
   id: string;
   name: string;
@@ -22,6 +24,11 @@ export interface Project {
   priority: number;
   goalId?: string;
   keywords?: string[];
+  status?: ProjectStatus;
+  result?: string;
+  completedOn?: string;
+  nextTaskId?: string;
+  milestones?: ProjectMilestone[];
 }
 export interface Task {
   id: string;

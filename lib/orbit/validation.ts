@@ -16,6 +16,8 @@ const cognition = z.enum(['high', 'mid', 'low', 'external']);
 const outcome = z.enum(['done', 'partial', 'skipped']);
 const outcomeReason = z.enum(['time', 'waiting', 'priority', 'scope', 'energy', 'other']);
 const improvementKind = z.enum(['buffer', 'placement', 'estimate', 'habit', 'decline', 'other']);
+const projectStatus = z.enum(['planned', 'active', 'paused', 'completed']);
+export const milestoneSchema = z.object({id,title,due:dateSchema,done:z.boolean(),taskIds:z.array(id).max(500).refine(ids=>new Set(ids).size===ids.length)}).strict();
 export const projectSchema = z
   .object({
     id,
@@ -27,6 +29,11 @@ export const projectSchema = z
     priority: z.number().int().min(1).max(5),
     goalId: id.optional(),
     keywords: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
+    status: projectStatus.optional(),
+    result: z.string().max(4000).optional(),
+    completedOn: dateSchema.optional(),
+    nextTaskId: id.optional(),
+    milestones: z.array(milestoneSchema).max(30).refine(items=>new Set(items.map(m=>m.id)).size===items.length).optional(),
   })
   .strict();
 export const taskSchema = z
@@ -231,6 +238,11 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('care.check'), id, checked: z.boolean() }).strict(),
   z.object({type:z.literal('wiki.import'),project:projectSchema,notes:z.array(noteSchema).min(1).max(100).refine(list=>new Set(list.map(n=>n.id)).size===list.length)}).strict(),
   z.object({ type: z.literal('project.upsert'), project: projectSchema }).strict(),
+  z.object({type:z.literal('project.manage'),id,status:projectStatus,priority:z.number().int().min(1).max(5),goalId:id.nullable(),result:z.string().max(4000)}).strict(),
+  z.object({type:z.literal('project.milestone.upsert'),id,milestone:milestoneSchema}).strict(),
+  z.object({type:z.literal('project.milestone.delete'),id,milestoneId:id}).strict(),
+  z.object({type:z.literal('project.task-stage'),id,taskId:id,milestoneId:id.nullable()}).strict(),
+  z.object({type:z.literal('project.next-task'),id,taskId:id.nullable()}).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),
   z.object({ type: z.literal('goal.upsert'), goal: goalSchema, clearFields: z.array(z.enum(['deadline','parentId','metric'])).max(3).optional() }).strict(),

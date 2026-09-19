@@ -16,7 +16,8 @@ export function goalIsActive(data: Pick<WorkContext, 'goals'>, goalId?: string) 
 }
 
 export function goalAllowsWork(data: Pick<WorkContext, 'projects' | 'goals'>, projectId: string) {
-  return goalIsActive(data, data.projects?.find(p => p.id === projectId)?.goalId);
+  const project=data.projects?.find(p=>p.id===projectId);
+  return (!project || (project.status??'active')==='active') && goalIsActive(data, project?.goalId);
 }
 
 // Planning for a date and starting now share all durable constraints. Only starting
@@ -25,6 +26,8 @@ export function workEligibility(data: WorkContext, task: Task, date: string, mod
   const denied = (state: WorkState, reason: string) => ({ state, reason, allowed: false });
   if (task.status === 'done') return denied('done', task.completedOn ? `${task.completedOn} 완료` : '완료 기록');
   if (data.projects && !data.projects.some(p => p.id === task.projectId)) return denied('blocked', '연결할 프로젝트가 없습니다.');
+  const project=data.projects?.find(p=>p.id===task.projectId);
+  if(project&&(project.status??'active')!=='active')return denied('paused',project.status==='completed'?'완료한 프로젝트입니다.':project.status==='planned'?'준비 중인 프로젝트입니다. 진행 상태로 바꾸면 계획에 포함됩니다.':'보류 중인 프로젝트입니다.');
   const allocation = data.weeklyAllocations?.find(p => p.active && p.from <= date && p.through >= date);
   if (allocation?.allocations.find(a => a.projectId === task.projectId)?.stance === 'pause') return denied('paused', '승인한 주간 배분에서 이번 주 보류한 사업입니다.');
   if (!goalAllowsWork(data, task.projectId)) return denied('paused', '연결 목표가 보류 또는 달성 상태입니다.');

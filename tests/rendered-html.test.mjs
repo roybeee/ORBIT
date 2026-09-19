@@ -211,3 +211,20 @@ test('built API accepts independent conversations while one is already running a
 });
 
 test('personal context HTTP endpoints are private, bounded and owner-scoped',async()=>{assert.equal((await request('/api/personal')).status,401);const response=await request('/api/personal',{headers:identity('personal-http-owner')});assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);assert.equal((await response.json()).turns,0);assert.equal((await request('/api/personal?q='+('a'.repeat(201)),{headers:identity()})).status,400);const search=await request('/api/personal?q=sample',{headers:identity('personal-http-owner')});assert.equal(search.status,200);assert.deepEqual((await search.json()).items,[]);});
+
+test('built project management routes persist stages, next actions and lifecycle through owner-scoped reloads',async()=>{
+ const owner='project-management-http';let revision=0;
+ const send=async(action,expected=revision)=>{
+  const r=await request('/api/workspace',{method:'POST',headers:{...identity(owner),'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify({operationId:randomUUID(),expectedRevision:expected,action})});
+  assert.equal(r.status,200);const state=await r.json();revision=state.revision;return state;
+ };
+ await send({type:'project.upsert',project:{id:'managed',name:'프로젝트 관리 검증',color:'#7451dc',symbol:'P',goal:'검토 완료한 결과물 전달',due:'2026-09-30',priority:3}});
+ await send({type:'task.upsert',task:{id:'managed-task',projectId:'managed',title:'초안 작성',definition:'초안 전달',status:'todo',focus:false,due:'2026-09-30',duration:30,impact:3}});
+ await send({type:'project.milestone.upsert',id:'managed',milestone:{id:'draft',title:'초안 완성',due:'2026-09-30',done:false,taskIds:['managed-task']}});
+ await send({type:'project.next-task',id:'managed',taskId:'managed-task'});
+ await send({type:'project.manage',id:'managed',status:'paused',priority:5,goalId:null,result:''});
+ const fresh=await request('/api/workspace',{headers:identity(owner)});assert.equal(fresh.status,200);
+ const {data}=await fresh.json();assert.equal(data.projects[0].status,'paused');assert.equal(data.projects[0].nextTaskId,'managed-task');assert.deepEqual(data.projects[0].milestones[0].taskIds,['managed-task']);
+ const invalid=await request('/api/workspace',{method:'POST',headers:{...identity(owner),'content-type':'application/json'},body:JSON.stringify({operationId:randomUUID(),expectedRevision:revision,action:{type:'project.manage',id:'managed',status:'completed',priority:5,goalId:null,result:''}})});assert.equal(invalid.status,422);
+ const another=await request('/api/workspace',{headers:identity('project-management-other')});assert.equal((await another.json()).data.projects.length,0);
+});

@@ -1,6 +1,7 @@
 import type { WorkspaceData, Note } from './model.ts';
 import { DomainError, validateLinks } from './reducer.ts';
 import { overlaps } from './planner.ts';
+import {reconcileProjectWork} from './project-management.ts';
 
 export const dataCategories = ['projects', 'tasks', 'notes', 'events', 'goals', 'memories', 'habits', 'decisions', 'delegations'] as const;
 export type DataCategory = typeof dataCategories[number];
@@ -53,6 +54,7 @@ export function planDataTrash(current: WorkspaceData, selection: DataSelection[]
   if (next.dominoProjectId && keys.has('projects:' + next.dominoProjectId)) delete next.dominoProjectId;
   const taskIds = new Set(selection.filter(s => s.category === 'tasks').map(s => s.id));
   next.proposals = next.proposals.map(p => ({ ...p, items: p.items.filter(i => !taskIds.has(i.taskId)), unscheduled: p.unscheduled.filter(id => !taskIds.has(id)), delegate: p.delegate?.filter(id => !taskIds.has(id)), laser: p.laser?.taskId && taskIds.has(p.laser.taskId) ? { status: 'none', minutes: 0, note: '삭제된 할 일입니다. 제안을 다시 생성해 주세요.' } : p.laser }));
+  reconcileProjectWork(next);
   validateLinks(next);
   return { next, records };
 }

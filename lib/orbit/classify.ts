@@ -160,7 +160,7 @@ export function keywordLinks(project: Project, tasks: Task[]) {
 
 // Strong, unambiguous identity only. Learned vocabulary can suggest, but cannot move a task.
 export function automaticProject(text: string, projects: Project[], tasks: Task[] = [], notes: Note[] = []) {
-  const ranked = suggestProject(text, projects, tasks, notes);
+  const ranked = suggestProject(text, projects.filter(p=>p.status!=='completed'), tasks, notes);
   const best = ranked[0];
   if (best?.confidence !== 'high') return undefined;
   if (ranked[1]?.confidence === 'high' && ranked[1].score * 1.5 >= best.score) return undefined;
