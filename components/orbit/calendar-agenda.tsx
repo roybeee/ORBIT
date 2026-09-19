@@ -1,20 +1,21 @@
 'use client';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowDownUp, Clock3, GripVertical, Pencil, LockKeyhole } from 'lucide-react';
+import { ArrowDownUp, ArrowLeft, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole } from 'lucide-react';
 import type { CalendarEvent, Project } from '@/lib/orbit/model';
 import { formatTime } from '@/lib/orbit/model';
-import { HOLD_MS, MOVE_SLOP, moveConflict, moveRestriction, shiftedEvent } from '@/lib/orbit/calendar-move';
+import { HOLD_MS, MOVE_SLOP, SWIPE_ACTION_WIDTH, SWIPE_OPEN_THRESHOLD, canEditCalendarEvent, calendarGestureIntent, swipeOffset, moveConflict, moveRestriction, shiftedEvent } from '@/lib/orbit/calendar-move';
 
 type Props = {
   events: CalendarEvent[]; projects: Project[]; disabled: boolean;
   onOpen: (event: CalendarEvent) => void;
   onEdit: (id: string) => void;
+  onDelete: (event: CalendarEvent) => void;
   onMove: (before: CalendarEvent, after: CalendarEvent) => Promise<boolean>;
   onInteractionChange: (active: boolean) => void;
 };
 type Session = {
-  event: CalendarEvent; x: number; y: number; currentY: number; scrollY: number;
-  active: boolean; moved: boolean; input: 'touch' | 'pointer'; pointerId: number;
+  event: CalendarEvent; x: number; y: number; currentX: number; currentY: number; scrollY: number;
+  active: boolean; moved: boolean; swiping: boolean; initialOffset: number; input: 'touch' | 'pointer'; pointerId: number;
   timer?: ReturnType<typeof setTimeout>; frame?: number;
 };
 type Preview = { event: CalendarEvent; delta: number; saving?: boolean };
@@ -23,7 +24,22 @@ export function CalendarAgenda(props: Props) {
   const root = useRef<HTMLDivElement>(null), latest = useRef(props), session = useRef<Session | null>(null);
   latest.current = props;
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  const [swipe, setSwipe] = useState<{id: string; offset: number} | null>(null);
+  const openActions = useRef<string | null>(null);
+  const focusActionsOnOpen = useRef(false);
+  const showActions = (id: string | null) => { openActions.current = id; setOpenActionsId(id); };
   const saving = useRef(false), suppressClickUntil = useRef(0), alive = useRef(true);
+
+  useEffect(() => {
+    if (openActions.current && !props.events.some(e => e.id === openActions.current)) showActions(null);
+  }, [props.events]);
+  useEffect(() => {
+    if (openActionsId && focusActionsOnOpen.current) {
+      document.getElementById(`agenda-actions-${openActionsId}`)?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});
+    }
+    focusActionsOnOpen.current = false;
+  }, [openActionsId]);
 
   useEffect(() => {
     alive.current = true;
@@ -42,8 +58,9 @@ export function CalendarAgenda(props: Props) {
       latest.current.onInteractionChange(false);
     };
     const cancel = () => {
-      if (session.current?.active) suppressClickUntil.current = Date.now() + 700;
+      if (session.current?.active || session.current?.swiping) suppressClickUntil.current = Date.now() + 700;
       clear();
+      setSwipe(null);
       if (!saving.current) setPreview(null);
     };
     const autoScroll = () => {
@@ -59,13 +76,16 @@ export function CalendarAgenda(props: Props) {
       if (session.current || saving.current || latest.current.disabled) return;
       const button = target instanceof Element ? target.closest<HTMLElement>('[data-move-event]') : null;
       const event = latest.current.events.find(e => e.id === button?.dataset.moveEvent);
-      if (!event || moveRestriction(event)) return;
-      const s: Session = { event: { ...event }, x, y, currentY: y, scrollY: window.scrollY, active: false, moved: false, input, pointerId };
+      if (!event || !canEditCalendarEvent(event)) return;
+      const initialOffset = openActions.current === event.id ? -SWIPE_ACTION_WIDTH : 0;
+      if (openActions.current !== event.id) showActions(null);
+      const s: Session = { event: { ...event }, x, y, currentX: x, currentY: y, scrollY: window.scrollY, active: false, moved: false, swiping: false, initialOffset, input, pointerId };
       session.current = s;
       latest.current.onInteractionChange(true);
-      s.timer = setTimeout(() => {
+      if (!moveRestriction(event)) s.timer = setTimeout(() => {
         if (session.current !== s || latest.current.disabled) { cancel(); return; }
         s.active = true;
+        showActions(null);
         suppressClickUntil.current = Date.now() + 700;
         if (typeof navigator.vibrate === 'function') navigator.vibrate(18);
         changed();
@@ -74,12 +94,21 @@ export function CalendarAgenda(props: Props) {
     const move = (x: number, y: number, event: Event) => {
       const s = session.current;
       if (!s) return;
-      if (!s.active) {
-        if (Math.hypot(x - s.x, y - s.y) > MOVE_SLOP) cancel();
-        return; // Ordinary scrolling remains native before the long press.
+      if (!s.active && !s.swiping) {
+        const intent = calendarGestureIntent(x - s.x, y - s.y);
+        if (intent === 'scroll') { cancel(); return; }
+        if (intent === 'pending') return;
+        if (s.timer) clearTimeout(s.timer);
+        s.swiping = true;
+        suppressClickUntil.current = Date.now() + 700;
       }
       if (s.input === 'touch' && !event.cancelable) { cancel(); return; }
       if (event.cancelable) event.preventDefault();
+      if (s.swiping) {
+        s.currentX = x;
+        setSwipe({id: s.event.id, offset: swipeOffset(s.initialOffset, x - s.x)});
+        return;
+      }
       s.currentY = y;
       if (!s.moved && Math.abs(y - s.y) > MOVE_SLOP) {
         s.moved = true;
@@ -90,6 +119,14 @@ export function CalendarAgenda(props: Props) {
     const finish = async () => {
       const s = session.current;
       if (!s) return;
+      if (s.swiping) {
+        const offset = swipeOffset(s.initialOffset, s.currentX - s.x);
+        showActions(offset <= -SWIPE_OPEN_THRESHOLD ? s.event.id : null);
+        suppressClickUntil.current = Date.now() + 700;
+        setSwipe(null);
+        clear();
+        return;
+      }
       if (!s.active) { clear(); return; }
       const after = shiftedEvent(s.event, s.currentY - s.y + window.scrollY - s.scrollY);
       suppressClickUntil.current = Date.now() + 700;
@@ -116,7 +153,7 @@ export function CalendarAgenda(props: Props) {
     };
     const touchEnd = (e: TouchEvent) => {
       if (session.current?.input !== 'touch') return;
-      if (session.current.active && e.cancelable) e.preventDefault();
+      if ((session.current.active || session.current.swiping) && e.cancelable) e.preventDefault();
       void finish();
     };
     const pointerDown = (e: PointerEvent) => {
@@ -131,8 +168,18 @@ export function CalendarAgenda(props: Props) {
     };
     const pointerCancel = (e: PointerEvent) => { if (session.current?.input === 'pointer' && session.current.pointerId === e.pointerId) cancel(); };
     const contextMenu = (e: Event) => { if (session.current || Date.now() < suppressClickUntil.current) e.preventDefault(); };
-    const keyDown = (e: KeyboardEvent) => { if (e.key === 'Escape' && session.current) { e.preventDefault(); cancel(); } };
-    const visibility = () => { if (document.hidden) cancel(); };
+    const keyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (session.current || openActions.current)) {
+        e.preventDefault(); cancel();
+        if (openActions.current) document.getElementById(`agenda-actions-${openActions.current}`)?.parentElement?.querySelector<HTMLButtonElement>('.agenda-action-toggle')?.focus({preventScroll:true});
+        showActions(null);
+      }
+    };
+    const outside = (e: PointerEvent) => {
+      const row = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-agenda-row]') : null;
+      if (openActions.current && row?.dataset.agendaRow !== openActions.current) showActions(null);
+    };
+    const visibility = () => { if (document.hidden) { cancel(); showActions(null); } };
     element.addEventListener('touchstart', touchStart, { passive: true });
     // Install before the gesture: changing touch-action after activation is too late on Android.
     document.addEventListener('touchmove', touchMove, { passive: false });
@@ -144,6 +191,7 @@ export function CalendarAgenda(props: Props) {
     document.addEventListener('pointermove', pointerMove);
     document.addEventListener('pointerup', pointerUp);
     document.addEventListener('pointercancel', pointerCancel);
+    document.addEventListener('pointerdown', outside);
     element.addEventListener('contextmenu', contextMenu);
     document.addEventListener('keydown', keyDown);
     document.addEventListener('visibilitychange', visibility);
@@ -159,6 +207,7 @@ export function CalendarAgenda(props: Props) {
       document.removeEventListener('pointermove', pointerMove);
       document.removeEventListener('pointerup', pointerUp);
       document.removeEventListener('pointercancel', pointerCancel);
+      document.removeEventListener('pointerdown', outside);
       element.removeEventListener('contextmenu', contextMenu);
       document.removeEventListener('keydown', keyDown);
       document.removeEventListener('visibilitychange', visibility);
@@ -168,28 +217,39 @@ export function CalendarAgenda(props: Props) {
 
   const conflict = preview && moveConflict(preview.event, props.events);
   return <div ref={root} className={`calendar-agenda ${preview ? 'is-moving' : ''}`}>
-    <p id="calendar-move-help" className="calendar-gesture-hint"><ArrowDownUp size={15} />길게 누른 뒤 위아래로 이동 · 15분씩 조정</p>
+    <p id="calendar-move-help" className="calendar-gesture-hint"><span><ArrowLeft size={15}/>밀어서 수정·삭제</span><span><ArrowDownUp size={15}/>길게 눌러 시간 이동</span></p>
     {!props.events.length && <div className="calendar-empty"><Clock3 size={25}/><strong>예정된 일정이 없어요</strong><p>상단의 일정 추가로 하루를 계획해 보세요.</p></div>}
     {props.events.map(event => {
       const active = preview?.event.id === event.id;
       const shown = active ? preview.event : event;
       const restriction = moveRestriction(event);
+      const editable = canEditCalendarEvent(event);
+      const actionsOpen = openActionsId === event.id;
+      const swiping = swipe?.id === event.id;
+      const offset = swiping ? swipe.offset : actionsOpen ? -SWIPE_ACTION_WIDTH : 0;
       const project = props.projects.find(p => p.id === event.projectId);
-      return <div className={`agenda-row ${active ? 'agenda-moving' : ''}`} key={event.id}>
+      return <div className={`agenda-row ${active ? 'agenda-moving' : ''}`} key={event.id} data-agenda-row={event.id}>
         <time className="agenda-time">{formatTime(shown.start)}<span>{formatTime(shown.end)}</span></time>
+        <div className="agenda-swipe-shell" style={{transform: active && !preview.saving ? `translateY(${preview.delta}px)` : undefined}}>
+        <div className={`agenda-swipe-clip ${swiping ? 'is-swiping' : ''} ${actionsOpen ? 'actions-open' : ''}`}>
+          {editable && <div id={`agenda-actions-${event.id}`} className="agenda-swipe-actions" role="group" aria-label={`${event.title} 수정 및 삭제`} aria-hidden={!actionsOpen} style={{visibility: offset < 0 ? 'visible' : 'hidden'}}>
+            <button type="button" className="agenda-action-edit" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 수정`} onClick={()=>{showActions(null);props.onEdit(event.id)}}><Pencil size={18}/><span>수정</span></button>
+            <button type="button" className="agenda-action-delete" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 삭제`} onClick={()=>{showActions(null);props.onDelete(event)}}><Trash2 size={18}/><span>삭제</span></button>
+          </div>}
         <div className={`agenda-card ${active && conflict ? 'has-conflict' : ''}`}
-          style={{ '--event-color': project?.color ?? (event.kind === 'focus' ? '#74ddef' : event.kind === 'break' ? '#7ee0b6' : '#bbadff'), transform: active && !preview.saving ? `translateY(${preview.delta}px)` : undefined } as CSSProperties}>
+          style={{ '--event-color': project?.color ?? (event.kind === 'focus' ? '#74ddef' : event.kind === 'break' ? '#7ee0b6' : '#bbadff'), transform: `translateX(${offset}px)` } as CSSProperties}>
           <button type="button" className="agenda-event" data-move-event={event.id}
             aria-describedby={!restriction ? 'calendar-move-help' : undefined}
             aria-label={`${event.title}, ${formatTime(shown.start)}부터 ${formatTime(shown.end)}까지${restriction ? ', ' + restriction : ''}`}
-            onClick={e => { if (Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } props.onOpen(event); }}>
+            onClick={e => { if (Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } if(openActions.current === event.id){showActions(null);return;} props.onOpen(event); }}>
             <strong>{event.title}</strong>
             <span className="agenda-meta">{project?.name ?? (event.kind === 'focus' ? '집중 시간' : event.kind === 'break' ? '휴식' : '개인 일정')}<span>·</span>{event.end - event.start}분</span>
             {restriction && <span className="agenda-restriction"><LockKeyhole size={12}/>{restriction}</span>}
             {active && <span className="agenda-new-time">{formatTime(shown.start)}–{formatTime(shown.end)}{preview.saving ? ' · 저장 중…' : ''}</span>}
-            {!restriction && <GripVertical size={18} className="agenda-grip" aria-hidden="true"/>}
           </button>
-          {!restriction && <button type="button" className="agenda-edit" aria-label={`${event.title} 시간 변경`} disabled={props.disabled || !!preview} onClick={() => props.onEdit(event.id)}><Pencil size={15}/><span>시간 변경</span></button>}
+          {editable && <button type="button" className="agenda-action-toggle" aria-label={`${event.title} 수정·삭제 메뉴`} aria-expanded={actionsOpen} aria-controls={`agenda-actions-${event.id}`} disabled={props.disabled || !!preview || swiping} onClick={e=>{focusActionsOnOpen.current=e.detail===0;showActions(actionsOpen ? null : event.id)}}><MoreHorizontal size={20}/></button>}
+        </div>
+        </div>
         </div>
       </div>;
     })}

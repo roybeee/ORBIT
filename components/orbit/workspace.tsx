@@ -1298,7 +1298,7 @@ function WorkspaceContent({
                   <span className="muted">{selectedEvents.length}개</span>
                 </div>
                 {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
-                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
+                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
               </section>
               <aside className="review-summary">
                 <h2>시간을 비워두는 것도 계획</h2>
@@ -2125,6 +2125,7 @@ function WorkspaceContent({
             <AlertDialogDescription>
               {deleteTarget?.title}
               <br />
+              {deleteTarget?.kind==='event'&&<>ORBIT에서 삭제합니다. Google에 등록된 일정은 Google 캘린더에서 별도로 삭제해 주세요.<br /></>}
               삭제 전 백업·복구 화면에서 백업하면 선택 복구할 수 있습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>

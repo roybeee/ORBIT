@@ -52,16 +52,29 @@
 .calendar-move-pending { border: 1px solid #f6cc8466; background: #32281d; padding: 12px; border-radius: 12px; margin-bottom: 18px; }
 .calendar-move-pending strong { font-size: .875rem; color: #f6cc84; }
 .calendar-move-pending p { font-size: .8125rem; color: var(--muted-foreground); margin-top: 5px; }
-.calendar-gesture-hint { display: flex; align-items: center; gap: 6px; font-size: .8125rem; color: var(--muted-foreground); margin: -5px 0 20px; }
+.calendar-gesture-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; font-size: .8125rem; color: var(--muted-foreground); margin: -5px 0 20px; }
+.calendar-gesture-hint > span { display: inline-flex; align-items: center; gap: 4px; }
 .agenda-row { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; margin-bottom: 14px; position: relative; }
 .agenda-time { padding-top: 14px; font-size: .875rem; color: var(--foreground); font-variant-numeric: tabular-nums; }
 .agenda-time span { display: block; font-size: .75rem; color: var(--muted-foreground); margin-top: 4px; }
-.agenda-card { background: #182139; border: 1px solid #34405c; border-left: 3px solid var(--event-color); border-radius: 13px; min-width: 0; position: relative; }
-.agenda-event { display: block; width: 100%; position: relative; background: transparent; color: var(--foreground); border: 0; text-align: left; padding: 14px 34px 12px 14px; min-height: 82px; border-radius: 12px; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.agenda-swipe-shell { min-width: 0; position: relative; }
+.agenda-swipe-clip { position: relative; overflow: hidden; border-radius: 13px; }
+.agenda-card { background: #182139; border: 1px solid #34405c; border-left: 3px solid var(--event-color); border-radius: 13px; min-width: 0; position: relative; z-index: 1; transition: transform .18s ease-out; }
+.is-swiping .agenda-card { transition: none; }
+.agenda-moving .agenda-swipe-clip { overflow: visible; }
+.agenda-swipe-actions { position: absolute; right: 0; top: 0; bottom: 0; width: 144px; display: grid; grid-template-columns: 1fr 1fr; border-radius: 0 13px 13px 0; overflow: hidden; }
+.agenda-swipe-actions button { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 7px; min-height: 44px; min-width: 44px; border: 0; padding: 10px 4px; font-size: .875rem; font-weight: 600; color: #fff; }
+.agenda-action-edit { background: #6650bd; }
+.agenda-action-delete { background: #b33953; }
+.agenda-action-edit:hover { background: #765dcc; }
+.agenda-action-delete:hover { background: #c74660; }
+.agenda-swipe-actions button:disabled { opacity: 1; }
+.actions-open .agenda-swipe-actions button:disabled { opacity: .55; }
+.agenda-action-toggle { position: absolute; top: 6px; right: 4px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 10px; color: #c4cfe5; background: transparent; }
+.agenda-action-toggle:hover, .agenda-action-toggle[aria-expanded=true] { background: #ffffff10; color: #fff; }
+.agenda-event { display: block; width: 100%; position: relative; background: transparent; color: var(--foreground); border: 0; text-align: left; padding: 14px 48px 14px 14px; min-height: 96px; border-radius: 12px; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .agenda-event strong { display: block; font-size: 1rem; line-height: 1.55; font-weight: 600; overflow-wrap: anywhere; }
 .agenda-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: .8125rem; color: #b9c5dd; margin-top: 6px; }
-.agenda-grip { position: absolute; top: 17px; right: 10px; color: #8291ae; }
-.agenda-edit { min-height: 44px; display: flex; gap: 6px; align-items: center; margin-left: auto; padding: 8px 12px; border: 0; color: #c4b8ff; background: transparent; font-size: .8125rem; }
 .agenda-restriction { display: flex; align-items: center; gap: 5px; margin-top: 6px; color: var(--muted-foreground); font-size: .75rem; }
 .agenda-moving { z-index: 20; }
 .agenda-moving .agenda-card { border-color: #c4b8ff; background: #292346; box-shadow: 0 12px 34px #0008, 0 0 0 3px #ab9bff44; }

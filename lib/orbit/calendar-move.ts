@@ -4,6 +4,22 @@ export const HOLD_MS = 420;
 export const MOVE_SLOP = 9;
 export const PIXELS_PER_STEP = 24;
 export const STEP_MINUTES = 15;
+export const SWIPE_ACTION_WIDTH = 144;
+export const SWIPE_OPEN_THRESHOLD = 48;
+
+export function canEditCalendarEvent(event: CalendarEvent): boolean {
+  return !/^(google:|approved:|protected:)/.test(event.id);
+}
+
+// Decide once before the hold starts; a vertical or diagonal scroll never becomes a swipe later.
+export function calendarGestureIntent(dx: number, dy: number): 'pending' | 'swipe' | 'scroll' {
+  if (Math.hypot(dx, dy) <= MOVE_SLOP) return 'pending';
+  return Math.abs(dx) > Math.abs(dy) * 1.25 ? 'swipe' : 'scroll';
+}
+
+export function swipeOffset(initial: number, dx: number): number {
+  return Math.max(-SWIPE_ACTION_WIDTH, Math.min(0, initial + dx));
+}
 
 export function moveRestriction(event: CalendarEvent): string | null {
   if (event.id.startsWith('google:')) return 'Google에서 시간 변경';
