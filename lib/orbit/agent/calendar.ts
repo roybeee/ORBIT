@@ -1,3 +1,4 @@
+import {flushCalendarOutbox} from './calendar-outbox.ts';
 import {calendarSelection} from './calendar-settings.ts';
 import {recordSource} from '../source-status.ts';
 import {readWorkspace,RevisionConflict,type Database} from '../../../db/repository.ts';
@@ -66,8 +67,8 @@ export async function createGoogleEvent(db:Database,owner:string,env:Runtime,id:
 }
 
 export async function syncCalendar(db:Database,owner:string,env:Runtime,date?:string){
- try{const result=await syncCalendarInternal(db,owner,env,date);
+ try{const delivery=await flushCalendarOutbox(db,owner,env);const result=await syncCalendarInternal(db,owner,env,date);
  if(result.connected&&(await calendarSelection(db,owner)).version!==result.selectionVersion)throw new RevisionConflict('캘린더 선택이 변경되어 최신 확인이 필요합니다.');
- await recordSource(db,owner,'google_calendar',{state:result.connected?'ok':'partial',detail:result.connected?'선택한 캘린더 조회 완료':'Google Calendar 연결 필요',count:result.count,from:result.from,to:result.to,targets:result.targets},result.selectionVersion);return result;}
+ await recordSource(db,owner,'google_calendar',{state:result.connected?'ok':'partial',detail:result.connected?'선택한 캘린더 조회 완료':'Google Calendar 연결 필요',count:result.count,from:result.from,to:result.to,targets:result.targets},result.selectionVersion);return {...result,delivery};}
  catch(error){await recordSource(db,owner,'google_calendar',{state:'error',detail:error instanceof Error?error.message:'일정 동기화 실패'});throw error;}
 }

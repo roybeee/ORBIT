@@ -28,7 +28,6 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   else if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
   else if(parsed.type==='proposal.generate'||parsed.type==='review.saveGenerate'){const planning=await startPlanningAction(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed},env);revision=planning.snapshot.revision;result={briefDate:planning.date};}
   else{
-   if(['proposal.approve','event.upsert'].includes(parsed.type))await syncCalendar(db,owner,env,'date' in parsed?parsed.date:parsed.type==='event.upsert'?parsed.event.date:undefined);
    revision=(await writeCommand(db,owner,{operationId:action.id,expectedRevision:action.expectedRevision,action:parsed})).revision;
   }
   await markApproved(db,owner,action,lease,revision,result);

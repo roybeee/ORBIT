@@ -55,7 +55,7 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
   if (external?.time_zone === data.preferences.timeZone)
     data.events = [
       ...data.events.filter((e) => !e.id.startsWith('google:')),
-      ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>local.id===e.google?.orbitEventId&&local.date===e.date&&local.start===e.start&&local.end===e.end)),
+      ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>local.id===e.google?.orbitEventId&&local.title===e.title&&local.date===e.date&&local.start===e.start&&local.end===e.end)),
     ];
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
@@ -308,6 +308,21 @@ export async function writeCommand(
     'EXISTS (SELECT 1 FROM orbit_workspaces WHERE owner_id = ? AND mutation_id = ? AND revision = ?)';
   const gateValues: SqlValue[] = [ownerId, command.operationId, revision];
   const statements: Statement[] = [update];
+  // The outbox and the local event commit together. A lost response cannot lose
+  // the Google write, and replaying the command cannot enqueue it twice.
+  const calendarEventId = action.type === 'event.upsert' ? action.event.id
+    : action.type === 'proposal.approve' ? 'approved:' + action.itemId : undefined;
+  if (calendarEventId && !calendarEventId.startsWith('google:')) {
+    // Keep existing, explicitly exported focus blocks on their original flow.
+      const state = {eventId:calendarEventId, automatic:true, status:'pending',
+        fingerprint:'', leaseUntil:0, queuedAt:timestamp, message:'Google 등록 대기'};
+      statements.push(db.prepare(`INSERT INTO orbit_calendar_exports(owner_id,event_id,state_json)
+        SELECT ?,?,? WHERE ${gate} ON CONFLICT(owner_id,event_id) DO UPDATE SET state_json=
+        json_set(orbit_calendar_exports.state_json,'$.status','pending','$.fingerprint','','$.leaseUntil',0,
+          '$.queuedAt',json_extract(excluded.state_json,'$.queuedAt'),'$.message','Google 등록 대기')
+        WHERE json_extract(orbit_calendar_exports.state_json,'$.automatic')=1`)
+        .bind(ownerId, calendarEventId, JSON.stringify(state), ...gateValues));
+  }
   // Lazy v2 migration and the first v3 edit share the winning transaction. No data in SQL migrations.
   if (legacy.length)
     statements.push(

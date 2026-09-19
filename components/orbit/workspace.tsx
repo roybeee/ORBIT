@@ -1,4 +1,5 @@
 'use client';
+import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {ExperimentsPanel,ContactsPanel,MonthlyPanel} from './phase4/workbench';
@@ -1722,6 +1723,7 @@ function WorkspaceContent({
                     연결된 할 일
                   </button>
                 )}
+                {!eventDetail.id.startsWith('google:')&&<CalendarEventDelivery eventId={eventDetail.id} demo={demo}/>}
                 <div className="sheet-actions">
                   {eventDetail.id.startsWith('google:') ? (
                     <a
@@ -1868,6 +1870,7 @@ function WorkspaceContent({
             )}
             {create === 'event' && (
               <>
+                <p className="form-hint">저장하면 연결된 Google 계정의 기본 캘린더에도 자동 등록됩니다. 연결이 필요하거나 전송 중이면 일정 화면에 상태가 표시됩니다.</p>
                 <label className="form-label" htmlFor="new-time">
                   시작 시간
                 </label>

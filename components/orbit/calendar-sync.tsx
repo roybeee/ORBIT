@@ -33,7 +33,10 @@ export function CalendarSyncStatus({active,demo,loaded,date,timeZone,paused,work
  return <>
   <section className="calendar-sync-panel" aria-label="Google 캘린더 동기화">
    <div className="calendar-sync-copy"><strong><CalendarDays size={19}/>Google 캘린더</strong>
-    <p role="status">{demo?'예시 일정입니다. 내 계정에서 Google 캘린더를 연결할 수 있습니다.':!loaded?'저장된 일정을 불러오는 중…':checking?'변경된 일정을 확인하는 중…':paused?'작성 중인 내용을 저장하면 자동 갱신을 이어갑니다.':result?.connected===false?'Google 계정을 연결하면 일정이 자동으로 갱신됩니다.':'화면을 보는 동안 자동 갱신 · 30초 간격'}</p>
+    <p role="status">{demo?'예시 일정입니다. 내 계정에서 Google 캘린더를 연결할 수 있습니다.':!loaded?'저장된 일정을 불러오는 중…':checking?'변경된 일정을 확인하는 중…':paused?'작성 중인 내용을 저장하면 자동 갱신을 이어갑니다.':result?.connected===false?'Google 계정을 연결하면 ORBIT에서 저장한 일정도 자동 등록됩니다.':'화면을 보는 동안 자동 갱신 · 30초 간격'}</p>
+    <p>ORBIT 일정 저장 → Google 기본 캘린더에 자동 등록·수정</p>
+    {result?.delivery&&<p role="status">{result.delivery.pending?`전송 대기 ${result.delivery.pending}건 · 자동 확인 중`:result.delivery.failed?`Google 반영 확인 필요 ${result.delivery.failed}건`:result.delivery.verified?`Google 등록 확인 ${result.delivery.verified}건`:null}</p>}
+    {result?.delivery?.message&&<p role="alert" className="calendar-sync-error">{result.delivery.message} ORBIT에는 저장되어 있습니다.</p>}
     {lastChecked&&<p>Google 확인 {lastChecked}</p>}
     {error&&<p role="alert" className="calendar-sync-error">{error} 저장된 일정은 유지됩니다.</p>}
    </div>

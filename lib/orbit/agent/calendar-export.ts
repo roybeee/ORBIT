@@ -2,7 +2,7 @@ import {readWorkspace,type Database} from '../../../db/repository.ts';
 import type {Runtime} from './integrations.ts';
 import {createGoogleEvent,syncCalendar} from './calendar.ts';
 import {AgentError} from './errors.ts';
-export interface CalendarExport {eventId:string;status:'publishing'|'verified'|'uncertain';fingerprint:string;url?:string;verifiedAt?:string;message?:string;leaseUntil?:number}
+export interface CalendarExport {eventId:string;status:'pending'|'publishing'|'verified'|'uncertain'|'cancelled';automatic?:boolean;fingerprint:string;url?:string;verifiedAt?:string;message?:string;leaseUntil?:number}
 export async function calendarExports(db:Database,owner:string){const {results}=await db.prepare('SELECT state_json FROM orbit_calendar_exports WHERE owner_id=?').bind(owner).all<{state_json:string}>();return results.map(r=>JSON.parse(r.state_json) as CalendarExport);}
 const digest=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 export async function exportFocus(db:Database,owner:string,env:Runtime,eventId:string){

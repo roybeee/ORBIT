@@ -1,4 +1,4 @@
-export interface CalendarSyncResult {connected:boolean;count:number;updatedAt?:string}
+export interface CalendarSyncResult {connected:boolean;count:number;updatedAt?:string;delivery?:{pending:number;failed:number;verified:number;message?:string}}
 interface Context {enabled:boolean;paused:boolean;visible:boolean;online:boolean;date:string}
 interface Options {
  context:()=>Context;

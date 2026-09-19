@@ -572,7 +572,7 @@ export function applyAction(
       const e = action.event;
       if (e.id.startsWith('google:')) fail('Google 일정은 원본 캘린더에서 수정해 주세요.');
       if (e.id.startsWith('approved:')) fail('승인한 집중 시간은 제안 화면에서 조정해 주세요.');
-      if (data.events.some((x) => x.id !== e.id && x.date === e.date && overlaps(x, e)))
+      if (data.events.some((x) => x.id !== e.id && x.google?.orbitEventId !== e.id && x.date === e.date && overlaps(x, e)))
         fail('같은 시간에 다른 일정이 있습니다.');
       data.events = replace(data.events, e);
       break;
