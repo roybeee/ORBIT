@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <queries>
         <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="http" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
     </queries>
     <application android:label="${appLabel}" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
@@ -21,6 +22,11 @@
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${orbitOrigin}/" />
             <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@color/orbit_background" />
             <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/orbit_background" />
+        </activity>
+        <!-- Browser Helper toggles this component on every workspace launch. -->
+        <activity android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+            android:exported="false" android:theme="@style/OrbitBrowserTheme">
+            <meta-data android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL" android:value="${orbitOrigin}/" />
         </activity>
         <activity android:name=".ShareReceiverActivity" android:exported="true" android:enableOnBackInvokedCallback="false" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>

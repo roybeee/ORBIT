@@ -68,7 +68,7 @@ APK를 휴대폰에서 직접 열어 설치할 수도 있습니다. 휴대폰의
 
 ```bash
 cd android
-./gradlew lintRelease bundleRelease -PorbitVersionCode=1 -PorbitVersionName=0.1.0
+./gradlew lintRelease bundleRelease -PorbitVersionCode=2 -PorbitVersionName=0.1.1
 ```
 
 출력은 `app/build/outputs/bundle/release/app-release.aab`입니다. AAB는 휴대폰에 직접 설치하는 파일이 아니라 Play Console에 업로드하는 배포 묶음입니다. Play 내부 테스트 → 기기 점검 → 운영 출시 순서로 진행합니다. 개발자 계정, 업로드 키, 앱 설명·스크린샷, 개인정보처리방침, 데이터 보안 정보와 심사 제출이 별도로 필요합니다. 현재 저장소의 빌드 워크플로는 Play에 자동 게시하지 않습니다.
@@ -94,10 +94,20 @@ cd android
 
 참고: [AGP 8.10 호환성](https://developer.android.com/build/releases/agp-8-10-0-release-notes), [Android Browser Helper 릴리스](https://github.com/GoogleChrome/android-browser-helper/releases), [TWA 개요](https://developer.chrome.com/docs/android/trusted-web-activity/overview).
 
-## 이번 개발의 검증 결과 — 2026-09-19
+## 0.1.0 베타의 초기 검증 결과 — 2026-09-19
 
 `testDebugUnitTest lintDebug assembleDebug`를 함께 실행해 성공했습니다. 단위 검사 24개(공유 보관함 16개, 문서 제공자 5개, URL 정책 3개)가 모두 통과했습니다. 경로 이탈, 취소, 읽기 권한, 원자적 파일 보관과 만료 처리를 포함합니다. Android Lint는 오류 0개, 경고 9개, 참고 1개입니다. 경고에는 한국어 전용 UI의 번역·아이콘 관련 항목과 최신 백업 설정 권고가 포함되며, 임시 공유 파일은 백업 대상에서 제외되는 `noBackupFilesDir`에 저장합니다.
 
 생성한 베타 APK는 서명 검사를 통과했으며 `co.mealzip.orbit.debug`, 버전 `0.1.0-beta`, 최소 API 26·대상 API 36입니다. 빌드 시점 파일 크기는 5,225,823바이트, SHA-256은 `c229616dee6208eafc9d66740a54b327f81b97c6cd3d983b430ff8cae7aa2405`입니다. 재빌드 시 서명 키와 빌드 환경에 따라 해시는 달라질 수 있습니다. 정식 서명 변수가 없을 때 릴리스가 실패하는 보호 동작도 확인했습니다.
 
 실제 휴대폰 또는 에뮬레이터에서 로그인·공유·첨부 흐름을 실행한 상태는 아닙니다. 정식 업로드 키가 제공되지 않아 서명된 AAB를 만들지 않았고, Play Store에 게시하지 않았습니다. APK 설치 후 위의 휴대폰 확인 절차가 남아 있습니다.
+
+## 0.1.1 베타 실행 종료 수정
+
+0.1.0에서 홈 화면의 ORBIT 열기·오늘의 업무·대시보드를 누르면 앱이 종료되는 문제가 보고되었습니다. Browser Helper가 실행 시 활성화/비활성화하는 `ManageDataLauncherActivity`가 manifest에서 빠져 있었습니다. Android는 존재하지 않는 컴포넌트의 상태를 변경하면 예외를 발생시킵니다. 필수 Activity와 설정 URL을 명시하고, 브라우저 검색에 필요한 HTTP intent 가시성도 추가했습니다. ORBIT 업무 주소와 실제 통신은 계속 HTTPS만 허용합니다.
+
+브라우저 실행에 실패하면 받은 파일을 유지한 홈 화면으로 돌아와 재시도·주소 복사를 안내합니다. 실패 후 자동 실행 상태도 해제합니다. manifest 누락 여부는 실제 설치 정보를 읽는 회귀 검사로 확인합니다. Robolectric의 컴포넌트 활성화 모형은 이 Android 예외를 그대로 재현하지 않으므로 단순 실행 테스트만으로 판정하지 않습니다.
+
+수정 APK는 버전 `0.1.1-beta`, versionCode `2`이며, 전달했던 0.1.0 APK와 같은 베타 서명 키로 빌드합니다. 이전 앱을 삭제하지 않고 APK를 열어 **업데이트**하면 로컬 받은 파일을 유지할 수 있습니다. 이 업데이트 안내는 동일한 인증서로 서명한 배포 파일에 해당하며 GitHub Actions의 임시 디버그 인증서와는 구별해야 합니다.
+
+`testDebugUnitTest lintDebug assembleDebug`가 성공했고, 기존 24개와 실행 회귀 검사 9개를 합한 33개 검사가 통과했습니다. 누락 manifest에서는 새 검사에 `NameNotFoundException`이 발생하며, 수정 후 통과하는 것을 확인했습니다. 오류 복구·주소 복사·각 버튼의 목적지와 첨부 안내를 포함합니다. 실제 APK 안의 컴포넌트 선언과 이전 배포 APK와의 서명 인증서 일치도 확인했습니다. 실제 갤럭시에서 업데이트 설치 후 ORBIT 화면으로 전환되는지는 추가 확인이 필요합니다.

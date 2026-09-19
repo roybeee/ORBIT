@@ -24,6 +24,7 @@ import java.util.List;
 /** Native launcher and recovery inbox. No tokens or private workspace data live here. */
 public final class HomeActivity extends Activity {
     public static final String SHOW_INBOX = "SHOW_INBOX";
+    public static final String LAUNCH_ERROR = "LAUNCH_ERROR";
     private static final int BG = Color.rgb(8, 12, 28);
     private static final int FG = Color.rgb(237, 240, 255);
     private static final int MUTED = Color.rgb(164, 175, 206);
@@ -33,7 +34,9 @@ public final class HomeActivity extends Activity {
         super.onCreate(state);
         registerShortcuts();
         render();
-        if (state == null && !getIntent().getBooleanExtra(SHOW_INBOX, false)) {
+        if (getIntent().getBooleanExtra(LAUNCH_ERROR, false)) {
+            showLaunchError();
+        } else if (state == null && !getIntent().getBooleanExtra(SHOW_INBOX, false)) {
             if (Intent.ACTION_VIEW.equals(getIntent().getAction())) {
                 openOrbit(getIntent().getDataString());
             } else if (getPreferences(MODE_PRIVATE).getBoolean("opened", false)) {
@@ -43,6 +46,29 @@ public final class HomeActivity extends Activity {
     }
 
     @Override protected void onResume() { super.onResume(); if (page != null) render(); }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        render();
+        if (intent.getBooleanExtra(LAUNCH_ERROR, false)) showLaunchError();
+    }
+
+    private void showLaunchError() {
+        getIntent().removeExtra(LAUNCH_ERROR);
+        getPreferences(MODE_PRIVATE).edit().putBoolean("opened", false).apply();
+        new AlertDialog.Builder(this).setTitle("ORBIT을 열지 못했습니다")
+                .setMessage("Chrome 또는 삼성 인터넷이 사용 설정되어 있는지 확인한 뒤 다시 시도해 주세요. 주소를 복사해 브라우저에서 직접 열 수도 있습니다.")
+                .setNegativeButton("닫기", null)
+                .setNeutralButton("주소 복사", (dialog, which) -> {
+                    android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("ORBIT", BuildConfig.ORBIT_START_URL));
+                        Toast.makeText(this, "ORBIT 주소를 복사했습니다.", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setPositiveButton("다시 시도", (dialog, which) -> openOrbit(BuildConfig.ORBIT_START_URL)).show();
+    }
 
     private void registerShortcuts() {
         android.content.pm.ShortcutManager shortcuts = getSystemService(android.content.pm.ShortcutManager.class);
@@ -142,9 +168,8 @@ public final class HomeActivity extends Activity {
         try {
             startActivity(new Intent(this, OrbitActivity.class).setData(Uri.parse(OrbitUrlPolicy.sanitize(requested, BuildConfig.ORBIT_ORIGIN))));
             getPreferences(MODE_PRIVATE).edit().putBoolean("opened",true).apply();
-        } catch (ActivityNotFoundException e) {
-            new AlertDialog.Builder(this).setTitle("브라우저가 필요합니다")
-                    .setMessage("Chrome을 설치하거나 사용 설정한 뒤 ORBIT을 다시 열어 주세요.").setPositiveButton("확인",null).show();
+        } catch (ActivityNotFoundException | SecurityException e) {
+            showLaunchError();
         }
     }
 }
