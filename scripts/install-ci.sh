@@ -25,14 +25,11 @@ command -v sha256sum || {
 }
 
 runtime_root="${SITES_PROJECT_ROOT}/.sites-runtime"
-expected_home="${runtime_root}/home"
 expected_cache="${runtime_root}/npm-cache"
 
 echo "[sites] validating writable install environment"
-if [[ "${HOME}" != "${expected_home}" ]]; then
-  echo "Expected HOME=${expected_home}, got HOME=${HOME}." >&2
-  exit 78
-fi
+# Keep the runtime-provided HOME. sites-env.sh isolates the writable package
+# cache and tool output without relocating the user's home directory.
 actual_cache="$(npm config get cache)"
 if [[ "${actual_cache}" != "${expected_cache}" ]]; then
   echo "Expected npm cache ${expected_cache}, got ${actual_cache}." >&2

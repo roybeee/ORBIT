@@ -82,7 +82,7 @@ import { Toaster, toast } from 'sonner';
 import { focusIds } from '@/lib/orbit/derived';
 import { NoteLibrary } from '@/components/orbit/note-library';
 import { NoteDetail } from '@/components/orbit/note-detail';
-import { InstallBanner, InstallRootHint } from '@/components/orbit/install-app';
+import { InstallRootHint } from '@/components/orbit/install-app';
 import {WorkspaceDashboard} from './dashboard';
 import {GoalDashboard} from './coach/goal-dashboard';
 import {Understanding} from './coach/understanding';
@@ -1047,7 +1047,6 @@ function WorkspaceContent({
             )}
           </div>
         )}
-        {!demo && view !== 'agent' && <InstallBanner />}
         <main
           id="main-content"
           className={`content ${view === 'agent' ? 'agent-content' : view === 'sound' ? 'sound-content' : ''} ${!loaded ? 'is-loading' : ''}`}

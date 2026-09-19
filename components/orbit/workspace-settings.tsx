@@ -220,6 +220,7 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
               않습니다. 전체 백업과 선택 복구는 백업·복구 화면에서 이용하세요.
             </p>
             <div className="divider" />
+            {!demo&&<div className="settings-connection-links"><button type="button" className="secondary-button" onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:connections'))}}>연결 관리</button><button type="button" className="secondary-button" onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:runtime'))}}>자동 실행 설정</button></div>}
             <InstallSettings />
             <p className="form-hint">
               오프라인에서는 안내 화면이 표시됩니다. 업무 기록의 열람과 저장에는 연결이 필요합니다.

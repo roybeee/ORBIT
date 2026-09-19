@@ -396,3 +396,15 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .agent-composer-status{font-size:13px;line-height:1.6;overflow-wrap:anywhere}.agent-composer-status:empty{display:none}.agent-composer-status p{margin:8px 0}.agent-composer-status .agent-error{padding:10px 12px}.agent-composer-controls{display:flex;flex-wrap:wrap;gap:8px 18px;margin:6px 0}.agent-composer-controls button{min-height:44px}
 
 .discord-help{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:14px;padding:12px;border:1px solid var(--border);border-radius:8px;line-height:1.7}.discord-actions{display:flex;gap:8px;flex-wrap:wrap}.discord-connection details{margin-block:12px}.discord-connection summary{cursor:pointer;font-size:14px}.discord-connection form{display:grid;gap:12px;margin-block:12px}
+
+/* Keep the conversation composer focused on input and its current action. */
+.agent-compose-tools{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.agent-compose-tools .order-compose-button{width:auto;min-height:44px;padding:8px 12px;font-size:14px}
+.agent-compose-tools .orbit-voice-compact{margin:0;gap:8px}
+.orbit-voice-compact .icon-button,.agent-tools>.icon-button,.agent-tools [aria-label="대화 메뉴"]{min-width:44px;min-height:44px}
+.orbit-voice-compact small{max-width:18rem;font-size:14px}
+.agent-composer-bottom>span:empty{display:none}
+.agent-composer-status{font-size:14px}
+.agent-runtime-dialog{max-height:85dvh;overflow-y:auto}
+.agent-runtime-dialog .runtime-panel{margin:0}
+.settings-connection-links{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
