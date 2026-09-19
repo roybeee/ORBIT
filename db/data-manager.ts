@@ -44,7 +44,7 @@ export async function changeData(db: Database, owner: string, command: z.infer<t
   const prior = await db.prepare('SELECT action_hash FROM orbit_mutations WHERE owner_id=? AND operation_id=?').bind(owner, operationId).first<{ action_hash: string }>();
   if (prior) {
     if (prior.action_hash !== hash) throw new RevisionConflict('같은 요청 번호에 다른 내용이 있습니다. 새로고침해 주세요.');
-    return { snapshot: await readWorkspace(db, owner), replayed: true };
+    return { snapshot: await readWorkspace(db, owner), replayed: true, trashIds: parsed.action === 'trash' ? parsed.selection!.map((_,i)=>operationId+':'+i) : [] };
   }
   const current = await readWorkspace(db, owner);
   if (current.revision !== expectedRevision) throw new RevisionConflict('데이터가 변경되었습니다. 최신 목록에서 다시 확인해 주세요.');
@@ -100,7 +100,7 @@ export async function changeData(db: Database, owner: string, command: z.infer<t
   if (result[0]?.meta?.changes !== 1) {
     const replay = await db.prepare('SELECT action_hash FROM orbit_mutations WHERE owner_id=? AND operation_id=?').bind(owner, operationId).first<{ action_hash: string }>();
     if (!replay || replay.action_hash !== hash) throw new RevisionConflict('다른 저장이나 실행이 진행 중입니다. 최신 목록을 불러와 주세요.');
-    return { snapshot: await readWorkspace(db, owner), replayed: true };
+    return { snapshot: await readWorkspace(db, owner), replayed: true, trashIds: parsed.action === 'trash' ? parsed.selection!.map((_,i)=>operationId+':'+i) : [] };
   }
-  return { snapshot: await readWorkspace(db, owner), replayed: false };
+  return { snapshot: await readWorkspace(db, owner), replayed: false, trashIds: parsed.action === 'trash' ? trash.map(r=>r.id) : [] };
 }

@@ -352,7 +352,7 @@ export function applyAction(
     case 'project.manage': {
       const p=data.projects.find(p=>p.id===action.id)??fail('프로젝트를 찾을 수 없습니다.');
       if(action.status==='completed'&&!action.result.trim())fail('완료한 결과를 한 줄 이상 기록해 주세요.');
-      p.status=action.status;p.priority=action.priority;p.result=action.result.trim();
+      p.status=action.status;p.priority=action.priority;p.result=action.result.trim();if(action.due)p.due=action.due;
       if(action.goalId)p.goalId=action.goalId;else delete p.goalId;
       if(action.status==='completed')p.completedOn=p.completedOn??today;else delete p.completedOn;
       if(action.status!=='active')suspendProject(p.id);

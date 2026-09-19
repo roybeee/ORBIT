@@ -89,6 +89,7 @@ import {TodayHome} from './today-home';
 import {CalendarSyncStatus} from './calendar-sync';
 import {CalendarAgenda} from './calendar-agenda';
 import {ProjectHub} from './project-hub';
+import {ProjectActions,type ProjectIntent} from './project-actions';
 import {ProjectDetailPanel} from './project-detail';
 import {eventCommand,moveConflict,moveRestriction} from '@/lib/orbit/calendar-move';
 import type {CalendarEvent} from '@/lib/orbit/model';
@@ -292,6 +293,9 @@ function WorkspaceContent({
   const [pendingAI,setPendingAI]=useState<number|null>(null);
   const [dataEditing, setDataEditing] = useState(false);
   const [demoDataTrash, setDemoDataTrash] = useState<TrashRecord[]>([]);
+  const [projectAction,setProjectAction]=useState<{id:string;mode:'menu'|'delete'}|null>(null);
+  const [projectManaging,setProjectManaging]=useState(false);
+  const [dataInitialTab,setDataInitialTab]=useState<'records'|'trash'>('records');
   const [proposalDate, setProposalDate] = useState(TOMORROW);
   const [attachmentDraft, setAttachmentDraft] = useState('event-draft:initial');
   const eventUploads = useAttachments(attachmentDraft);
@@ -309,7 +313,7 @@ function WorkspaceContent({
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
-  const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string; revision?:number } | null>(
+  const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string; revision?:number; projectIntent?:ProjectIntent } | null>(
     null,
   );
   const [create, setCreate] = useState<
@@ -373,7 +377,7 @@ function WorkspaceContent({
   useEffect(() => {
     pauseRefresh(
       !!create || calendarInteracting ||
-        dataEditing ||
+        dataEditing || projectManaging || !!projectAction ||
         settingsOpen ||
         brainyOpen ||
         assignOpen ||
@@ -382,7 +386,7 @@ function WorkspaceContent({
         detail?.kind === 'note',
     );
     return () => pauseRefresh(false);
-  }, [create, calendarInteracting, dataEditing, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
+  }, [create, calendarInteracting, dataEditing, projectManaging, projectAction, settingsOpen, brainyOpen, assignOpen, view, detail?.kind, pauseRefresh]);
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
@@ -499,6 +503,8 @@ function WorkspaceContent({
     if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);if((projects.find(p=>p.id===contextProjectId)?.status??'active')!=='active')setNewFocus(false);}
     setCreate(kind);
   };
+  const openProject = (id:string,intent:ProjectIntent='overview')=>setDetail({kind:'project',id,projectIntent:intent});
+  const openProjectTrash = ()=>{setDetail(null);setDataInitialTab('trash');navigate('data')};
   const openProjectChat = (id:string) => {
     setDetail(null);
     const url=new URL(location.href);
@@ -1081,7 +1087,7 @@ function WorkspaceContent({
           {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}
           {loaded && view==='learning'&&<LearningPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={id=>setDetail({kind:'task',id})}/>}
           {loaded && view==='backup'&&<BackupPanel snapshot={snapshot} demo={demo} busy={busy||hasPending} onRefresh={refresh}/>}
-          {loaded && view==='data'&&<DataManager snapshot={snapshot} demo={demo} demoTrash={demoDataTrash} setDemoTrash={setDemoDataTrash} busy={busy||hasPending} today={TODAY} onRefresh={refresh} onSnapshot={acceptSnapshot} onEditing={setDataEditing} onCreate={openCreate} onEdit={openEdit} onNavigate={navigate} onConnections={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}} perform={perform}/>}
+          {loaded && view==='data'&&<DataManager initialTab={dataInitialTab} snapshot={snapshot} demo={demo} demoTrash={demoDataTrash} setDemoTrash={setDemoDataTrash} busy={busy||hasPending} today={TODAY} onRefresh={refresh} onSnapshot={acceptSnapshot} onEditing={setDataEditing} onCreate={openCreate} onEdit={openEdit} onNavigate={navigate} onConnections={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}} perform={perform}/>}
           {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onNavigate={navigate}/>})()}
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
@@ -1173,7 +1179,8 @@ function WorkspaceContent({
             />
             </>
           )}
-          {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={id=>setDetail({kind:'project',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onChat={openProjectChat}/>}
+          {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}
+
           {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
           <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={calendarInteracting||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
           {loaded && view === 'calendar' && (
@@ -1321,6 +1328,7 @@ function WorkspaceContent({
           )}
         </main>
       </div>
+      <ProjectActions target={projectAction} onClose={()=>setProjectAction(null)} snapshot={snapshot} busy={busy||hasPending||!loaded} demo={demo} demoTrash={demoDataTrash} setDemoTrash={setDemoDataTrash} onSnapshot={acceptSnapshot} onRefresh={refresh} onOpen={openProject} onEdit={id=>openEdit('project',id)} onChat={openProjectChat} onDeleted={id=>{if(detail?.kind==='project'&&detail.id===id)setDetail(null)}} onNavigate={view=>{setDetail(null);setDataInitialTab('records');navigate(view)}} onWorking={setProjectManaging}/>
       <Sheet
         open={!!detail}
         onOpenChange={(open) => {
@@ -1580,7 +1588,7 @@ function WorkspaceContent({
                 onNewTask={() => openCreate('task')}
               />{noteDetail.kind==='wiki'&&<WikiRelated data={data} note={noteDetail} onOpen={(kind,id)=>setDetail({kind,id})}/>}</>
             )}
-            {projectDetail && <ProjectDetailPanel key={projectDetail.id} project={projectDetail} data={data} today={TODAY} busy={busy||hasPending||!loaded} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onCreate={openCreate} onEdit={()=>openEdit('project',projectDetail.id)} onDelete={()=>setDeleteTarget({kind:'project',id:projectDetail.id,title:projectDetail.name})} onChat={()=>openProjectChat(projectDetail.id)} onEditing={setDataEditing} followup={<FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}/>}
+            {projectDetail && <ProjectDetailPanel key={projectDetail.id+':'+(detail?.projectIntent??'overview')} intent={detail?.projectIntent} onManage={()=>setProjectAction({id:projectDetail.id,mode:'menu'})} project={projectDetail} data={data} today={TODAY} busy={busy||hasPending||!loaded} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onCreate={openCreate} onEdit={()=>openEdit('project',projectDetail.id)} onDelete={()=>setProjectAction({id:projectDetail.id,mode:'delete'})} onChat={()=>openProjectChat(projectDetail.id)} onEditing={setDataEditing} followup={<FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}/>}
             {eventDetail && (
               <>
                 <EventFiles

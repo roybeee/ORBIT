@@ -24,8 +24,8 @@ const keyOf = (r: DataSelection) => r.category + ':' + r.id;
 const labels: Record<string, string> = { todo: '예정', doing: '진행 중', waiting: '대기', done: '완료', active: '진행', paused: '보류', achieved: '달성', meeting: '회의록', wiki: '개인 위키', knowledge: '지식', requested: '요청', accepted: '수락', working: '진행 중', blocked: '대기', delivered: '결과 수신', verified: '확인 완료', cancelled: '취소', revised: '수정', closed: '검토 완료' };
 const fmt = (s?: string | null) => s ? new Date(s).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' }) : '아직 없음';
 
-export function DataManager({ snapshot, demo, demoTrash, setDemoTrash, busy, today, onRefresh, onSnapshot, onEditing, onCreate, onEdit, onNavigate, onConnections, perform }: {
-  snapshot: WorkspaceSnapshot; demo: boolean; busy: boolean; today: string;
+export function DataManager({ initialTab='records', snapshot, demo, demoTrash, setDemoTrash, busy, today, onRefresh, onSnapshot, onEditing, onCreate, onEdit, onNavigate, onConnections, perform }: {
+  initialTab?:'records'|'trash'; snapshot: WorkspaceSnapshot; demo: boolean; busy: boolean; today: string;
   demoTrash: TrashRecord[]; setDemoTrash: React.Dispatch<React.SetStateAction<TrashRecord[]>>;
   onRefresh: () => Promise<void>; onSnapshot: (s: WorkspaceSnapshot) => void; onEditing: (v: boolean) => void;
   onCreate: (kind: 'project' | 'task' | 'meeting' | 'wiki' | 'knowledge' | 'event') => void;
@@ -34,7 +34,7 @@ export function DataManager({ snapshot, demo, demoTrash, setDemoTrash, busy, tod
   perform: (a: WorkspaceAction, message?: string) => Promise<boolean>;
 }) {
   const { data } = snapshot;
-  const [tab, setTab] = useState('records'), [category, setCategory] = useState<DataCategory | 'all'>('all'), [query, setQuery] = useState(''), [project, setProject] = useState('all'), [page, setPage] = useState(0);
+  const [tab, setTab] = useState<string>(initialTab), [category, setCategory] = useState<DataCategory | 'all'>('all'), [query, setQuery] = useState(''), [project, setProject] = useState('all'), [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string[]>([]), [detail, setDetail] = useState<DataSelection | null>(null), [overview, setOverview] = useState<Overview | null>(null), [error, setError] = useState('');
   const [loading, setLoading] = useState(false), [working, setWorking] = useState(false), [confirm, setConfirm] = useState<Confirm | null>(null), [newCategory, setNewCategory] = useState<DataCategory>('projects'), [adding, setAdding] = useState(false);
   const [editor, setEditor] = useState<{ category: 'goals' | 'memories' | 'habits'; record?: DataRecord; revision: number } | null>(null);

@@ -228,3 +228,16 @@ test('built project management routes persist stages, next actions and lifecycle
  const invalid=await request('/api/workspace',{method:'POST',headers:{...identity(owner),'content-type':'application/json'},body:JSON.stringify({operationId:randomUUID(),expectedRevision:revision,action:{type:'project.manage',id:'managed',status:'completed',priority:5,goalId:null,result:''}})});assert.equal(invalid.status,422);
  const another=await request('/api/workspace',{headers:identity('project-management-other')});assert.equal((await another.json()).data.projects.length,0);
 });
+
+test('built project trash endpoint returns stable undo IDs and restores the confirmed project group',async()=>{
+ const owner='project-trash-http';let revision=0;
+ const send=async(path,payload)=>{const response=await request(path,{method:'POST',headers:{...identity(owner),'content-type':'application/json',origin:'https://orbit.test'},body:JSON.stringify(payload)});assert.equal(response.status,200);return response.json()};
+ const write=async action=>{const state=await send('/api/workspace',{operationId:randomUUID(),expectedRevision:revision,action});revision=state.revision};
+ await write({type:'project.upsert',project:{id:'trash-project',name:'삭제 검증',goal:'원문 보존',due:'2026-09-30',priority:3,color:'#7451dc',symbol:'P'}});
+ await write({type:'note.upsert',note:{id:'trash-note',projectId:'trash-project',title:'보존할 문서',kind:'wiki',summary:'요약',body:'복원 가능한 원문',updated:'2026-09-19',tags:[]}});
+ const command={operationId:randomUUID(),expectedRevision:revision,action:'trash',selection:[{category:'projects',id:'trash-project'},{category:'notes',id:'trash-note'}]};
+ const deleted=await send('/api/data',command);assert.equal(deleted.snapshot.data.projects.length,0);assert.equal(deleted.trashIds.length,2);
+ const replay=await send('/api/data',command);assert.deepEqual(replay.trashIds,deleted.trashIds);assert.equal(replay.snapshot.revision,deleted.snapshot.revision);
+ const restored=await send('/api/data',{operationId:randomUUID(),expectedRevision:deleted.snapshot.revision,action:'restore',trashIds:deleted.trashIds});assert.equal(restored.snapshot.data.projects.length,1);assert.equal(restored.snapshot.data.notes.length,1);
+ const original=await request('/api/notes?id=trash-note',{headers:identity(owner)});assert.equal(original.status,200);assert.equal((await original.json()).body,'복원 가능한 원문');
+});
