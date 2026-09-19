@@ -85,6 +85,7 @@ import { NoteDetail } from '@/components/orbit/note-detail';
 import { InstallRootHint } from '@/components/orbit/install-app';
 import {WorkspaceDashboard} from './dashboard';
 import {TodayHome} from './today-home';
+import {CalendarSyncStatus} from './calendar-sync';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {GoalDashboard} from './coach/goal-dashboard';
 import {Understanding} from './coach/understanding';
@@ -189,7 +190,7 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
     subtitle: '할 일의 끝을 넘어, 결과물에 가까워지는 하루.',
     eyebrow: 'TODAY',
   },
-  calendar: { title: '나의 시간', subtitle: '고정 일정과 승인한 집중 시간을 한눈에.', eyebrow: 'CALENDAR' },
+  calendar: { title: '일정', subtitle: 'Google 일정과 나의 집중 시간을 한눈에.', eyebrow: 'CALENDAR' },
   tasks: { title: '할 일', subtitle: '모든 행동에는 끝내야 할 결과물이 있습니다.', eyebrow: 'ACTION' },
   projects: {
     title: '프로젝트',
@@ -218,16 +219,17 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
   },
 };
 const primaryNavigation: {id:View;label:string;icon:typeof Sun;children:View[]}[] = [
- {id:'today',label:'오늘',icon:Sun,children:['today','dashboard','calendar','review','proposal','voice','sound','monthly','learning']},
+ {id:'today',label:'오늘',icon:Sun,children:['today','dashboard','review','proposal','voice','sound','monthly','learning']},
  {id:'agent',label:'대화',icon:MessagesSquare,children:['agent','aside','automation']},
+ {id:'calendar',label:'일정',icon:CalendarDays,children:['calendar']},
  {id:'projects',label:'업무',icon:FolderKanban,children:['projects','tasks','goals','portfolio','signals','meetings','followup','experiments','contacts']},
  {id:'wiki',label:'기록',icon:BookOpen,children:['wiki','knowledge','understanding','data','backup']},
 ];
 function primaryView(view:View){return primaryNavigation.find(n=>n.children.includes(view))??primaryNavigation[0];}
-function AppNavigation({view,navigate,pending,displayName,onSettings}:{view:View;navigate:(v:View)=>void;pending:number;displayName:string;onSettings:()=>void}){
+function AppNavigation({view,navigate,pending,displayName,onSettings,onAllMenu}:{view:View;navigate:(v:View)=>void;pending:number;displayName:string;onSettings:()=>void;onAllMenu:()=>void}){
  const {setOpenMobile}=useSidebar();
  const go=(v:View)=>{navigate(v);setOpenMobile(false)};
- return <><Sidebar className="app-sidebar"><SidebarHeader className="p-0"><div className="brand"><span className="brand-mark"><Orbit size={25}/></span>ORBIT</div></SidebarHeader><SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent><SidebarMenu>{primaryNavigation.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton className="nav-item" isActive={primaryView(view).id===n.id} onClick={()=>go(n.id)}><n.icon/><span>{n.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="p-0"><div className="user-box"><div className="avatar">{displayName.slice(0,1)}</div><div><strong>{displayName}</strong></div><button className="settings-link" aria-label="설정 열기" onClick={onSettings}><Settings2 size={19}/></button></div></SidebarFooter></Sidebar><nav className="mobile-nav" aria-label="주요 화면">{primaryNavigation.map(n=><button key={n.id} className={primaryView(view).id===n.id?'active':''} onClick={()=>go(n.id)} aria-current={primaryView(view).id===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav></>;
+ return <><Sidebar className="app-sidebar"><SidebarHeader className="p-0"><div className="brand"><span className="brand-mark"><Orbit size={25}/></span>ORBIT</div></SidebarHeader><SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent><SidebarMenu>{primaryNavigation.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton className="nav-item" isActive={primaryView(view).id===n.id} onClick={()=>go(n.id)}><n.icon/><span>{n.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu><button className="all-menu-sidebar secondary-button" onClick={onAllMenu}><Menu size={18}/>전체 메뉴</button></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="p-0"><div className="user-box"><div className="avatar">{displayName.slice(0,1)}</div><div><strong>{displayName}</strong></div><button className="settings-link" aria-label="설정 열기" onClick={onSettings}><Settings2 size={19}/></button></div></SidebarFooter></Sidebar><nav className="mobile-nav" aria-label="주요 화면">{primaryNavigation.map(n=><button key={n.id} className={primaryView(view).id===n.id?'active':''} onClick={()=>go(n.id)} aria-current={primaryView(view).id===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav></>;
 }
 function WorkspaceSections({view,navigate}:{view:View;navigate:(v:View)=>void}){
  const group=primaryView(view);
@@ -296,7 +298,8 @@ function WorkspaceContent({
     budget: 0,
     energy: 'normal',
   };
-  const [calendarSync, setCalendarSync] = useState('');
+  const [allMenuOpen,setAllMenuOpen]=useState(false);
+  const menuTrigger=useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
@@ -378,25 +381,6 @@ function WorkspaceContent({
     setProposalDate(TOMORROW);
   }, [TOMORROW]);
   useEffect(() => {
-    if (demo || view !== 'calendar' || !loaded) return;
-    let active = true;
-    setCalendarSync('연결한 일정을 확인하고 있습니다.');
-    void agentRequest('/api/integrations/sync', 'POST', { date: calendarDate })
-      .then(async (result) => {
-        if (!active) return;
-        if (result.connected) {
-          await refresh();
-          if (active) setCalendarSync('Google 기본 캘린더 · 최신 일정 반영됨');
-        } else setCalendarSync('설정의 연결 관리에서 Google 일정을 연결하세요.');
-      })
-      .catch((error) => {
-        if (active) setCalendarSync(error.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [demo, view, calendarDate, loaded, refresh]);
-  useEffect(() => {
     const v = location.hash.slice(1) as View;
     if (navigation.some((n) => n.id === v)) setView(v);
     else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);history.replaceState(null,'',url.pathname+url.search+'#'+initial);}
@@ -414,6 +398,7 @@ function WorkspaceContent({
     };
   }, []);
   const navigate = (v: View) => {
+    setAllMenuOpen(false);
     setView(v);
     setDetail(null);
     setSearch('');
@@ -888,12 +873,22 @@ function WorkspaceContent({
         pending={pending}
         displayName={displayName}
         onSettings={openSettings}
+        onAllMenu={()=>setAllMenuOpen(true)}
       />
+      <Sheet open={allMenuOpen} onOpenChange={setAllMenuOpen}>
+        <SheetContent side="left" className="all-menu-panel" onCloseAutoFocus={event=>{event.preventDefault();menuTrigger.current?.focus()}}>
+          <SheetHeader><SheetTitle>전체 메뉴</SheetTitle><SheetDescription>필요한 기능으로 바로 이동하세요.</SheetDescription></SheetHeader>
+          <nav className="all-menu-groups" aria-label="전체 기능">
+            {primaryNavigation.map(group=><section key={group.id}><h2>{group.label}</h2><div>{group.children.map(id=>{const item=navigation.find(n=>n.id===id)!;const Icon=item.icon;return <button key={id} onClick={()=>navigate(id)} aria-current={view===id?'page':undefined}><Icon size={19}/><span>{id==='agent'?'대화':id==='wiki'?'전체 기록':item.label}</span></button>})}</div></section>)}
+            <section><h2>설정</h2><button onClick={()=>{setAllMenuOpen(false);openSettings()}}><Settings2 size={19}/><span>연결·환경 설정</span></button></section>
+          </nav>
+        </SheetContent>
+      </Sheet>
       <div className="app-main">
         <header className="topbar">
           <div className="breadcrumb">
-
-            <span>ORBIT</span>
+            <button ref={menuTrigger} className="all-menu-trigger" aria-haspopup="dialog" aria-expanded={allMenuOpen} onClick={()=>setAllMenuOpen(true)}><Menu size={21}/><span>전체 메뉴</span></button>
+            <span className="breadcrumb-brand">ORBIT</span>
             <ChevronRight size={13} />
             <strong>{primaryNavigation.some(n=>n.id===view)?primaryView(view).label:navigation.find((n) => n.id === view)?.label}</strong>
           </div>
@@ -1215,7 +1210,8 @@ function WorkspaceContent({
             </>
           )}
           {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
-          {view === 'calendar' && (
+          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
+          {loaded && view === 'calendar' && (
             <div className="calendar-two-col">
               <section className="full-card calendar-main">
                 <div className="section-title">
@@ -1267,17 +1263,6 @@ function WorkspaceContent({
                   갑작스러운 일에 대응할 여유를 남깁니다. 내일 제안은 가용 시간의{' '}
                   {Math.round((1 - preferences.bufferFraction) * 100)}% 안에서 배치합니다.
                 </p>
-                <div className="divider" />
-                <p className="muted">
-                  대화 화면의 연결 설정에서 Google Calendar를 연결하세요. 기본 캘린더의 일정을 계획에
-                  반영하며, Google 일정 생성은 승인 후 실행됩니다.
-                </p>
-                <p className="day-summary" role="status">
-                  {calendarSync}
-                </p>
-                <button className="text-button" onClick={() => navigate('agent')}>
-                  대화와 연결 설정 <ArrowUpRight size={14} />
-                </button>
                 <button
                   className="secondary-button full-width"
                   style={{ marginTop: 22 }}

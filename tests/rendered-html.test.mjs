@@ -12,10 +12,11 @@ after(()=>db.close());
 const identity=(id='owner-a')=>({'oai-authenticated-user-id':id,'oai-authenticated-user-email':id+'@example.test','oai-authenticated-user-full-name':'Test%20Owner','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
 const request=(path,init={})=>worker.fetch(new Request('https://orbit.test'+path,init),{DB:db,ASSETS:{fetch:async()=>new Response('Not found',{status:404})}},{waitUntil(){},passThroughOnException(){}});
 function assertWorkspaceNavigation(html){
+ assert.match(html,/class="all-menu-trigger"[^>]*aria-haspopup="dialog"/);
  const nav=html.match(/<nav class="mobile-nav" aria-label="주요 화면">([\s\S]*?)<\/nav>/)?.[1];
  assert.ok(nav,'the workspace must expose primary navigation');
  const buttons=[...nav.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)];
- assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','대화','업무','기록']);
+ assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','대화','일정','업무','기록']);
  assert.equal(buttons.filter(([,attrs])=>attrs.includes('aria-current="page"')).length,1);
  assert.match(buttons[0][1],/aria-current="page"/);
 }
