@@ -241,3 +241,17 @@ test('built project trash endpoint returns stable undo IDs and restores the conf
  const restored=await send('/api/data',{operationId:randomUUID(),expectedRevision:deleted.snapshot.revision,action:'restore',trashIds:deleted.trashIds});assert.equal(restored.snapshot.data.projects.length,1);assert.equal(restored.snapshot.data.notes.length,1);
  const original=await request('/api/notes?id=trash-note',{headers:identity(owner)});assert.equal(original.status,200);assert.equal((await original.json()).body,'복원 가능한 원문');
 });
+
+test('production mobile project menu resets the individual translate property after CSS optimization',async()=>{
+ const names=await readdir(new URL('../dist/client/assets/',import.meta.url));
+ const styles=await Promise.all(names.filter(n=>n.endsWith('.css')).map(n=>readFile(new URL('../dist/client/assets/'+n,import.meta.url),'utf8')));
+ const rules=[...styles.join('\n').matchAll(/\.project-action-dialog\[data-slot=dialog-content\]\{([^}]+)\}/g)].map(m=>m[1]);
+ const mobile=rules.find(rule=>rule.includes('--project-menu-translate:'));
+ assert.ok(mobile,'the deployed stylesheet must include the mobile project menu override');
+ // A transform-only reset does not override the shared dialog translate:-50%.
+ // CSS optimization previously erased translate:0 0 and left half the menu offscreen.
+ assert.match(mobile,/--project-menu-translate:0(?:px)? 0(?:px)?(?:;|$)/);
+ assert.match(mobile,/(?:^|;)translate:var\(--project-menu-translate\)(?:;|$)/);
+ assert.match(mobile,/(?:inset:auto 0(?:px)? 0(?:px)?(?:;|$)|left:0(?:px)?(?:;|$))/);
+ assert.match(mobile,/(?:^|;)width:100%(?:;|$)/);
+});
