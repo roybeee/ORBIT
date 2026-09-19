@@ -1,3 +1,4 @@
+import {WORKSPACE_LIMIT_BYTES} from '../lib/orbit/storage-usage.ts';
 import {
   attachmentGate,
   attachmentGateValues,
@@ -276,7 +277,7 @@ export async function writeCommand(
     .map((n) => ({ ...n, revision: n.revision ?? 1, bodyStored: false }));
   next.schemaVersion = 3;
   next.notes = next.notes.map((n) => ({ ...n, body: '', bodyStored: true, revision: n.revision ?? 1 }));
-  if (new TextEncoder().encode(JSON.stringify(next)).byteLength > 950000)
+  if (new TextEncoder().encode(JSON.stringify(next)).byteLength > WORKSPACE_LIMIT_BYTES)
     throw new DomainError('기록 목록의 저장 한도에 도달했습니다. 내보낸 뒤 오래된 기록을 정리해 주세요.');
   const attachmentIds =
     action.type === 'event.upsert' || action.type === 'event.attach' ? action.attachmentIds : undefined;

@@ -1,5 +1,7 @@
 # Architecture and implementation boundary
 
+Current reliability changes and verification: [2026-09-19 operations note](Reliability_2026-09-19.ko.md). Historical version sections below describe the boundary at the time of each release.
+
 ## v0.3: authenticated personal workspace and document history
 
 - `app/page.tsx`, `app/demo/page.tsx`: protected, dynamic server pages using the dispatch-owned ChatGPT sign-in flow. A stable Site-scoped user ID is required; email is display metadata.

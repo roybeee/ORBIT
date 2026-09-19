@@ -6,11 +6,26 @@ import {saveConnection} from '../lib/orbit/agent/secrets.ts';
 import {dispatchOrder,advanceOrder,listOrders} from '../lib/orbit/agent/orders.ts';
 import {researchRead,researchManifest,researchReadSchema} from '../lib/orbit/agent/order-research.ts';
 import {readWorkspace,readNote,writeCommand} from '../db/repository.ts';
+import {tickRuntime} from '../lib/orbit/daily-runtime.ts';
 const caps={object:'hermes.api_server.capabilities',features:{run_submission:true,run_status:true,run_stop:true,runs_idempotency:{supported:true,durable:true,retention_seconds:86400}}};
 const action={type:'agent.dispatch',title:'회의 통합 분석',instruction:'Plaud MCP로 start_at 2026-09-02 00:00부터 2026-09-08 23:59까지 분석. 9월 1일 시작 제외. 16건 여부 확인. 개인 위키 대조. 위키 수정·외부 전송 금지.',projectId:null,taskIds:[],mode:'research'};
 const read=(...requests)=>({kind:'orbit.read',notes:'원래 날짜 범위와 제외 기준 유지. 확인된 내용만 인용.',requests});
 const p=(name,args={})=>({tool:'plaud_read',arguments:{name,arguments:args}});
 const report=(sources=[],status='complete')=>({kind:'orbit.report',status,report:'회의별 사실 · 결정 · 담당 · 기한 · 충돌 · 미확인\n내부 민감 리스크: 확인한 범위에만 한정.\n파일 f2, 위키 wiki. 수정·전송 없음.',sources});
+test('server ticks finish research with no browser polls even while collection stays due',()=>fixture(async f=>{
+ f.replies.push(read({tool:'wiki_read',arguments:{id:'wiki'}}),report(['read-0-0']));
+ const id=randomUUID();await dispatchOrder(f.db,'owner',id,action,f.env);
+ let order;
+ for(let i=0;i<20;i++){
+  // Keep housekeeping due to reproduce a collector that never catches up.
+  await f.db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(config_json,'$.syncAt','2000-01-01T00:00:00Z') WHERE owner_id=?").bind('owner').run();
+  await tickRuntime(f.db,'owner',f.env,{scheduled:true});
+  order=(await listOrders(f.db,'owner')).find(o=>o.id===id);
+  if(order.status==='completed')break;
+ }
+ assert.equal(order.status,'completed');assert.equal(order.coverage.reads,1);assert.equal(f.posts.length,2);
+ assert.equal(new Set(f.keys).size,2);
+}));
 async function fixture(fn){
  const db=createDatabase(),original=globalThis.fetch,objects=new Map(),env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64'),BUCKET:{async put(k,v){objects.set(k,v);return {size:v.length}},async get(k){const v=objects.get(k);return v?{size:v.length,arrayBuffer:async()=>v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)}:null},async delete(k){objects.delete(k)}}};
  const body='원문에 기록된 확인 사실',note={id:'wiki',title:'기존 위키',kind:'wiki',projectId:'p',body,summary:'기존 기록',tags:[],updated:'2026-09-08'};

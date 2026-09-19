@@ -1,3 +1,4 @@
+import {workEligibility,type WorkContext} from './work-policy.ts';
 import {planningEvents} from './allocation-policy.ts';
 import {
   withDefaults,
@@ -71,6 +72,7 @@ export const calibrationFactor=(tasks:Task[],task:Task,date:string)=>calibration
 export const calibrate = (duration: number, factor: number) =>
   Math.min(480, Math.max(5, Math.round((duration * factor) / 5) * 5));
 export interface PlannerOptions {
+  context?: Omit<WorkContext, 'tasks'>;
   earliestStart?: number;
   projectPriority?: Record<string,number>;
   dominoProjectId?: string;
@@ -139,12 +141,7 @@ export function generateProposal(
       }[energy],
   );
   let remaining = budget;
-  const isReady = (t: Task) =>
-    !t.blocker?.trim() &&
-    t.status !== 'waiting' &&
-    t.status !== 'done' &&
-    (!t.planHoldUntil || t.planHoldUntil <= date) &&
-    !(t.dependsOn ?? []).some((id) => tasks.find((t) => t.id === id)?.status !== 'done');
+  const isReady = (t: Task) => workEligibility({...options.context,tasks},t,date).allowed;
   const ordered = options.ordered;
   const rank = (id: string) => (ordered ? ordered.indexOf(id) : 0);
   const candidates = tasks.filter(
@@ -172,27 +169,27 @@ export function generateProposal(
   const count = () => items.filter((i) => i.state !== 'deferred').length;
   const peak = { start: prefs.rhythm.peakStart, end: prefs.rhythm.peakEnd };
   const fitting = (w: Window, minutes: number) => w.end - w.start >= minutes;
-  const inPeak = (w: Window) => overlaps(w, peak);
   const afterLunch = (w: Window) => w.start >= prefs.rhythm.lunchEnd;
   // Placement preference follows an explicit cognition level only; unlabelled work takes the earliest slot.
   const preferredWindows = (cognition: Cognition | undefined, minutes: number): Window[] => {
-    const ok = windows.filter((w) => fitting(w, minutes));
-    const byStart = (a: Window, b: Window) => a.start - b.start;
-    const byLength = (a: Window, b: Window) => a.end - a.start - (b.end - b.start);
-    if (!cognition) return [...ok].sort(byStart);
-    if (cognition === 'high')
-      return [...ok.filter(inPeak).sort(byStart), ...ok.filter((w) => !inPeak(w)).sort(byStart)];
-    if (cognition === 'external')
-      return [...ok.filter((w) => !inPeak(w)).sort(byStart), ...ok.filter(inPeak).sort(byStart)];
-    if (cognition === 'low') return [...ok].sort(byLength);
-    return [...ok.filter(afterLunch).sort(byStart), ...ok.filter((w) => !afterLunch(w)).sort(byStart)];
+    const ok = windows.filter(w => fitting(w, minutes));
+    const inside = windows.map(w => ({start: Math.max(w.start, peak.start), end: Math.min(w.end, peak.end)})).filter(w => fitting(w, minutes));
+    const outside = windows.flatMap(w => [{start:w.start,end:Math.min(w.end,peak.start)}, {start:Math.max(w.start,peak.end),end:w.end}]).filter(w => fitting(w, minutes));
+    if (cognition === 'high') return [...inside, ...ok];
+    if (cognition === 'external') return [...outside, ...ok];
+    if (cognition === 'low') return [...ok].sort((a,b) => (a.end-a.start)-(b.end-b.start));
+    if (cognition === 'mid') return [...windows.map(w=>({start:Math.max(w.start,prefs.rhythm.lunchEnd),end:w.end})).filter(w=>fitting(w,minutes)),...ok];
+    return ok;
   };
-  const take = (w: Window, minutes: number) => {
-    const start = w.start,
-      end = start + minutes;
-    w.start = end + breakMinutes;
-    if (w.end - w.start < 5) windows.splice(windows.indexOf(w), 1);
-    return { start, end };
+  const take = (slot: Window, minutes: number) => {
+    const start=slot.start,end=start+minutes;
+    const index=windows.findIndex(w=>w.start<=start&&w.end>=end);
+    if(index<0)throw new Error('Planner selected an unavailable slot');
+    const original=windows[index];
+    // Preserve both sides when a preferred slot begins inside a larger gap.
+    const remainingWindows=[{start:original.start,end:start-breakMinutes},{start:end+breakMinutes,end:original.end}].filter(w=>w.end-w.start>=5);
+    windows.splice(index,1,...remainingWindows);
+    return {start,end};
   };
   // Says where the block actually landed: the preferred window may have been full.
   const placementWord = (c: Cognition | undefined, slot: Window) => {
@@ -292,20 +289,16 @@ export function generateProposal(
       const need = planned(task);
       const longest = windows.reduce((m, w) => Math.max(m, w.end - w.start), 0);
       const factor = factorOf(task);
-      if (need > remaining || need > longest)
+      if (need > remaining || need > longest || count() >= focusLimit)
         laser = {
           taskId: task.id,
           status: 'failed',
           minutes: 0,
-          note: `가장 긴 빈 구간이 ${longest}분이고 예산이 ${remaining}분이라 ${need}분짜리 Goal Laser를 놓지 못했습니다. 회의를 옮기거나 일을 쪼개 주세요.`,
+          note: count() >= focusLimit ? '핵심 결과물 개수 한도에 도달했습니다. 먼저 계획을 조정해 주세요.' : `가장 긴 빈 구간이 ${longest}분이고 예산이 ${remaining}분이라 ${need}분짜리 Goal Laser를 놓지 못했습니다. 회의를 옮기거나 일을 쪼개 주세요.`,
         };
       else {
         const target = Math.min(Math.max(need, prefs.laserMinutes), remaining, longest);
-        const preferred = [
-          ...windows.filter((w) => fitting(w, target) && inPeak(w)),
-          ...windows.filter((w) => fitting(w, target) && !inPeak(w)),
-        ];
-        const w = preferred[0];
+        const w = preferredWindows('high', target)[0];
         const slot = take(w, target);
         items.push({
           id: `${date}:${task.id}`,
@@ -385,13 +378,7 @@ export function approveProposalItem(
   if (!item || !task) return { proposal, events, error: '항목을 찾을 수 없습니다.' };
   if (item.state === 'approved') return { proposal, events };
   if (item.state !== 'pending') return { proposal, events, error: '보류한 항목을 먼저 다시 검토해 주세요.' };
-  if (
-    !!task.blocker?.trim() ||
-    task.status === 'done' ||
-    task.status === 'waiting' ||
-    (task.planHoldUntil && task.planHoldUntil > proposal.date) ||
-    (task.dependsOn ?? []).some((id) => tasks.find((t) => t.id === id)?.status !== 'done')
-  )
+  if (!workEligibility({tasks},task,proposal.date).allowed)
     return { proposal, events, error: '업무 상태가 바뀌었습니다. 제안을 다시 생성해 주세요.' };
   // The estimate the block was planned from must still hold (calibrated and Laser blocks differ from it).
   if (task.duration !== (item.estimate ?? item.end - item.start))

@@ -1,20 +1,12 @@
-import {allocationAllowsWork} from './allocation-policy.ts';
+import {workEligibility} from './work-policy.ts';
 import type { WorkspaceData, Task, PersonalMemory } from './model.ts';
-import { goalAllowsWork, goalPace } from './chief.ts';
+import { goalPace } from './chief.ts';
 import { addDays } from './dates.ts';
 
-export type QuestState = 'ready' | 'doing' | 'blocked' | 'waiting' | 'held' | 'paused' | 'done';
-export function questReadiness(data:WorkspaceData,task:Task,date:string):{state:QuestState;reason:string;canStart:boolean} {
-  if(task.status==='done')return {state:'done',reason:task.completedOn?`${task.completedOn} 완료`:'완료 기록',canStart:false};
-  if(!allocationAllowsWork(data,task.projectId,date))return {state:'paused',reason:'승인한 주간 배분에서 이번 주 보류한 사업입니다.',canStart:false};
-  if(!goalAllowsWork(data,task.projectId))return {state:'paused',reason:'연결 목표가 보류 또는 달성 상태입니다.',canStart:false};
-  if(task.planHoldUntil&&task.planHoldUntil>date)return {state:'held',reason:`${task.planHoldUntil}까지 보류 · ${task.planHoldReason??'다음 검토를 기다립니다.'}`,canStart:false};
-  const blockers=(task.dependsOn??[]).filter(id=>data.tasks.find(t=>t.id===id)?.status!=='done');
-  if(blockers.length)return {state:'blocked',reason:'먼저 완료: '+blockers.map(id=>data.tasks.find(t=>t.id===id)?.title??'찾을 수 없는 선행 퀘스트').join(' · '),canStart:false};
-  if(task.status==='waiting'||task.blocker?.trim())return {state:'waiting',reason:task.blocker||'필요한 답변이나 조건을 기다립니다.',canStart:false};
-  const active=data.tasks.find(t=>t.id!==task.id&&t.startedAt&&t.status!=='done');
-  if(active)return {state:'held',reason:`‘${active.title}’ 집중 세션을 먼저 마쳐주세요.`,canStart:false};
-  return {state:task.startedAt||task.status==='doing'?'doing':'ready',reason:task.startedAt?'집중 세션 진행 중':task.status==='doing'?'진행 중 · 다음 단계를 이어갈 수 있습니다.':'지금 시작할 수 있습니다.',canStart:true};
+export type {WorkState as QuestState} from './work-policy.ts';
+export function questReadiness(data:WorkspaceData,task:Task,date:string) {
+  const {allowed,...result}=workEligibility(data,task,date,'start');
+  return {...result,canStart:allowed};
 }
 export function goalDescendants(data:WorkspaceData,id:string) {
   const found=new Set([id]);let changed=true;

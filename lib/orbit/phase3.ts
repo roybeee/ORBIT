@@ -1,3 +1,4 @@
+import {workEligibility} from './work-policy.ts';
 import {activeAllocation,planningEvents} from './allocation-policy.ts';
 import type {WorkspaceData,CalendarEvent} from './model.ts';
 import type {ProtectedBlock,WeeklyAllocation,OperatingMetric} from './phase3-model.ts';
@@ -30,7 +31,7 @@ export function portfolioReview(data:WorkspaceData,week:string,blocks:ProtectedB
   const capacity=weeklyCapacity(data,week,blocks,now),today=todayInZone(data.preferences.timeZone,now);
   const rows=data.projects.map(project=>{
     const tasks=data.tasks.filter(t=>t.projectId===project.id),open=tasks.filter(t=>t.status!=='done');
-    const ready=open.filter(t=>goalAllowsWork(data,project.id)&&t.status!=='waiting'&&!t.blocker?.trim()&&(!t.planHoldUntil||t.planHoldUntil<=capacity.through)&&!(t.dependsOn??[]).some(id=>data.tasks.find(x=>x.id===id)?.status!=='done'));
+    const ready=open.filter(t=>workEligibility(data,t,capacity.through).allowed);
     const urgent=ready.filter(t=>t.due<=capacity.through),measured=tasks.filter(t=>t.outcomeOn&&t.outcomeOn>=capacity.from&&t.outcomeOn<=today&&t.outcomeOn<=capacity.through&&typeof t.actualMinutes==='number');
     const promises=(data.delegations??[]).filter(d=>d.projectId===project.id&&!['verified','cancelled'].includes(d.status));
     const decisions=(data.decisions??[]).filter(d=>d.projectId===project.id&&d.status!=='closed');

@@ -1,8 +1,10 @@
+import {WORKSPACE_LIMIT_BYTES,workspaceUsage} from './storage-usage.ts';
+import {workEligibility} from './work-policy.ts';
 import {monthlyReport} from './phase4.ts';
 import {prepareReplan,replanBasis} from './reschedule.ts';
 import {planningFloor,minuteInZone} from './dates.ts';
-import {careEvents,goalAllowsWork,goalIsActive} from './chief.ts';
-import {allocationAllowsWork,activeAllocation,protectedEvents,weeklyCapacity,portfolioBasis,operatingSignals,meetingBrief} from './phase3.ts';
+import {careEvents,goalIsActive} from './chief.ts';
+import {activeAllocation,protectedEvents,weeklyCapacity,portfolioBasis,operatingSignals,meetingBrief} from './phase3.ts';
 import {questReadiness,memorySignature} from './pacemaker.ts';
 import { wikiMatches, wikiLinks } from './wiki/relations.ts';
 import { automaticProject, normalize } from './classify.ts';
@@ -133,6 +135,7 @@ export function applyAction(
     data.proposals = replace(data.proposals, p);
   };
   const plannerOptions = (date: string) => ({
+    context: data,
     earliestStart:date<today?0:planningFloor(date,data.preferences.timeZone,now),
     dominoProjectId: data.dominoProjectId,
     projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
@@ -406,8 +409,7 @@ export function applyAction(
     case 'task.focus': {
       const t = task(action.id);
       if (action.focus) assertFocusRoom(t, today);
-      if (action.focus && t.planHoldUntil && t.planHoldUntil > today)
-        fail('아직 보류 중인 업무입니다. 제안 화면에서 먼저 다시 검토해 주세요.');
+      if(action.focus){const eligibility=workEligibility(data,t,today);if(!eligibility.allowed)fail(eligibility.reason);}
       t.focus = action.focus;
       t.focusDate = action.focus ? today : undefined;
       break;
@@ -415,7 +417,7 @@ export function applyAction(
     case 'task.laser': {
       const t = task(action.id);
       if (action.laser) {
-        if (t.status === 'done') fail('완료한 일은 Goal Laser로 지정할 수 없습니다.');
+        const eligibility=workEligibility(data,t,action.date);if(!eligibility.allowed)fail(eligibility.reason);
         const other = data.tasks.find((x) => x.id !== t.id && x.laserDate === action.date);
         if (other) fail(`${action.date}의 Goal Laser는 이미 "${other.title}"입니다. 하루에 하나만 둡니다.`);
         if (!(t.focus && t.focusDate === action.date)) assertFocusRoom(t, action.date);
@@ -444,9 +446,6 @@ export function applyAction(
       const t = task(action.id);
       const readiness=questReadiness(data,t,today);
       if(!readiness.canStart)fail(readiness.reason);
-      if (t.status === 'done') fail('완료한 일은 다시 시작할 수 없습니다. 상태를 먼저 바꿔 주세요.');
-      const running = data.tasks.find((x) => x.id !== t.id && x.startedAt);
-      if (running) fail(`"${running.title}" 집중 세션이 진행 중입니다. 먼저 끝내 주세요.`);
       if (!t.startedAt) t.startedAt = now.toISOString();
       if (t.status === 'todo') t.status = 'doing';
       break;
@@ -659,7 +658,7 @@ export function applyAction(
       const date = addDays(action.review.date, 1);
       saveProposal(
         generateProposal(
-          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)&&allocationAllowsWork(data,t.projectId,date)),
+          data.tasks,
           [...data.events,...careEvents(data,date),...protectedEvents(data,date)],
           date,
           action.review.energy,
@@ -685,7 +684,7 @@ export function applyAction(
     case 'proposal.generate':
       saveProposal(
         generateProposal(
-          data.tasks.filter(t=>t.status==='done'||goalAllowsWork(data,t.projectId)&&allocationAllowsWork(data,t.projectId,action.date)),
+          data.tasks,
           [...data.events,...careEvents(data,action.date),...protectedEvents(data,action.date)],
           action.date,
           action.energy,
@@ -701,7 +700,7 @@ export function applyAction(
       const item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목을 찾을 수 없습니다.');
       if(item.state!=='approved'&&p.date===today&&item.start<minuteInZone(data.preferences.timeZone,now))fail('이미 지난 시간입니다. 일정 대안을 다시 계산해 주세요.');
       const target = data.tasks.find(t=>t.id===item.taskId) ?? item.draftTask;
-      if(item.state!=='approved' && target && (!goalAllowsWork(data,target.projectId)||!allocationAllowsWork(data,target.projectId,p.date))) fail('보류하거나 달성한 목표의 작업입니다. 목표 상태를 먼저 확인해 주세요.');
+      if(item.state!=='approved' && target){const eligibility=workEligibility(data,target,p.date);if(!eligibility.allowed)fail(eligibility.reason);}
       if (item.draftTask && !data.tasks.some((t) => t.id === item.taskId)) {
         data.tasks.push({ ...item.draftTask });
       }
@@ -825,8 +824,7 @@ export function applyAction(
   for(const t of data.tasks){const previous=current.tasks.find(x=>x.id===t.id);if(t.outcome&&t.outcomeOn&&(!previous||previous.outcome!==t.outcome||previous.outcomeOn!==t.outcomeOn||previous.actualMinutes!==t.actualMinutes||previous.outcomeReason!==t.outcomeReason)){data.executionHistory=[...data.executionHistory??[],{id:`execution:${crypto.randomUUID()}`,taskId:t.id,title:t.title,projectId:t.projectId,date:t.outcomeOn,at:now.toISOString(),due:t.due,outcome:t.outcome,reason:t.outcomeReason??'',estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes??null,impact:t.impact,buffer:data.preferences.bufferFraction}].slice(-1200);}}
   validateLinks(data);
   if (
-    new TextEncoder().encode(JSON.stringify({ ...data, notes: data.notes.map((n) => ({ ...n, body: '' })) }))
-      .byteLength > 950000
+    workspaceUsage(data).bytes > WORKSPACE_LIMIT_BYTES
   )
     fail('현재 저장 용량에 가까워졌습니다. 기록을 내보내고 오래된 내용을 정리해 주세요.');
   return data;

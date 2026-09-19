@@ -1,3 +1,4 @@
+import {WORKSPACE_LIMIT_BYTES,workspaceUsage} from './storage-usage.ts';
 import {storedExperimentSchema,storedContactSchema,executionRecordSchema,monthlyReportSchema} from './phase4-schema.ts';
 import {z} from 'zod';
 import {weeklyAllocationSchema,metricSchema,observationSchema,signalFollowupSchema,meetingRecordSchema} from './phase3-schema.ts';
@@ -71,7 +72,9 @@ export function previewRestore(current:WorkspaceData,raw:unknown,selection:z.inf
  const reviewDates=next.reviews.map(r=>r.date);if(new Set(reviewDates).size!==reviewDates.length)throw new DomainError('같은 날짜의 회고가 이미 있습니다.');
  const detailDates=parsed.data.reviewDetails.map(r=>r.date);if(new Set(detailDates).size!==detailDates.length)throw new DomainError('회고 상세 날짜가 중복되었습니다.');
  for(const r of next.reviews.filter(r=>inserted.some(s=>s.category==='reviews'&&s.id===r.id)))if(r.hasDetail&&!parsed.data.reviewDetails.some(d=>d.date===r.date))throw new DomainError('회고 상세가 빠진 백업입니다.');
- return {next,inserted,conflicts,dependencies:inserted.length-selection.filter(s=>inserted.some(i=>i.category===s.category&&i.id===s.id)).length,payload:parsed.data};
+ const usage=workspaceUsage(next);
+ if(usage.bytes>usage.limit)throw new DomainError('저장 한도를 넘습니다. 복원할 기록을 줄여 주세요.');
+ return {next,usage,inserted,conflicts,dependencies:inserted.length-selection.filter(s=>inserted.some(i=>i.category===s.category&&i.id===s.id)).length,payload:parsed.data};
 }
 export async function restoreContent(db:Database,owner:string,raw:unknown,selection:z.infer<typeof selectionSchema>,expectedRevision:number,operationId:string,checksum:string){
  if(await digest(raw)!==checksum)throw new DomainError('백업 내용의 검증값이 일치하지 않습니다.');
@@ -91,7 +94,7 @@ export async function restoreContent(db:Database,owner:string,raw:unknown,select
  const next=plan.next,nextRevision=snapshot.revision+1,at=new Date().toISOString();next.schemaVersion=3;next.events=next.events.filter(e=>!e.id.startsWith('google:'));
  const notes=next.notes.filter(n=>plan.inserted.some(i=>i.category==='notes'&&i.id===n.id));
  next.notes=next.notes.map(n=>({...n,body:'',bodyStored:true,revision:n.revision??1}));
- if(new TextEncoder().encode(JSON.stringify(next)).length>950000)throw new DomainError('저장 한도를 넘습니다. 복원할 기록을 줄여 주세요.');
+ if(new TextEncoder().encode(JSON.stringify(next)).length>WORKSPACE_LIMIT_BYTES)throw new DomainError('저장 한도를 넘습니다. 복원할 기록을 줄여 주세요.');
  const activeGate=`NOT EXISTS(SELECT 1 FROM orbit_agent_turns WHERE owner_id=? AND status='running') AND NOT EXISTS(SELECT 1 FROM orbit_agent_actions WHERE owner_id=? AND state='applying') AND NOT EXISTS(SELECT 1 FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.status')='publishing' AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)>?) AND NOT EXISTS(SELECT 1 FROM orbit_daily_runtime WHERE owner_id=? AND lease_until>?) AND NOT EXISTS(SELECT 1 FROM orbit_agent_orders WHERE owner_id=? AND json_extract(state_json,'$.status') NOT IN ('completed','failed','cancelled','unknown')) AND NOT EXISTS(SELECT 1 FROM orbit_aside_jobs WHERE owner_id=? AND json_extract(job_json,'$.status') IN ('queued','awaiting_approval','running','stop_requested','needs_attention'))`;
  const update=db.prepare(`INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at) SELECT ?,?,?,?,? WHERE ${activeGate} ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision,state_json=excluded.state_json,mutation_id=excluded.mutation_id,updated_at=excluded.updated_at WHERE orbit_workspaces.revision=? AND ${activeGate}`).bind(owner,nextRevision,JSON.stringify(next),operationId,at,owner,owner,owner,Date.now(),owner,Date.now(),owner,owner,expectedRevision,owner,owner,owner,Date.now(),owner,Date.now(),owner,owner);
  const gate='EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND mutation_id=? AND revision=?)',values=[owner,operationId,nextRevision] as const;

@@ -1,3 +1,4 @@
+import {WORKSPACE_LIMIT_BYTES} from '../lib/orbit/storage-usage.ts';
 import { z } from 'zod';
 import { readWorkspace, RevisionConflict, type Database, type Statement } from './repository.ts';
 import { DomainError } from '../lib/orbit/reducer.ts';
@@ -74,7 +75,7 @@ export async function changeData(db: Database, owner: string, command: z.infer<t
     }
   }
   next.events = next.events.filter(e => !e.id.startsWith('google:'));
-  if (new TextEncoder().encode(JSON.stringify(next)).byteLength > 950000) throw new DomainError('저장 한도를 넘습니다. 복원할 항목을 줄여 주세요.');
+  if (new TextEncoder().encode(JSON.stringify(next)).byteLength > WORKSPACE_LIMIT_BYTES) throw new DomainError('저장 한도를 넘습니다. 복원할 항목을 줄여 주세요.');
   const activeGate = `NOT EXISTS(SELECT 1 FROM orbit_agent_actions WHERE owner_id=? AND state='applying') AND NOT EXISTS(SELECT 1 FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.status')='publishing' AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)>?)`;
   const update = db.prepare(`INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at) SELECT ?,?,?,?,? WHERE ${activeGate} ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision,state_json=excluded.state_json,mutation_id=excluded.mutation_id,updated_at=excluded.updated_at WHERE orbit_workspaces.revision=? AND ${activeGate}`).bind(owner, nextRevision, JSON.stringify(next), operationId, at, owner, owner, Date.now(), expectedRevision, owner, owner, Date.now());
   const gate = 'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=? AND mutation_id=?) AND NOT EXISTS(SELECT 1 FROM orbit_mutations WHERE owner_id=? AND operation_id=?)';

@@ -5,26 +5,29 @@ import {readWorkspace,writeCommand,type Database} from '../../db/repository.ts';
 import {todayInZone,addDays} from './dates.ts';
 import {connections,type Runtime} from './agent/integrations.ts';
 import {syncCalendar} from './agent/calendar.ts';
-import {runAgent,advanceAgent} from './agent/runner.ts';
-import {advanceOrder,listOrders} from './agent/orders.ts';
-import {orderActive} from './agent/orders-schema.ts';
+import {runAgent} from './agent/runner.ts';
+import {advanceRuntimeWork} from './runtime-work.ts';
 import {syncWikiMail} from './wiki/mail.ts';
 import {briefMessage} from './brief/schema.ts';
 import {localPlanning} from './brief/start.ts';
 import {AgentError} from './agent/errors.ts';
 import {recordSource,sourceStatuses} from './source-status.ts';
-export type RuntimeConfig={enabled:boolean;eveningHour:number;syncAt?:string;syncCursor?:number;metricCursor?:number;advanceCursor?:number;lastError?:string};
+export type RuntimeConfig={enabled:boolean;eveningHour:number;syncAt?:string;syncCursor?:number;metricCursor?:number;advanceCursor?:number;lastError?:string;workFirst?:boolean;lastSchedulerTick?:string};
 export const runtimeDefaults:RuntimeConfig={enabled:true,eveningHour:21};
 export async function runtimeStatus(db:Database,owner:string){const row=await db.prepare('SELECT config_json,last_tick FROM orbit_daily_runtime WHERE owner_id=?').bind(owner).first<{config_json:string;last_tick:string|null}>();const runs=await db.prepare('SELECT date,state_json FROM orbit_daily_runs WHERE owner_id=? ORDER BY date DESC LIMIT 7').bind(owner).all<{date:string;state_json:string}>();return {config:row?JSON.parse(row.config_json) as RuntimeConfig:runtimeDefaults,lastTick:row?.last_tick??null,sources:await sourceStatuses(db,owner),runs:runs.results.map(r=>({date:r.date,...JSON.parse(r.state_json)}))};}
-export async function runtimeSettings(db:Database,owner:string,input:{enabled:boolean;eveningHour:number}){const old=await runtimeStatus(db,owner);await db.prepare('INSERT INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0) ON CONFLICT(owner_id) DO UPDATE SET config_json=excluded.config_json').bind(owner,JSON.stringify({...old.config,...input})).run();}
+export async function runtimeSettings(db:Database,owner:string,input:{enabled:boolean;eveningHour:number}){await db.prepare("INSERT INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0) ON CONFLICT(owner_id) DO UPDATE SET config_json=json_set(orbit_daily_runtime.config_json,'$.enabled',json_extract(excluded.config_json,'$.enabled'),'$.eveningHour',json_extract(excluded.config_json,'$.eveningHour'))").bind(owner,JSON.stringify({...runtimeDefaults,...input})).run();}
 export function eveningDue(now:Date,timeZone:string,hour:number){const localHour=Number(new Intl.DateTimeFormat('en',{timeZone,hour:'numeric',hourCycle:'h23'}).format(now));return localHour>=hour;}
-export async function tickRuntime(db:Database,owner:string,env:Runtime){
+export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{scheduled?:boolean}={}){
  await db.prepare('INSERT OR IGNORE INTO orbit_daily_runtime(owner_id,config_json,lease_until) VALUES(?,?,0)').bind(owner,JSON.stringify(runtimeDefaults)).run();
  const lease=Date.now()+180000,claimed=await db.prepare('UPDATE orbit_daily_runtime SET lease_until=? WHERE owner_id=? AND lease_until<?').bind(lease,owner,Date.now()).run();if(claimed.meta?.changes!==1)return {busy:true,active:true};
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
+ const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json_extract(config_json,'$.enabled'),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active};};
+ const advance=async()=>{const result=await advanceRuntimeWork(db,owner,env,config.advanceCursor);if(result.active){config.advanceCursor=result.cursor;config.lastError=result.error;config.workFirst=false;}return result.active;};
+ // Alternate active work with housekeeping: collection can never starve research.
+ if(config.workFirst!==false&&await advance())return await finish(true);
+ config.workFirst=true;
  const capture=await activityStatus(db,owner);if(!capture.lastSync||Date.now()-Date.parse(capture.lastSync)>=120000)try{await syncActivity(db,owner,env);}catch{/* independent collector error is visible in source status */}
- const finish=async(active:boolean)=>{const latest=(await runtimeStatus(db,owner)).config;await db.prepare('UPDATE orbit_daily_runtime SET config_json=? WHERE owner_id=? AND lease_until=?').bind(JSON.stringify({...config,enabled:latest.enabled,eveningHour:latest.eveningHour}),owner,lease).run();return {active};};
  // One bounded unit per tick. Collection happens before preparing a new brief.
  if(!config.syncAt||Date.now()-Date.parse(config.syncAt)>=900000){
   const connected=await connections(db,owner,env),cursor=config.syncCursor??0;
@@ -45,10 +48,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime){
  const alreadyPlanned=snapshot.data.proposals.some(p=>p.date===target);
  if(!row&&!alreadyPlanned){await db.prepare('INSERT OR IGNORE INTO orbit_daily_runs(owner_id,date,state_json,updated_at) VALUES(?,?,?,?)').bind(owner,target,JSON.stringify({id:crypto.randomUUID(),status:'queued',attempts:0}),new Date().toISOString()).run();row=await db.prepare('SELECT state_json FROM orbit_daily_runs WHERE owner_id=? AND date=?').bind(owner,target).first<{state_json:string}>();}
  if(row){const state=JSON.parse(row.state_json);if(state.status==='queued'&&state.attempts<3){state.attempts++;try{const planning={date:target,energy:snapshot.data.reviews.find(r=>r.date===addDays(target,-1))?.energy??'normal' as const};try{await runAgent(db,owner,{id:state.id,message:briefMessage(planning),planning},env);state.status='running';}catch(e){if(e instanceof AgentError&&e.code==='HERMES_SETUP'){await localPlanning(db,owner,state.id+':local',planning);state.status='local';}else throw e;}}catch{state.message='자동 제안 준비 실패 · 연결을 확인한 뒤 내일 제안에서 다시 요청하세요.';if(state.attempts>=3)state.status='failed';}await db.prepare('UPDATE orbit_daily_runs SET state_json=?,updated_at=? WHERE owner_id=? AND date=?').bind(JSON.stringify(state),new Date().toISOString(),owner,target).run();return await finish(true);}}
- const jobs=await db.prepare("SELECT j.turn_id FROM orbit_hermes_jobs j JOIN orbit_agent_turns t ON t.owner_id=j.owner_id AND t.id=j.turn_id WHERE j.owner_id=? AND t.status='running' ORDER BY j.turn_id").bind(owner).all<{turn_id:string}>();
- const orders=(await listOrders(db,owner)).filter(o=>orderActive(o.status)&&o.status!=='waiting_for_approval');
- const work=[...jobs.results.map(j=>({id:'chat:'+j.turn_id,run:()=>advanceAgent(db,owner,j.turn_id,env)})),...orders.map(o=>({id:'order:'+o.id,run:()=>advanceOrder(db,owner,o.id,env,{action:'poll' as const,id:o.id})}))].sort((a,b)=>a.id.localeCompare(b.id));
- if(work.length){const index=(config.advanceCursor??0)%work.length;try{await work[index].run();config.lastError='';}catch{config.lastError='일부 실행 단계 재확인 필요 · 실행 결과에서 오류를 확인하세요.';}config.advanceCursor=index+1;return await finish(true);}
+ if(await advance())return await finish(true);
  return await finish(false);
- }finally{await db.prepare('UPDATE orbit_daily_runtime SET lease_until=0,last_tick=? WHERE owner_id=? AND lease_until=?').bind(new Date().toISOString(),owner,lease).run();}
+ }finally{const at=new Date().toISOString();await db.prepare("UPDATE orbit_daily_runtime SET lease_until=0,last_tick=?,config_json=CASE WHEN ? THEN json_set(config_json,'$.lastSchedulerTick',?) ELSE config_json END WHERE owner_id=? AND lease_until=?").bind(at,options.scheduled?1:0,at,owner,lease).run();}
 }
