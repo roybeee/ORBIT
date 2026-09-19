@@ -12,6 +12,7 @@ import { automaticProject, normalize } from './classify.ts';
 import { planFromBrief } from './brief/planning.ts';
 import type { WorkspaceData, Task, Proposal, Improvement, Project } from './model.ts';
 import type { WorkspaceAction } from './validation.ts';
+import {defaultIllustrations} from './city-themes.ts';
 import { todayInZone, addDays, weekDates } from './dates.ts';
 import { meetingCandidates } from './meeting.ts';
 import { focusIds } from './derived.ts';
@@ -839,8 +840,25 @@ export function applyAction(
       if (item.role === 'laser' && t.laserDate === p.date) delete t.laserDate;
       break;
     }
+    case 'illustration.default':
+    case 'illustration.screen':
+    case 'illustration.project': {
+      const themes = data.preferences.illustrations ?? defaultIllustrations();
+      if(action.type==='illustration.default') themes.defaultTheme=action.theme;
+      else if(action.type==='illustration.screen') {
+        if(action.theme===null) delete themes.screens[action.screen];
+        else themes.screens[action.screen]=action.theme;
+      } else {
+        if(!data.projects.some(p=>p.id===action.id)) fail('프로젝트를 찾을 수 없습니다.');
+        if(action.theme===null) delete themes.projects[action.id];
+        else themes.projects={...themes.projects,[action.id]:action.theme};
+      }
+      data.preferences.illustrations=themes;
+      break;
+    }
     case 'preferences.update':
-      data.preferences = { ...action.preferences, workDays: [...new Set(action.preferences.workDays)] };
+      // Work-hour forms may have an older snapshot; illustration edits have scoped commands.
+      data.preferences = { ...action.preferences, illustrations: data.preferences.illustrations, workDays: [...new Set(action.preferences.workDays)] };
       break;
     case 'improvement.add':
       addImprovement(data, action.improvement);

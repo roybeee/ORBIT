@@ -5,6 +5,7 @@ import type {WorkspaceData} from '@/lib/orbit/model';
 import {projectSummary,projectStatus,projectDisplayStatus,projectStatusLabel,projectBuckets,type ProjectBucket} from '@/lib/orbit/project-management';
 import {Progress} from '@/components/ui/progress';
 import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
+import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {projectWorld} from '@/lib/orbit/project-world';
 import {useProjectPress} from './use-project-press';
 import type {ProjectIntent} from './project-actions';
@@ -31,7 +32,7 @@ export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,
     if(track&&card&&first){track.scrollTo({left:card.offsetLeft-first.offsetLeft,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});setIndex(next)}
   }
   return <section className="project-hub project-flow" aria-label="프로젝트 관리">
-    <div className="project-universe-banner"><img src="/orbit-worlds/mission.webp" width="1536" height="864" alt=""/><div><span>MY UNIVERSE</span><h2>작은 실행이 만드는<br/>나의 우주</h2><p>진행 중 <strong>{groups.active.length}</strong> · 완료 <strong>{groups.completed.length}</strong></p></div></div>
+    <div className="project-universe-banner"><img src={illustrationTheme(screenIllustration(data.preferences,'projects')).image} width="1536" height="864" alt=""/><div><span>MY CITY, MY PROJECTS</span><h2>나의 도시에서<br/>한 걸음씩 앞으로</h2><p>진행 중 <strong>{groups.active.length}</strong> · 완료 <strong>{groups.completed.length}</strong></p></div></div>
     <div className="project-flow-summary"><p>진행 중 <strong>{groups.active.length}</strong><span>·</span>확인 필요 <strong>{attention}</strong></p><button className="text-button" aria-expanded={toolsOpen} aria-controls="project-search-tools" onClick={()=>setToolsOpen(v=>!v)}><SlidersHorizontal size={17}/><span>검색·정렬</span></button></div>
     <Tabs className="project-status-tabs" value={bucket} onValueChange={value=>{setBucket(value as ProjectBucket);setFilter('all');setQuery('')}}>
       <TabsList aria-label="프로젝트 진행 상태">
@@ -52,7 +53,7 @@ export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,
             const label=state==='completed'?(finalized?'완료 결과 보기':'완료한 할 일 보기'):state!=='active'?'프로젝트 진행하기':!s.tasks.length?'첫 할 일 추가':'다음 할 일 확인';
             const action=()=>state==='completed'?onOpen(p.id,finalized?'overview':'tasks'):state!=='active'?onOpen(p.id,'resume'):!s.tasks.length?onCreateTask(p.id):onOpen(p.id,'tasks');
             return <article data-project-card={p.id} className={`project-poster project-state-${state} ${holding===p.id?'is-held':''}`} key={p.id} aria-label={`${p.name} 프로젝트`}>
-              <div className="project-poster-art"><button data-project-title disabled={busy} onClick={()=>onOpen(p.id)} aria-label={`${p.name} 프로젝트 열기`}><img src={projectWorld(p.id).image} width="960" height="720" loading="lazy" alt="" draggable={false}/></button><button className="project-poster-menu" disabled={busy} aria-label={`${p.name} 관리 메뉴`} aria-haspopup="dialog" onClick={()=>onManage(p.id)}><MoreHorizontal size={22}/></button></div>
+              <div className="project-poster-art"><button data-project-title disabled={busy} onClick={()=>onOpen(p.id)} aria-label={`${p.name} 프로젝트 열기`}><img src={projectWorld(p.id,data.preferences).image} width="960" height="720" loading="lazy" alt="" draggable={false}/></button><button className="project-poster-menu" disabled={busy} aria-label={`${p.name} 관리 메뉴`} aria-haspopup="dialog" onClick={()=>onManage(p.id)}><MoreHorizontal size={22}/></button></div>
               <div className="project-poster-meta"><span>{data.dominoProjectId===p.id?'CORE PROJECT':'ORBIT PROJECT'}</span><span>{state==='completed'?'완료':s.dueOver?'기한 지남':p.due.slice(5).replace('-','/')+' 목표'}</span></div>
               <button data-project-title className="project-poster-title" disabled={busy} onClick={()=>onOpen(p.id)}><h2>{p.name}</h2></button>
               <p className="project-poster-goal">{p.goal||'첫 목표를 정해 보세요.'}</p>

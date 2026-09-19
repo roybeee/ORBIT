@@ -2,6 +2,7 @@
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import {OrbitWordmark} from './brand';
+import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {AppearanceShortcut} from './appearance';
 import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
 import {ExperimentsPanel,ContactsPanel,MonthlyPanel} from './phase4/workbench';
@@ -936,7 +937,7 @@ function WorkspaceContent({
     return ok;
   };
   return (
-    <SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''}`} style={{ '--sidebar-width': '248px' } as CSSProperties}>
+    <CityThemeProvider preferences={data.preferences} view={view} title={navigation.find(n=>n.id===view)?.label??pageInfo[view].title} busy={busy||hasPending||!loaded} perform={perform} demo={demo}><SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''}`} style={{ '--sidebar-width': '248px' } as CSSProperties}>
       <CosmicBackdrop/>
       {!demo && <InstallRootHint />}
       <a href="#main-content" className="skip-link">
@@ -967,7 +968,7 @@ function WorkspaceContent({
             <ChevronRight size={13} />
             <strong>{primaryNavigation.some(n=>n.id===view)?primaryView(view).label:navigation.find((n) => n.id === view)?.label}</strong>
           </div>
-          <div className="top-actions"><AppearanceShortcut/>
+          <div className="top-actions"><CityThemeButton/><AppearanceShortcut/>
             <button className="icon-button" onClick={openSettings} aria-label="설정 열기"><Settings2 size={20}/></button>
 
             {loaded && (
@@ -1048,6 +1049,7 @@ function WorkspaceContent({
               </button>
             ) : null}
           </div>
+          {loaded&&!['today','projects'].includes(view)&&<CityScreenBanner compact={view==='agent'||view==='sound'}/>}
           {view!=='projects'&&<WorkspaceSections view={view} navigate={navigate}/>}
           {!loaded && (
             <section className="load-state" role="status">
@@ -2080,7 +2082,7 @@ function WorkspaceContent({
         />
       )}
       <Toaster position="top-center" richColors />
-    </SidebarProvider>
+    </SidebarProvider></CityThemeProvider>
   );
 }
 
