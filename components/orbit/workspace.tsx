@@ -84,6 +84,8 @@ import { NoteLibrary } from '@/components/orbit/note-library';
 import { NoteDetail } from '@/components/orbit/note-detail';
 import { InstallRootHint } from '@/components/orbit/install-app';
 import {WorkspaceDashboard} from './dashboard';
+import {TodayHome} from './today-home';
+import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {GoalDashboard} from './coach/goal-dashboard';
 import {Understanding} from './coach/understanding';
 import { AgentWorkspace } from '@/components/orbit/agent/chat';
@@ -136,7 +138,7 @@ import {
   type ReviewDetail,
 } from '@/lib/orbit/model';
 const navigation: { id: View; label: string; icon: typeof Sun }[] = [
-  { id: 'dashboard', label: '나의 우주', icon: LayoutGrid },
+  { id: 'dashboard', label: '전체 현황', icon: LayoutGrid },
   { id: 'data', label: '데이터 관리', icon: Database },
   { id: 'agent', label: 'AI 에이전트', icon: MessagesSquare },
   { id: 'aside', label: 'ASIDE 실행', icon: Network },
@@ -178,7 +180,7 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
   automation: {title:'서버 자동화',subtitle:'예약 실행부터 승인과 ODA 반영까지.',eyebrow:'AUTOMATION'},
   aside: {title:'ASIDE 실행',subtitle:'로그인된 웹 업무를 맡기고, 결과를 프로젝트에 연결합니다.',eyebrow:'BROWSER WORKSPACE'},
   sound: {title: '사운드스테이션', subtitle: '몰입할 때, 쉬어갈 때. 나의 페이스를 위한 소리.', eyebrow: 'ORBIT SOUND'},
-  dashboard: {title:'나의 우주',subtitle:'프로젝트와 지식, 매일의 실행이 연결되어 성과로 확장됩니다.',eyebrow:'ORBIT / GALAXY'},
+  dashboard: {title:'전체 현황',subtitle:'프로젝트와 지식, 매일의 실행이 연결되어 성과로 확장됩니다.',eyebrow:'ORBIT / GALAXY'},
   goals: {title:'나의 목표',subtitle:'원하는 삶에서 오늘의 한 걸음까지. 목표와 퀘스트를 연결합니다.',eyebrow:'MY ORBIT'},
   understanding: {title:'나를 이해하는 기록',subtitle:'흩어진 일상을 연결해, 나에게 맞는 길을 찾아갑니다.',eyebrow:'UNDERSTANDING ME'},
   agent: { title: 'Orbit 에이전트', subtitle: '대화에서 실행까지.', eyebrow: 'ORBIT AGENT' },
@@ -215,120 +217,22 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
     eyebrow: 'NEXT DAY',
   },
 };
-function AppNavigation({
-  view,
-  navigate,
-  pending,
-  displayName,
-  onSettings,
-}: {
-  view: View;
-  navigate: (v: View) => void;
-  pending: number;
-  displayName: string;
-  onSettings: () => void;
-}) {
-  const { setOpenMobile, toggleSidebar } = useSidebar();
-  const go = (v: View) => {
-    navigate(v);
-    setOpenMobile(false);
-  };
-  return (
-    <>
-      <Sidebar className="app-sidebar">
-        <SidebarHeader className="p-0">
-          <div className="brand">
-            <span className="brand-mark">
-              <Orbit size={25} />
-            </span>
-            ORBIT<small>GALAXY</small>
-          </div>
-          <div className="workspace-switch">
-            <span className="workspace-icon">
-              <Layers size={17} />
-            </span>
-            <span>나의 우주</span>
-          </div>
-        </SidebarHeader>
-        <SidebarContent className="gap-0">
-          <SidebarGroup className="px-4 pt-0">
-            <div className="nav-section-label">WORKSPACE</div>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navigation.slice(0, 8).map((n) => (
-                  <SidebarMenuItem key={n.id}>
-                    <SidebarMenuButton className="nav-item" isActive={view === n.id} onClick={() => go(n.id)}>
-                      <n.icon />
-                      <span>{n.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-            <div className="nav-divider" />
-            <div className="nav-section-label">THINK & GROW</div>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navigation.slice(8).map((n) => (
-                  <SidebarMenuItem key={n.id}>
-                    <SidebarMenuButton className="nav-item" isActive={view === n.id} onClick={() => go(n.id)}>
-                      <n.icon />
-                      <span>{n.label}</span>
-                      {n.id === 'proposal' && pending > 0 && <span className="nav-badge">{pending}</span>}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <div className="sidebar-prompt">
-            <strong>오늘의 경험, 내일의 방향</strong>
-            <p>
-              짧은 회고로 내일의 계획을
-              <br />
-              조금 더 나답게.
-            </p>
-            <button onClick={() => go('review')}>
-              저녁 회고 시작 <ArrowRight size={14} />
-            </button>
-          </div>
-        </SidebarContent>
-        <SidebarFooter className="p-0">
-          <div className="user-box">
-            <div className="avatar">IH</div>
-            <div>
-              <strong>{displayName}</strong>
-              <small>My personal universe</small>
-            </div>
-            <button className="settings-link" aria-label="설정 열기" onClick={onSettings}>
-              <Settings2 size={18} />
-            </button>
-          </div>
-        </SidebarFooter>
-      </Sidebar>
-      <nav className="mobile-nav" aria-label="주요 화면">
-        {[
-          { id: 'agent' as View, label: '대화', icon: MessagesSquare },
-          { id: 'dashboard' as View, label: '나의 우주', icon: LayoutGrid },
-          { id: 'goals' as View, label: '목표', icon: Target },
-          { id: 'proposal' as View, label: '내일 제안', icon: Sparkles },
-        ].map((n) => (
-          <button
-            key={n.id}
-            className={view === n.id ? 'active' : ''}
-            onClick={() => go(n.id)}
-            aria-current={view === n.id ? 'page' : undefined}
-          >
-            <n.icon />
-            {n.label}
-          </button>
-        ))}
-        <button onClick={toggleSidebar}>
-          <Menu />더 보기
-        </button>
-      </nav>
-    </>
-  );
+const primaryNavigation: {id:View;label:string;icon:typeof Sun;children:View[]}[] = [
+ {id:'today',label:'오늘',icon:Sun,children:['today','dashboard','calendar','review','proposal','voice','sound','monthly','learning']},
+ {id:'agent',label:'대화',icon:MessagesSquare,children:['agent','aside','automation']},
+ {id:'projects',label:'업무',icon:FolderKanban,children:['projects','tasks','goals','portfolio','signals','meetings','followup','experiments','contacts']},
+ {id:'wiki',label:'기록',icon:BookOpen,children:['wiki','knowledge','understanding','data','backup']},
+];
+function primaryView(view:View){return primaryNavigation.find(n=>n.children.includes(view))??primaryNavigation[0];}
+function AppNavigation({view,navigate,pending,displayName,onSettings}:{view:View;navigate:(v:View)=>void;pending:number;displayName:string;onSettings:()=>void}){
+ const {setOpenMobile}=useSidebar();
+ const go=(v:View)=>{navigate(v);setOpenMobile(false)};
+ return <><Sidebar className="app-sidebar"><SidebarHeader className="p-0"><div className="brand"><span className="brand-mark"><Orbit size={25}/></span>ORBIT</div></SidebarHeader><SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent><SidebarMenu>{primaryNavigation.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton className="nav-item" isActive={primaryView(view).id===n.id} onClick={()=>go(n.id)}><n.icon/><span>{n.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="p-0"><div className="user-box"><div className="avatar">{displayName.slice(0,1)}</div><div><strong>{displayName}</strong></div><button className="settings-link" aria-label="설정 열기" onClick={onSettings}><Settings2 size={19}/></button></div></SidebarFooter></Sidebar><nav className="mobile-nav" aria-label="주요 화면">{primaryNavigation.map(n=><button key={n.id} className={primaryView(view).id===n.id?'active':''} onClick={()=>go(n.id)} aria-current={primaryView(view).id===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav></>;
+}
+function WorkspaceSections({view,navigate}:{view:View;navigate:(v:View)=>void}){
+ const group=primaryView(view);
+ if(group.id!=='projects')return null;
+ return <nav className="workspace-sections" aria-label="업무 화면"><div>{(['projects','tasks','goals'] as View[]).map(id=><button key={id} className={view===id?'is-selected':''} aria-current={view===id?'page':undefined} onClick={()=>navigate(id)}>{id==='projects'?'프로젝트':id==='tasks'?'할 일':'목표'}</button>)}</div><DropdownMenu><DropdownMenuTrigger asChild><button className="secondary-button">업무 도구</button></DropdownMenuTrigger><DropdownMenuContent align="end">{group.children.filter(id=>!['projects','tasks','goals'].includes(id)).map(id=><DropdownMenuItem key={id} onSelect={()=>navigate(id)}>{navigation.find(n=>n.id===id)?.label}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu></nav>;
 }
 function Empty({ title, description }: { title: string; description: string }) {
   return (
@@ -376,7 +280,8 @@ function WorkspaceContent({
   const [clock, setClock] = useState(() => new Date());
   const TODAY = demo ? '2026-09-06' : todayInZone(preferences.timeZone, clock),
     TOMORROW = addDays(TODAY, 1);
-  const [view, setView] = useState<View>(demo ? 'today' : 'agent');
+  const [view, setView] = useState<View>('today');
+  const [pendingAI,setPendingAI]=useState<number|null>(null);
   const [dataEditing, setDataEditing] = useState(false);
   const [demoDataTrash, setDemoDataTrash] = useState<TrashRecord[]>([]);
   const [proposalDate, setProposalDate] = useState(TOMORROW);
@@ -422,7 +327,7 @@ function WorkspaceContent({
     [projectTouched, setProjectTouched] = useState(false),
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
-    [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('graph');
+    [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
   useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,projectTouched]);
   const [energy, setEnergy] = useState<Proposal['energy']>('normal'),
     [reviewDate, setReviewDate] = useState(TODAY);
@@ -482,7 +387,7 @@ function WorkspaceContent({
         if (result.connected) {
           await refresh();
           if (active) setCalendarSync('Google 기본 캘린더 · 최신 일정 반영됨');
-        } else setCalendarSync('Google 연결은 대화 화면에서 시작할 수 있습니다.');
+        } else setCalendarSync('설정의 연결 관리에서 Google 일정을 연결하세요.');
       })
       .catch((error) => {
         if (active) setCalendarSync(error.message);
@@ -494,9 +399,10 @@ function WorkspaceContent({
   useEffect(() => {
     const v = location.hash.slice(1) as View;
     if (navigation.some((n) => n.id === v)) setView(v);
+    else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);history.replaceState(null,'',url.pathname+url.search+'#'+initial);}
     const handle = () => {
       const next = location.hash.slice(1) as View;
-      setView(navigation.some((n) => n.id === next) ? next : 'agent');
+      setView(navigation.some((n) => n.id === next) ? next : 'today');
       setSearch('');
       setDetail(null);
     };
@@ -509,6 +415,7 @@ function WorkspaceContent({
   }, []);
   const navigate = (v: View) => {
     setView(v);
+    setDetail(null);
     setSearch('');
     if (location.hash !== `#${v}`) history.pushState(null, '', `#${v}`);
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -527,7 +434,7 @@ function WorkspaceContent({
       next === 'done' ? '결과물 완료로 기록했습니다.' : '다시 할 일로 옮겼습니다.',
     );
   };
-  const openCreate = (kind: NonNullable<typeof create>) => {
+  const openCreate = (kind: NonNullable<typeof create>,contextProjectId?:string) => {
     setAttachmentDraft('event-draft:' + crypto.randomUUID());
     if (kind !== 'project' && kind !== 'event' && kind !== 'task' && projects.length === 0) {
       kind = 'project';
@@ -562,6 +469,7 @@ function WorkspaceContent({
     if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
       createId.current=restored.id;setNewTitle(restored.newTitle);setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
     }
+    if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);}
     setCreate(kind);
   };
   const saveReview = async (
@@ -984,26 +892,26 @@ function WorkspaceContent({
       <div className="app-main">
         <header className="topbar">
           <div className="breadcrumb">
-            <SidebarTrigger className="mobile-menu" aria-label="메뉴 열기" />
-            <span>나의 우주</span>
+
+            <span>ORBIT</span>
             <ChevronRight size={13} />
-            <strong>{navigation.find((n) => n.id === view)?.label}</strong>
+            <strong>{primaryNavigation.some(n=>n.id===view)?primaryView(view).label:navigation.find((n) => n.id === view)?.label}</strong>
           </div>
           <div className="top-actions">
-            <CosmicMotionToggle enabled={cosmic.enabled} reduced={cosmic.reduced} onToggle={cosmic.toggle}/>
-            <button className="sound-launch" onClick={() => navigate('sound')} aria-label="사운드스테이션 열기" title="사운드스테이션"><Headphones size={18}/></button>
+            <button className="icon-button" onClick={openSettings} aria-label="설정 열기"><Settings2 size={20}/></button>
+
             {loaded && (
               <ShareIntake ownerId={ownerId} demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />
             )}
-            <span className="quiet">연결은 넓게, 실행은 선명하게.</span>
-            <button
+
+            {view==='tasks'&&<button
               className="new-button"
               disabled={!loaded || busy}
               onClick={() => openCreate(projects.length ? 'task' : 'project')}
             >
               <Plus size={16} />
               {projects.length ? '새 할 일' : '첫 프로젝트'}
-            </button>
+            </button>}
           </div>
         </header>
         {demo ? (
@@ -1011,7 +919,7 @@ function WorkspaceContent({
             예시 체험 · 변경은 저장되지 않습니다. <a href="/">내 워크스페이스로 이동 →</a>
           </div>
         ) : (
-          <div className={`sync-bar ${failure || !online ? 'has-error' : ''}`} role="status">
+          <div className={`sync-bar ${failure || !online ? 'has-error' : ''}`} hidden={loaded&&!busy&&!failure&&online} role="status">
             {!online ? (
               <>
                 <AlertCircle size={15} />
@@ -1060,59 +968,17 @@ function WorkspaceContent({
                     ? koreanDate(proposalDate)
                     : pageInfo[view].eyebrow}
               </div>
-              <h1>{pageInfo[view].title}</h1>
-              <p>{pageInfo[view].subtitle}</p>
+              <h1>{view==='today'?'오늘':view==='projects'?'업무':view==='wiki'||view==='knowledge'?'기록':pageInfo[view].title}</h1>
+              {!['today','projects','wiki','knowledge'].includes(view)&&<p>{pageInfo[view].subtitle}</p>}
             </div>
-            {view === 'today' ? (
-              <span className="date-chip">
-                <CalendarDays size={15} />
-                {TODAY.replaceAll('-', '. ')}
-              </span>
-            ) : view === 'projects' ? (
-              <div className="heading-actions">
-                <div className="mode-toggle" role="group" aria-label="프로젝트 보기">
-                  <button
-                    className={projectsMode === 'cards' ? 'is-active' : ''}
-                    aria-pressed={projectsMode === 'cards'}
-                    onClick={() => setProjectsMode('cards')}
-                  >
-                    <LayoutGrid size={14} /> 목록
-                  </button>
-                  <button
-                    className={projectsMode === 'graph' ? 'is-active' : ''}
-                    aria-pressed={projectsMode === 'graph'}
-                    onClick={() => setProjectsMode('graph')}
-                  >
-                    <Network size={14} /> 그래프
-                  </button>
-                </div>
-                <button className="secondary-button" onClick={() => setAssignOpen(true)}>
-                  <Wand2 size={15} /> 자동 안분{assignable ? ` · ${assignable}` : ''}
-                </button>
-                <button className="secondary-button" onClick={() => setBrainyOpen(true)}>
-                  <Crosshair size={16} />
-                  목표·도미노
-                </button>
-                <button className="secondary-button" onClick={() => openCreate('project')}>
-                  <Plus size={16} />
-                  프로젝트
-                </button>
-              </div>
-            ) : view === 'wiki' || view === 'knowledge' ? (
-              <button
-                className="secondary-button"
-                onClick={() => openCreate(view === 'knowledge' ? 'knowledge' : 'meeting')}
-              >
-                <Plus size={16} />
-                {view === 'wiki' ? '회의록 추가' : '지식 추가'}
-              </button>
-            ) : view === 'calendar' ? (
+            {view === 'projects' ? <div className="heading-actions"><button className="primary-button" disabled={busy||!loaded} onClick={()=>openCreate('project')}><Plus size={16}/>프로젝트 추가</button><DropdownMenu><DropdownMenuTrigger asChild><button className="secondary-button">보기·정리</button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>setProjectsMode(projectsMode==='cards'?'graph':'cards')}>{projectsMode==='cards'?'관계 그래프':'프로젝트 목록'}</DropdownMenuItem><DropdownMenuItem onSelect={()=>setAssignOpen(true)}>프로젝트 자동 분류</DropdownMenuItem><DropdownMenuItem onSelect={()=>setBrainyOpen(true)}>목표 관리</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div> : view==='wiki'||view==='knowledge'?<DropdownMenu><DropdownMenuTrigger asChild><button className="primary-button"><Plus size={16}/>기록 추가</button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>openCreate('wiki')}>문서</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('meeting')}>회의록</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('knowledge')}>참고 자료</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : view === 'calendar' ? (
               <button className="secondary-button" onClick={() => openCreate('event')}>
                 <Plus size={16} />
                 일정 추가
               </button>
             ) : null}
           </div>
+          <WorkspaceSections view={view} navigate={navigate}/>
           {!loaded && (
             <section className="load-state" role="status">
               <RefreshCw size={22} />
@@ -1145,6 +1011,7 @@ function WorkspaceContent({
             <div hidden={view !== 'agent'}>
               <AgentWorkspace
                 visible={view==='agent'}
+                onPendingCount={setPendingAI}
                 ownerId={ownerId}
                 perform={perform}
                 onOpenRecord={setDetail}
@@ -1171,228 +1038,7 @@ function WorkspaceContent({
           {loaded && view === 'dashboard' && <WorkspaceDashboard data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
-          {loaded && projects.length === 0 && view === 'today' && (
-            <div className="welcome-card">
-              <div>
-                <h2>첫 프로젝트부터 시작해 볼까요?</h2>
-                <p>만들어야 할 결과를 정하면 오늘의 행동과 다음 계획을 연결할 수 있습니다.</p>
-              </div>
-              <button className="primary-button" onClick={() => openCreate('project')}>
-                <Plus size={16} />
-                프로젝트 만들기
-              </button>
-              <a className="text-button" href="/demo">
-                예시 둘러보기
-                <ArrowUpRight size={14} />
-              </a>
-            </div>
-          )}
-          {view === 'today' && (
-            <div className="dashboard-grid">
-              <div className="left-column">
-                {loaded && projects.length > 0 && (
-                  <TodayLaser
-                    data={data}
-                    today={TODAY}
-                    busy={busy}
-                    demo={demo}
-                    perform={perform}
-                    onOpenTask={(id) => setDetail({ kind: 'task', id })}
-                    onManage={() => setBrainyOpen(true)}
-                    onRecord={recordTask}
-                  />
-                )}
-                <section className="focus-panel">
-                  <div className="focus-panel-head">
-                    <h2>
-                      <Target size={18} />
-                      오늘의 핵심 결과물{' '}
-                      <span className="number">
-                        {focus.filter((t) => t.status === 'done').length}/{focus.length}
-                      </span>
-                    </h2>
-                    <span className="focus-sub">중요한 {preferences.focusLimit}개에 집중</span>
-                  </div>
-                  {focus.length === 0 && (
-                    <Empty
-                      title="오늘 끝낼 결과물을 정해 주세요"
-                      description="할 일에서 ‘오늘 핵심으로’를 선택하거나 내일 제안을 승인해 보세요."
-                    />
-                  )}
-                  {focus.map((t) => (
-                    <article key={t.id} className={`focus-task ${t.status === 'done' ? 'task-done' : ''}`}>
-                      <div className="task-check">
-                        <Checkbox
-                          checked={t.status === 'done'}
-                          onCheckedChange={() => toggleTask(t.id)}
-                          aria-label={`${t.title} 완료`}
-                        />
-                      </div>
-                      <div className="task-info">
-                        <button className="task-title" onClick={() => setDetail({ kind: 'task', id: t.id })}>
-                          {t.title}
-                        </button>
-                        <p className="task-description">{t.definition}</p>
-                        <div className="task-meta">
-                          <ProjectLabel project={projectById(t.projectId)} />
-                          <span className="task-duration">
-                            <Clock3 size={12} />
-                            {durationText(t.duration)}
-                          </span>
-                        </div>
-                      </div>
-                      <Status status={t.status} />
-                    </article>
-                  ))}
-                </section>
-                <section className="capacity-card">
-                  <div className="capacity-title">
-                    오늘 끝낸 일
-                    <strong>
-                      {completed.length}
-                      <span style={{ fontSize: 14, fontWeight: 400, color: '#9ca3b3' }}>
-                        {' '}
-                        /{' '}
-                        {
-                          tasks.filter(
-                            (t) =>
-                              t.due === TODAY ||
-                              (t.focus && t.focusDate === TODAY) ||
-                              t.completedOn === TODAY,
-                          ).length
-                        }
-                        개
-                      </span>
-                    </strong>
-                  </div>
-                  <div className="capacity-detail">
-                    <div className="progress-label">
-                      <span>핵심 결과물에 필요한 시간</span>
-                      <span>{durationText(todayRemaining)}</span>
-                    </div>
-                    <div className="capacity-track">
-                      <span
-                        style={{
-                          width: `${Math.max(0, (completed.length / Math.max(1, tasks.filter((t) => t.due === TODAY || (t.focus && t.focusDate === TODAY) || t.completedOn === TODAY).length)) * 100)}%`,
-                          background: '#9391df',
-                        }}
-                      />
-                      <span style={{ flex: 1, background: '#e7e8f3' }} />
-                    </div>
-                    <div className="capacity-legend">
-                      <span>
-                        <span className="project-dot" style={{ background: '#9391df' }} />
-                        완료 {completed.length}
-                      </span>
-                      <span>핵심 결과물 {focus.filter((t) => t.status !== 'done').length}개 남음</span>
-                    </div>
-                  </div>
-                </section>
-                <section>
-                  <div className="section-title">
-                    <h2>
-                      진행 중인 프로젝트 <span className="number">{projects.length}</span>
-                    </h2>
-                    <button className="text-button" onClick={() => navigate('projects')}>
-                      모두 보기
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-                  <div className="mini-projects">{projects.slice(0, 4).map(projectMini)}</div>
-                </section>
-                {waiting.length > 0 && (
-                  <section>
-                    <div className="section-title">
-                      <h2>
-                        다음 확인이 필요한 일 <span className="number">{waiting.length}</span>
-                      </h2>
-                    </div>
-                    {waiting.slice(0, 2).map((t) => (
-                      <div className="followup" key={t.id}>
-                        <MessageSquare size={17} />
-                        <div>
-                          <strong>{t.title}</strong>
-                          <p>
-                            {t.planHoldUntil
-                              ? '보류 검토: ' + (t.planHoldReason ?? '')
-                              : t.blocker || '진행 조건 확인 필요'}{' '}
-                            ·{' '}
-                            {(t.checkDate ?? t.planHoldUntil)
-                              ? `${koreanDate((t.checkDate ?? t.planHoldUntil)!, false)} 확인`
-                              : '확인일 미지정'}
-                          </p>
-                        </div>
-                        <button className="text-button" onClick={() => setDetail({ kind: 'task', id: t.id })}>
-                          확인
-                          <ArrowUpRight size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </section>
-                )}
-              </div>
-              <aside className="right-column">
-                <section className="schedule-panel">
-                  <div className="schedule-head">
-                    <h2>나의 일정</h2>
-                    <button
-                      className="text-button"
-                      aria-label="전체 일정 보기"
-                      onClick={() => {
-                        setCalendarDate(TODAY);
-                        navigate('calendar');
-                      }}
-                    >
-                      <ArrowUpRight size={16} />
-                    </button>
-                  </div>
-                  <div className="week-strip">
-                    {miniWeek.map((date) => (
-                      <button
-                        key={date}
-                        className={`week-day ${date === TODAY ? 'active' : ''}`}
-                        onClick={() => {
-                          setCalendarDate(date);
-                          navigate('calendar');
-                        }}
-                      >
-                        {['일', '월', '화', '수', '목', '금', '토'][weekday(date)]}
-                        <strong>{Number(date.slice(-2))}</strong>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="day-label">{koreanDate(TODAY, false)} · 오늘</div>
-                  {renderTimeline(TODAY)}
-                </section>
-                <section className="tomorrow-card">
-                  <span className="spark-label">
-                    <Sparkles size={15} />
-                    내일을 위한 제안
-                  </span>
-                  <h2>
-                    내일의 중요한 일,
-                    <br />
-                    미리 골라두세요.
-                  </h2>
-                  <p>
-                    마감일과 집중 시간을 고려한
-                    <br />
-                    {pending
-                      ? `제안 ${pending}개가 기다리고 있습니다.`
-                      : '회고를 마치고 다음 계획을 만들어 보세요.'}
-                  </p>
-                  <button onClick={() => navigate('proposal')}>
-                    내일 제안 살펴보기
-                    <ArrowRight size={16} />
-                  </button>
-                </section>
-                <div className="tiny-foot">
-                  <span>내 속도에 맞춘 하루</span>
-                  <span>Orbit v0.7 · Chief of Staff</span>
-                </div>
-              </aside>
-            </div>
-          )}
+          {loaded&&view==='today'&&<TodayHome data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} pendingAI={pendingAI} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">
@@ -1568,41 +1214,7 @@ function WorkspaceContent({
               </div>
             </>
           )}
-          {view === 'wiki' && <WikiLibrary onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy || hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/>}
-          {(view === 'wiki' || view === 'knowledge') && (
-            <>
-              <div className="view-toolbar">
-                <div className="muted">
-                  {view === 'wiki' ? '회의록 → 결정 → 다음 행동' : '참고 자료 → 나의 해석 → 프로젝트에 적용'}
-                </div>
-                <label className="search-box">
-                  <Search size={16} />
-                  <input
-                    aria-label="기록 검색"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="제목, 본문, 태그 검색"
-                    maxLength={200}
-                  />
-                </label>
-                {view === 'wiki' && (
-                  <button className="text-button" onClick={() => openCreate('wiki')}>
-                    <Plus size={16} />
-                    위키 문서
-                  </button>
-                )}
-              </div>
-              <NoteLibrary
-                notes={notes}
-                kind={view}
-                query={search}
-                revision={snapshot.revision}
-                demo={demo}
-                onSelect={(id) => setDetail({ kind: 'note', id })}
-                onRefresh={refresh}
-              />
-            </>
-          )}
+          {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
           {view === 'calendar' && (
             <div className="calendar-two-col">
               <section className="full-card calendar-main">
@@ -2046,6 +1658,7 @@ function WorkspaceContent({
                 <h3>다음 행동</h3>
                 {tasks
                   .filter((t) => t.projectId === projectDetail.id)
+                  .sort((a,b)=>Number(a.status==='done')-Number(b.status==='done')||a.due.localeCompare(b.due))
                   .map((t) => (
                     <button
                       className="link-card"
@@ -2057,7 +1670,11 @@ function WorkspaceContent({
                       <Status status={t.status} />
                     </button>
                   ))}
-                <h3>회의록과 지식</h3>
+                <details className="workspace-more" key={'followup:'+projectDetail.id}><summary>위임·회신·결정 확인</summary><FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/></details>
+                <h3>연결된 일정</h3>
+                {events.filter(e=>e.projectId===projectDetail.id).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start).map(e=><button key={e.id} className="link-card" onClick={()=>setDetail({kind:'event',id:e.id})}><CalendarDays size={16}/><span>{e.title}<small>{e.date} · {formatTime(e.start)}</small></span></button>)}
+                {(data.meetingRecords??[]).some(r=>r.projectId===projectDetail.id)&&<><h3>확정한 회의 결과</h3>{(data.meetingRecords??[]).filter(r=>r.projectId===projectDetail.id).map(r=><button key={r.id} className="link-card" onClick={()=>setDetail({kind:'note',id:r.noteId,revision:r.noteRevision})}><CheckCheck size={16}/><span>{notes.find(n=>n.id===r.noteId)?.title??'회의 결과'} · 확정 당시 기록</span></button>)}</>}
+                <h3>회의록과 자료</h3>
                 {notes
                   .filter((n) => n.projectId === projectDetail.id)
                   .map((n) => (
@@ -2071,9 +1688,11 @@ function WorkspaceContent({
                     </button>
                   ))}
                 <div className="sheet-actions">
-                  <button className="primary-button" onClick={() => openCreate('task')}>
+                  <button className="primary-button" onClick={() => openCreate('task',projectDetail.id)}>
                     <Plus size={16} />할 일 추가
                   </button>
+                  <button className="secondary-button" onClick={()=>openCreate('meeting',projectDetail.id)}>회의록 추가</button>
+                  <button className="secondary-button" onClick={()=>openCreate('event',projectDetail.id)}>일정 추가</button>
                 </div>
               </>
             )}
@@ -2463,7 +2082,7 @@ function WorkspaceContent({
         </DialogContent>
       </Dialog>
       <WorkspaceSettings settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen}
-        settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} busy={busy}
+        settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} busy={busy} navigate={navigate} cosmic={cosmic}
         exporting={exporting} loaded={loaded} demo={demo} downloadData={downloadData}
         onSave={preferences=>perform({type:'preferences.update',preferences},'업무 설정을 저장했습니다. 다음 제안 생성부터 적용됩니다.')}/>
       <AlertDialog

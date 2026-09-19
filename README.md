@@ -14,7 +14,7 @@
 
 ## Mac, Windows and phone installation
 
-[Orbit 설치 안내](https://orbit-personal-os.hflameb.chatgpt.site/install)를 설치할 기기의 브라우저에서 열고 같은 ChatGPT 계정으로 로그인하세요. 기기와 브라우저를 감지해 설치 버튼 또는 메뉴 안내를 제공합니다. **더 보기 → 설정 → 기기별 설치 안내**에서도 들어갈 수 있습니다.
+[Orbit 설치 안내](https://orbit-personal-os.hflameb.chatgpt.site/install)를 설치할 기기의 브라우저에서 열고 같은 ChatGPT 계정으로 로그인하세요. 기기와 브라우저를 감지해 설치 버튼 또는 메뉴 안내를 제공합니다. **설정 → 앱·화면 → 기기별 설치 안내**에서도 들어갈 수 있습니다.
 
 - **Mac:** Safari(macOS Sonoma 14 이상)의 파일 → Dock에 추가, 또는 Chrome·Edge의 앱 설치 메뉴를 사용합니다.
 - **Windows:** Edge 또는 Chrome으로 설치하고 시작 메뉴·작업표시줄에서 실행합니다.

@@ -22,11 +22,15 @@ export function GoalProgress({goal,today,perform,disabled}:{goal:Goal;today:stri
   </form>;
 }
 
-export function ChiefPanel({data,perform,busy,demo,onAsk,onGoals}:{data:WorkspaceData;perform:Perform;busy:boolean;demo:boolean;onAsk:(text:string)=>void;onGoals:()=>void}) {
-  const [now,setNow]=useState(()=>new Date()),[settingsOpen,setSettingsOpen]=useState(false),[checkOpen,setCheckOpen]=useState(false),[blocked,setBlocked]=useState(false),[reason,setReason]=useState(''),[pending,setPending]=useState(false),[notice,setNotice]=useState(''),[syncError,setSyncError]=useState('');
+export function useChiefSync(data:WorkspaceData,demo:boolean){
+ const [syncError,setSyncError]=useState('');
+  useEffect(()=>{if(demo)return;let cancelled=false;const timer=setTimeout(()=>{void agentRequest('/api/agent/chief','POST',{action:'sync'}).then(()=>{if(!cancelled)setSyncError('')}).catch(()=>{if(!cancelled)setSyncError('앱 밖 예약에 최신 설정·기록을 전달하지 못했습니다. 비서실장 설정에서 예약 상태를 확인해 주세요.')})},1500);return()=>{cancelled=true;clearTimeout(timer)}},[data,demo]);
+ return syncError;
+}
+export function ChiefPanel({data,perform,busy,demo,onAsk,onGoals,syncError='',initialSettings=false}:{syncError?:string;initialSettings?:boolean;data:WorkspaceData;perform:Perform;busy:boolean;demo:boolean;onAsk:(text:string)=>void;onGoals:()=>void}) {
+  const [now,setNow]=useState(()=>new Date()),[settingsOpen,setSettingsOpen]=useState(initialSettings),[checkOpen,setCheckOpen]=useState(initialSettings),[blocked,setBlocked]=useState(false),[reason,setReason]=useState(''),[pending,setPending]=useState(false),[notice,setNotice]=useState('');
   useEffect(()=>{const open=()=>{setSettingsOpen(true);setCheckOpen(true)};window.addEventListener('orbit:coach-settings',open);return()=>window.removeEventListener('orbit:coach-settings',open)},[]);
   useEffect(()=>{const tick=()=>setNow(new Date()),timer=setInterval(tick,60000);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick)}},[]);
-  useEffect(()=>{if(demo)return;let cancelled=false;const timer=setTimeout(()=>{void agentRequest('/api/agent/chief','POST',{action:'sync'}).then(()=>{if(!cancelled)setSyncError('')}).catch(()=>{if(!cancelled)setSyncError('앱 밖 예약에 최신 설정·기록을 전달하지 못했습니다. 비서실장 설정에서 예약 상태를 확인해 주세요.')})},1500);return()=>{cancelled=true;clearTimeout(timer)}},[data,demo]);
   const state=chiefOfStaff(data,now),signal=state.primary,disabled=busy||demo||pending,settings={...chiefDefaults,...data.chief?.settings};
   async function act(action:WorkspaceAction,message:string){if(disabled)return false;setPending(true);setNotice('');try{const ok=await perform(action,message);if(ok){setNow(new Date());setNotice(message)}return ok}finally{setPending(false)}}
   const respond=(kind:'snooze'|'blocked'|'recovered',minutes:number,note='')=>act({type:'chief.respond',key:signal.key,kind,minutes,reason:note},kind==='recovered'?'휴식을 기록했습니다. 다음 행동을 확인합니다.':`${minutes}분 뒤 다시 확인합니다.`);

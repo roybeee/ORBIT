@@ -11,6 +11,14 @@ const {default:worker}=await import('../dist/server/index.js');
 after(()=>db.close());
 const identity=(id='owner-a')=>({'oai-authenticated-user-id':id,'oai-authenticated-user-email':id+'@example.test','oai-authenticated-user-full-name':'Test%20Owner','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
 const request=(path,init={})=>worker.fetch(new Request('https://orbit.test'+path,init),{DB:db,ASSETS:{fetch:async()=>new Response('Not found',{status:404})}},{waitUntil(){},passThroughOnException(){}});
+function assertWorkspaceNavigation(html){
+ const nav=html.match(/<nav class="mobile-nav" aria-label="주요 화면">([\s\S]*?)<\/nav>/)?.[1];
+ assert.ok(nav,'the workspace must expose primary navigation');
+ const buttons=[...nav.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)];
+ assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','대화','업무','기록']);
+ assert.equal(buttons.filter(([,attrs])=>attrs.includes('aria-current="page"')).length,1);
+ assert.match(buttons[0][1],/aria-current="page"/);
+}
 test('chief schedule routes require the signed-in owner and same-origin mutations',async()=>{
  assert.equal((await request('/api/agent/chief')).status,401);
  const cross=await request('/api/agent/chief',{method:'POST',headers:{...identity(),'content-type':'application/json',origin:'https://other.test'},body:JSON.stringify({action:'sync'})});assert.equal(cross.status,403);
@@ -25,10 +33,10 @@ test('the deployed app shell cannot be HTTP-cached and exposes an authenticated 
  const assets=await readdir(new URL('../dist/client/assets/',import.meta.url));
  const bundles=await Promise.all(assets.filter(name=>/^(pwa-provider|app-version|workspace)-.*\.js$/.test(name)).map(name=>readFile(new URL('../dist/client/assets/'+name,import.meta.url),'utf8')));
  assert.ok(bundles.some(source=>source.includes(build)),'client and API must share the exact build identifier');
- assert.ok(bundles.some(source=>source.includes('목표·도미노')&&source.includes('프로젝트 보기')&&source.includes('그래프')),'deployable workspace must contain graph controls');
+ assert.ok(bundles.some(source=>source.includes('목표 관리')&&source.includes('프로젝트 목록')&&source.includes('관계 그래프')),'deployable workspace must contain graph controls');
 });
 test('anonymous browser access redirects to the platform sign-in flow',async()=>{const r=await request('/');assert.ok([302,303,307,308].includes(r.status));assert.match(r.headers.get('location')??'',/signin-with-chatgpt/)});
-test('authenticated shell uses Korean, personal workspace and install manifest metadata',async()=>{const r=await request('/',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assert.match(html,/Orbit 에이전트/);assert.match(html,/lang="ko"/);assert.match(html,/<link[^>]*rel="manifest"[^>]*crossorigin="use-credentials"/i);assert.match(html,/apple-touch-icon/);assert.match(html,/viewport-fit=cover/);assert.equal((html.match(/name="viewport"/g)??[]).length,1);assert.doesNotMatch(html,/새로고침하면 초기화/);assert.doesNotMatch(html,/화덕피자 파일럿 운영안 확정/)});
+test('authenticated shell uses Korean, personal workspace and install manifest metadata',async()=>{const r=await request('/',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assertWorkspaceNavigation(html);assert.match(html,/lang="ko"/);assert.match(html,/<link[^>]*rel="manifest"[^>]*crossorigin="use-credentials"/i);assert.match(html,/apple-touch-icon/);assert.match(html,/viewport-fit=cover/);assert.equal((html.match(/name="viewport"/g)??[]).length,1);assert.doesNotMatch(html,/새로고침하면 초기화/);assert.doesNotMatch(html,/화덕피자 파일럿 운영안 확정/)});
 test('demo is clearly separated and does not create stored user records',async()=>{const before=await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first();const r=await request('/demo',{headers:identity()});assert.equal(r.status,200);const html=await r.text();assert.match(html,/예시 체험/);assert.match(html,/변경은 저장되지 않습니다/);assert.match(html,/화덕피자 파일럿 운영안 확정/);assert.deepEqual(await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first(),before)});
 test('workspace API rejects anonymous reads and writes',async()=>{assert.equal((await request('/api/workspace')).status,401);assert.equal((await request('/api/workspace',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401)});
 test('unlinked email-only sessions show account recovery instead of redirecting to a missing sign-in page',async()=>{
@@ -133,7 +141,7 @@ test('file endpoints require owner identity and same-origin writes, and stream t
  assert.equal((await request('/api/attachments/content?id='+id,{headers:identity('file-other')})).status,404);assert.equal((await(await request('/api/attachments',{headers:identity(owner)})).json()).items[0].id,id);
 });
 test('share intake preserves its draft through login and unhandled POST reports failure',async()=>{
- const id=randomUUID();const r=await request('/share?draft='+id);assert.equal(r.status,307);assert.ok(decodeURIComponent(r.headers.get('location')).includes('/share?draft='+id));const page=await request('/share?draft='+id,{headers:identity()});assert.equal(page.status,200);const html=await page.text();assert.match(html,/Orbit 에이전트/);assert.ok(html.includes(id));const fallback=await request('/share-target',{method:'POST',body:'not processed'});assert.equal(fallback.status,503);assert.match(await fallback.text(),/공유/);
+ const id=randomUUID();const r=await request('/share?draft='+id);assert.equal(r.status,307);assert.ok(decodeURIComponent(r.headers.get('location')).includes('/share?draft='+id));const page=await request('/share?draft='+id,{headers:identity()});assert.equal(page.status,200);const html=await page.text();assertWorkspaceNavigation(html);assert.ok(html.includes(id));const fallback=await request('/share-target',{method:'POST',body:'not processed'});assert.equal(fallback.status,503);assert.match(await fallback.text(),/공유/);
 });
 
 test('daily brief routes require ownership, validate the date and fall back to the local planner without Hermes',async()=>{

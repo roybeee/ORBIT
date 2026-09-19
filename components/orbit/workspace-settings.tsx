@@ -5,23 +5,27 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@
 import {Checkbox} from '@/components/ui/checkbox';
 import {InstallSettings} from './install-app';
 import {Choice} from './choice';
-import type {Preferences} from '@/lib/orbit/model';
+import {CosmicMotionToggle} from './cosmic-skin';
+import type {View,Preferences} from '@/lib/orbit/model';
 import {formatTime,withDefaults} from '@/lib/orbit/model';
 interface Props {
+ navigate:(view:View)=>void;cosmic:{enabled:boolean;reduced:boolean;toggle:()=>void};
  settingsOpen:boolean;setSettingsOpen:(open:boolean)=>void;
  settingsDraft:Preferences;setSettingsDraft:Dispatch<SetStateAction<Preferences>>;
  busy:boolean;exporting:boolean;loaded:boolean;demo:boolean;
  onSave:(preferences:Preferences)=>Promise<boolean>;downloadData:()=>Promise<void>;
 }
-export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,setSettingsDraft,busy,exporting,loaded,demo,onSave,downloadData}:Props){
+export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,setSettingsDraft,busy,exporting,loaded,demo,onSave,downloadData,navigate,cosmic}:Props){
  return (
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="bg-white settings-dialog">
           <DialogHeader>
-            <DialogTitle>나의 업무 설정</DialogTitle>
-            <DialogDescription>일정과 내일 제안의 기준을 정합니다.</DialogDescription>
+            <DialogTitle>설정</DialogTitle>
+            <DialogDescription>계정 연결과 업무 환경을 관리합니다.</DialogDescription>
           </DialogHeader>
           <div className="dialog-form">
+            <div className="settings-connection-links"><button type="button" className="secondary-button" disabled={demo} onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:connections'))}}>계정·연결 관리</button><button type="button" className="secondary-button" disabled={demo} onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:runtime'))}}>자동 실행 설정</button></div>
+            <details className="workspace-more"><summary>업무 시간·계획 기준</summary><div className="dialog-form">
             <label className="form-label">시간대</label>
             <Choice
               label="시간대"
@@ -206,7 +210,8 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
             >
               설정 저장
             </button>
-            <div className="divider" />
+            </div></details>
+            <details className="workspace-more"><summary>데이터·백업</summary><div className="dialog-form"><div className="settings-connection-links"><button className="secondary-button" onClick={()=>{setSettingsOpen(false);navigate('data')}}>데이터 관리</button><button className="secondary-button" onClick={()=>{setSettingsOpen(false);navigate('backup')}}>백업·복구</button></div>
             <button
               className="secondary-button full-width"
               disabled={exporting || !loaded}
@@ -220,7 +225,7 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
               않습니다. 전체 백업과 선택 복구는 백업·복구 화면에서 이용하세요.
             </p>
             <div className="divider" />
-            {!demo&&<div className="settings-connection-links"><button type="button" className="secondary-button" onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:connections'))}}>연결 관리</button><button type="button" className="secondary-button" onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:runtime'))}}>자동 실행 설정</button></div>}
+            </div></details><details className="workspace-more"><summary>앱·화면</summary><div className="dialog-form"><CosmicMotionToggle enabled={cosmic.enabled} reduced={cosmic.reduced} onToggle={cosmic.toggle}/>
             <InstallSettings />
             <p className="form-hint">
               오프라인에서는 안내 화면이 표시됩니다. 업무 기록의 열람과 저장에는 연결이 필요합니다.
@@ -231,7 +236,7 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
                 <ArrowUpRight size={14} />
               </a>
             )}
-          </div>
+          </div></details></div>
         </DialogContent>
       </Dialog>
  );

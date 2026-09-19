@@ -82,7 +82,7 @@ export async function readNote(db: Database, ownerId: string, id: string, revisi
 export async function searchNotes(
   db: Database,
   ownerId: string,
-  options: { query: string; kind: 'wiki' | 'knowledge'; offset: number; expectedRevision?: number; projectId?:string; tag?:string; documentKind?:string },
+  options: { query: string; kind: 'wiki' | 'knowledge' | 'all'; offset: number; expectedRevision?: number; projectId?:string; tag?:string; documentKind?:string },
 ): Promise<{ items: Note[]; hasMore: boolean; revision: number }> {
   const snapshot = await readWorkspace(db, ownerId);
   if (options.expectedRevision !== undefined && options.expectedRevision !== snapshot.revision)
@@ -91,7 +91,7 @@ export async function searchNotes(
     .prepare(
       `SELECT meta.value AS metadata, substr(COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), ''), max(1,instr(lower(COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), '')),lower(?))-65),240) AS excerpt FROM json_each(?) AS meta
  LEFT JOIN orbit_note_revisions AS document ON document.owner_id = ? AND document.note_id = json_extract(meta.value, '$.id') AND document.revision = COALESCE(json_extract(meta.value, '$.revision'), 1)
- WHERE (CASE WHEN ? = 'knowledge' THEN json_extract(meta.value, '$.kind') = 'knowledge' ELSE json_extract(meta.value, '$.kind') IN ('meeting', 'wiki') END)
+ WHERE (CASE ? WHEN 'all' THEN 1 WHEN 'knowledge' THEN json_extract(meta.value, '$.kind') = 'knowledge' ELSE json_extract(meta.value, '$.kind') IN ('meeting', 'wiki') END)
  AND instr(lower(json_extract(meta.value, '$.title') || char(10) || json_extract(meta.value, '$.summary') || char(10) || json_extract(meta.value, '$.tags') || char(10) || COALESCE(json_extract(meta.value, '$.wiki.aliases'), '') || char(10) || COALESCE(json_extract(document.note_json, '$.body'), json_extract(meta.value, '$.body'), '')), lower(?)) > 0
  AND (? = '' OR json_extract(meta.value, '$.projectId') = ?)
  AND (? = '' OR EXISTS(SELECT 1 FROM json_each(json_extract(meta.value,'$.tags')) WHERE value=?))

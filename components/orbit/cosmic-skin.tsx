@@ -8,14 +8,14 @@ const starPositions=Array.from({length:22},(_,i)=>({x:(i*47+9)%100,y:(i*31+7)%10
 
 /** Only the animation preference is device-local; no workspace records are changed. */
 export function useCosmicMotion(){
-  const [enabled,setEnabled]=useState(true);
+  const [enabled,setEnabled]=useState(false);
   const [reduced,setReduced]=useState(true);
   const [visible,setVisible]=useState(true);
   useEffect(()=>{
     const media=window.matchMedia('(prefers-reduced-motion: reduce)');
     const syncMedia=()=>setReduced(media.matches);
     const syncVisibility=()=>setVisible(document.visibilityState==='visible');
-    const syncPreference=()=>{try{setEnabled(localStorage.getItem(preferenceKey)!=='off')}catch{/* Storage is optional. */}};
+    const syncPreference=()=>{try{setEnabled(localStorage.getItem(preferenceKey)==='on')}catch{/* Storage is optional. */}};
     syncMedia();syncVisibility();syncPreference();
     media.addEventListener('change',syncMedia);
     document.addEventListener('visibilitychange',syncVisibility);

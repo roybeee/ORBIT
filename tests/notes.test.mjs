@@ -14,6 +14,22 @@ const command=(revision,action)=>({operationId:randomUUID(),expectedRevision:rev
 async function seed(db){const state=await writeCommand(db,'a',command(0,{type:'project.upsert',project}),now);return writeCommand(db,'a',command(state.revision,{type:'note.upsert',note}),now)}
 const restore=(revision,version,current)=>command(revision,{type:'note.restore',id:'n',revision:version,expectedNoteRevision:current});
 
+test('unified record search includes all document types while preserving owner, type and revision boundaries',async()=>{
+ const db=createDatabase();try{
+  let state=await seed(db);
+  for(const kind of ['wiki','meeting','knowledge'])state=await writeCommand(db,'a',command(state.revision,{type:'note.upsert',note:{...note,id:'unified-'+kind,kind,title:kind,summary:'분류 예시',body:'원문 전용 통합검색어',tags:['통합']}}),now);
+  const query={query:'통합검색어',kind:'all',offset:0,expectedRevision:state.revision};
+  const result=await searchNotes(db,'a',query);
+  assert.deepEqual(new Set(result.items.map(n=>n.kind)),new Set(['wiki','meeting','knowledge']));
+  assert.ok(result.items.every(n=>n.body===''&&n.searchExcerpt.includes('통합검색어')));
+  assert.equal((await searchNotes(db,'a',{...query,documentKind:'knowledge',tag:'통합',projectId:'p'})).items.length,1);
+  assert.equal((await searchNotes(db,'a',{...query,projectId:'other'})).items.length,0);
+  assert.equal((await searchNotes(db,'a',{...query,kind:'wiki'})).items.length,2);
+  assert.equal((await searchNotes(db,'b',{query:'통합검색어',kind:'all',offset:0})).items.length,0);
+  await assert.rejects(()=>searchNotes(db,'a',{...query,expectedRevision:state.revision-1}),RevisionConflict);
+ }finally{db.close()}
+});
+
 test('note bodies are stored separately, owner-scoped and preserved in exports',async()=>{
  const db=createDatabase();try{const state=await seed(db);assert.equal(state.data.schemaVersion,3);assert.equal(state.data.notes[0].body,'');assert.equal(state.data.notes[0].bodyStored,true);assert.equal((await readNote(db,'a','n')).body,note.body);await assert.rejects(()=>readNote(db,'b','n'),NoteNotFound);await assert.rejects(()=>listNoteHistory(db,'b','n'),NoteNotFound);const output=await new Response(exportWorkspace(db,'a',state)).json();assert.equal(output.data.notes[0].body,note.body);assert.equal(output.data.projects[0].id,'p')}finally{db.close()}
 });
