@@ -9,12 +9,12 @@ import { AgentError } from './errors.ts';
 import type { Runtime } from './integrations.ts';
 
 export const scheduleInput = z.discriminatedUnion('action',[
-  z.object({action:z.literal('save'),hours:z.union([z.literal(6),z.literal(12),z.literal(24)]),delivery:z.enum(['local','telegram']),research:z.string().trim().max(300),includeCare:z.boolean(),acknowledged:z.literal(true)}).strict(),
+  z.object({action:z.literal('save'),hours:z.union([z.literal(6),z.literal(12),z.literal(24)]),delivery:z.enum(['local','telegram','discord']),research:z.string().trim().max(300),includeCare:z.boolean(),acknowledged:z.literal(true)}).strict(),
   z.object({action:z.enum(['pause','resume','refresh','sync'])}).strict(),
 ]);
 type ScheduleInput = z.infer<typeof scheduleInput>;
 interface ReceiptState { confirmed:JobReceipt|null; pending:JobReceipt|null }
-interface JobReceipt {name:string;connectionId:string;snapshotAt:string;hours:6|12|24;delivery:'local'|'telegram';research:string;includeCare:boolean;uncertain?:boolean}
+interface JobReceipt {name:string;connectionId:string;snapshotAt:string;hours:6|12|24;delivery:'local'|'telegram'|'discord';research:string;includeCare:boolean;uncertain?:boolean}
 export async function chiefJobName(owner:string,connectionId:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['orbit-chief',owner,connectionId])));return 'Orbit chief '+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('').slice(0,32)}
 export function scheduledPrompt(data:WorkspaceData,receipt:JobReceipt,now=new Date()) {
   const state=chiefOfStaff(data,now),settings={...chiefDefaults,...data.chief?.settings};

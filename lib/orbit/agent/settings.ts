@@ -1,3 +1,4 @@
+import {disconnectDiscord} from '../discord/connection.ts';
 import {z} from 'zod';
 import type {Database} from '../../../db/repository.ts';
 import {AgentError} from './errors.ts';
@@ -19,8 +20,9 @@ export async function configure(db:Database,owner:string,input:z.infer<typeof se
  }else await saveConnection(db,owner,'google_calendar',{clientId:input.clientId,clientSecret:input.clientSecret},{connected:false},keyOf(env));
 }
 export async function disconnect(db:Database,owner:string,provider:string){
- if(!['hermes','plaud','google_calendar','google_mail'].includes(provider))throw new AgentError('연결 종류를 확인해 주세요.');
+ if(!['hermes','plaud','google_calendar','google_mail','discord'].includes(provider))throw new AgentError('연결 종류를 확인해 주세요.');
  if(provider==='hermes'&&await db.prepare("SELECT id FROM orbit_agent_turns WHERE owner_id=? AND status='running'").bind(owner).first())throw new AgentError('진행 중인 헤르메스 대화를 먼저 마치거나 중지해 주세요.','BUSY',409);
+ if(provider==='discord'){await disconnectDiscord(db,owner);return;}
  const statements=[db.prepare('DELETE FROM orbit_integrations WHERE owner_id=? AND provider=?').bind(owner,provider),db.prepare('DELETE FROM orbit_oauth_states WHERE owner_id=? AND provider=?').bind(owner,provider)];
  if(provider==='google_calendar')statements.push(db.prepare('DELETE FROM orbit_calendar_cache WHERE owner_id=?').bind(owner),db.prepare('UPDATE orbit_workspaces SET revision=revision+1,mutation_id=?,updated_at=? WHERE owner_id=?').bind(crypto.randomUUID(),new Date().toISOString(),owner));
  await db.batch(statements);

@@ -1,4 +1,5 @@
 'use client';
+import {DiscordConnection} from './discord-connection';
 import {CalendarSelection} from './calendar-controls';
 import { requestOwnerHeaders } from '@/lib/orbit/request-owner';
 import {AgentRequestError} from '@/lib/orbit/agent/approval-feedback';
@@ -27,12 +28,13 @@ export function Connections({connections,onClose,onChange}:{connections:Connecti
    <form onSubmit={event=>{event.preventDefault();void run('hermes',async()=>{await agentRequest('/api/integrations','POST',{provider:'hermes',endpoint,token});setToken('');setFeedback('헤르메스 실행 기능과 연결 암호를 확인했습니다. 대화를 시작하세요.')})}}>
     <label>헤르메스 연결 주소<input className="form-field" type="url" value={endpoint} onChange={e=>setEndpoint(e.target.value)} autoComplete="url" spellCheck={false} placeholder="https://나의-헤르메스-주소" required maxLength={500}/></label>
     <label>헤르메스 연결 암호<input className="form-field" type="password" value={token} onChange={e=>setToken(e.target.value)} autoComplete="new-password" spellCheck={false} placeholder={state('hermes')?.connected?'새 암호를 입력하면 교체됩니다':'Hermes에 설정한 연결 암호'} required minLength={20} maxLength={500}/></label>
-    <p className="connection-help">Mac에서 실행하는 헤르메스의 모델과 설정을 사용합니다. Mac이 켜져 있고 외부에서 접속할 수 있는 HTTPS 주소가 필요합니다.</p>
+    <p className="connection-help">연결된 PC 또는 서버의 헤르메스 모델과 설정을 사용합니다. 상시 사용하려면 해당 기기가 켜져 있고 외부에서 접속할 수 있는 HTTPS 주소가 필요합니다.</p>
     <a className="text-button" href="https://github.com/roybeee/ORBIT/blob/main/docs/Hermes_Setup.ko.md" target="_blank" rel="noreferrer">Mac에서 헤르메스 연결 준비 <ExternalLink size={14}/></a>
     <button className="primary-button" disabled={!!busy||!endpoint.trim()||!token.trim()}>{busy==='hermes'?<LoaderCircle className="animate-spin" size={16}/>:<Check size={16}/>} {busy==='hermes'?'헤르메스 확인 중…':'헤르메스 연결 확인'}</button>
     {notice('hermes')}
    </form>
   </section>
+  <DiscordConnection onChange={onChange}/>
   <section className="connection-card"><header><span className="connection-icon"><Mic size={22}/></span><div><h3>Plaud</h3><p>회의 기록 → 위키와 실행 제안</p></div><span className={'connection-status '+(state('plaud')?.connected?'connected':'')}>{state('plaud')?.connected?'연결됨':'연결 필요'}</span></header><p className="connection-help">Plaud 계정에서 Orbit의 기록 조회를 허용하세요. 대화 중 필요한 회의록을 찾아 후속 업무를 제안합니다.</p><button className="secondary-button" disabled={!!busy} onClick={()=>void run('plaud',()=>connect('plaud'))}>{busy==='plaud'?<LoaderCircle className="animate-spin" size={16}/>:<Link2 size={16}/>}{busy==='plaud'?'Plaud 인증 준비 중…':state('plaud')?.connected?'Plaud 다시 연결':'Plaud 연결'}</button>{notice('plaud')}</section>
   <section className="connection-card"><header><span className="connection-icon"><CalendarDays size={22}/></span><div><h3>Google Calendar</h3><p>일정 조회와 승인한 일정 등록</p></div><span className={'connection-status '+(state('google_calendar')?.connected?'connected':'')}>{state('google_calendar')?.connected?'연결됨':'연결 필요'}</span></header>
    <p className="connection-help">선택한 여러 캘린더를 함께 읽어 시간 충돌을 확인합니다. Google 일정 생성 카드를 승인하면 내 캘린더에 등록합니다.</p>

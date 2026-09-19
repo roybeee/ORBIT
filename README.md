@@ -120,3 +120,9 @@ Do not commit real meetings, calendars, tokens, local databases, account credent
 Chrome의 WebAPK 아이콘 해시 요청은 로그인 쿠키를 보내지 않으므로, 비공개 Site의 아이콘 주소에 의존하지 않도록 manifest에 동일한 PNG 바이트를 data URL로 포함합니다. manifest 경로, 앱 id, 시작 URL, 사용자 데이터와 접근 정책은 유지합니다. 이는 확인된 설치 의존성을 제거하는 수정이며, 해당 기기의 원인이 아이콘 요청 실패였다고 단정하지 않습니다.
 
 갱신 대기가 지속되면 작성 중인 내용을 먼저 저장한 뒤 앱만 재설치하며 Chrome 사이트 데이터는 삭제하지 않습니다. 공유 목록에 표시되는지는 실제 기기에서 별도 확인해야 합니다.
+
+## Discord 업무 연결
+
+연결 → Discord 업무 채널에서 봇 토큰·서버·채널·본인 사용자 ID를 설정합니다. `!orbit 질문`, `실행`, `상태`, `승인`, `보류`, `거절`, `중지`, `허용`, `차단` 명령을 기존 ORBIT·HERMES 승인/실행 흐름으로 처리합니다. 서버 자동 실행이 수신과 알림을 이어가며 설정 화면에 최근 접수·발송 상태를 표시합니다. 봇 토큰은 기존 연결 암호화 방식으로 저장하고, 본인 이외의 명령·봇·웹훅 메시지는 실행하지 않습니다. Slack 기록의 출처는 보존합니다.
+
+직접 HERMES 대화·네이티브 명령·첨부·예약 이전은 [전환 안내](public/downloads/Discord_Migration.ko.md)와 [전환 도구](public/downloads/hermes-discord-migrate.py)를 사용합니다. 프로필마다 별도 적용이 필요합니다. 실제 봇 토큰과 서버 연결 확인 없이는 운영 전환 완료로 표시하지 않습니다. 전체 Slack 워크스페이스 이력 복사와 Slack 구독 해지는 수행하지 않습니다.

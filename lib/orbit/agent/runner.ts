@@ -63,7 +63,7 @@ Return exactly ONE JSON object, without Markdown fences. To read more data use:
 {"kind":"read","requests":[{"tool":"workspace_search","arguments":{"query":"keyword","kind":"tasks"}}]}
 Allowed read tools:
 - agent_orders: {id?:string}. Read the owner's real execution receipts, native statuses and results; do not infer completion from an accepted order.
-- conversation_search: {query:string}. Searches the owner's saved Orbit conversations AND imported Hermes records from Slack, CLI and other connected channels. Source fields identify provenance. User utterances and previous AI answers are separate; previous AI content is not proof about the user.
+- conversation_search: {query:string}. Searches the owner's saved Orbit conversations AND imported Hermes records from Discord, legacy Slack, CLI and other connected channels. Source fields identify provenance. User utterances and previous AI answers are separate; previous AI content is not proof about the user.
 - workspace_search: query string (empty lists a bounded catalog), kind tasks/projects/wiki/knowledge.
 - read_note: id string. Required before editing any existing note. Returns full body and immutable revision.
 - plaud_tools: {}. Lists the connected owner's available read-only Plaud MCP tools and their input schemas. Call before plaud_read.

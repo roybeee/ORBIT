@@ -2,7 +2,7 @@ import type {StoredAttachment} from '../attachments/types';
 import type {WorkspaceAction} from '../validation';
 import type {AgentSource} from './evidence';
 import type {DispatchAction} from './orders-schema';
-export type Provider='hermes'|'plaud'|'google_calendar'|'google_mail';
+export type Provider='hermes'|'plaud'|'google_calendar'|'google_mail'|'discord';
 export interface Connection {provider:Provider;configured:boolean;connected:boolean;label:string;updatedAt?:string;model?:string;endpoint?:string}
 export interface AgentAction {conversationId?:string;id:string;turnId:string;title:string;reason:string;action:WorkspaceAction|GoogleEventAction|GoogleSeriesDeleteAction|DispatchAction;expectedRevision:number;state:'pending'|'applying'|'approved'|'deferred'|'rejected';note:string;revisitDate:string|null;result?:{url?:string;briefDate?:string;orderId?:string;calendarDeletion?:{seriesId:string;status:string;verifiedAt?:string;message?:string}};createdAt:string}
 export interface GoogleSeriesDeleteAction {type:'google.event.deleteSeries';calendarId?:string;eventId:string;expectedTitle:string;scope:'all';verified?:{calendarId:string;seriesId:string;etag:string;iCalUID:string;title:string}}

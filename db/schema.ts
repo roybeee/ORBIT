@@ -1,5 +1,15 @@
 import {sql} from 'drizzle-orm';
 import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+// Discord is a transport for the same owner, never an independent workspace.
+export const discordState=sqliteTable('orbit_discord_state',{
+ ownerId:text('owner_id').primaryKey(),stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),
+});
+export const discordCommands=sqliteTable('orbit_discord_commands',{
+ ownerId:text('owner_id').notNull(),messageId:text('message_id').notNull(),commandJson:text('command_json').notNull(),status:text('status').notNull(),response:text('response').notNull().default(''),createdAt:text('created_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.messageId]})]);
+export const discordOutbox=sqliteTable('orbit_discord_outbox',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),channelId:text('channel_id').notNull(),content:text('content').notNull(),status:text('status').notNull().default('pending'),messageId:text('message_id'),attempts:integer('attempts').notNull().default(0),nextAt:integer('next_at').notNull().default(0),createdAt:text('created_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.id]}),index('idx_orbit_discord_pending').on(t.ownerId,t.status,t.nextAt)]);
 // Deleted user records remain owner-scoped and recoverable without exposing credentials.
 export const dataTrash=sqliteTable('orbit_data_trash',{
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),category:text('category').notNull(),recordId:text('record_id').notNull(),title:text('title').notNull(),payloadJson:text('payload_json').notNull(),deletedAt:text('deleted_at').notNull(),

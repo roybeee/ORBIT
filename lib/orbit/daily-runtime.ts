@@ -1,3 +1,4 @@
+import {syncDiscord} from './discord/runtime.ts';
 import {collectMetrics} from './metric-collector.ts';
 import {replanBasis} from './reschedule.ts';
 import {syncActivity,activityStatus} from './agent/activity.ts';
@@ -29,7 +30,8 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  const lease=Date.now()+180000,claimed=await db.prepare('UPDATE orbit_daily_runtime SET lease_until=? WHERE owner_id=? AND lease_until<?').bind(lease,owner,Date.now()).run();if(claimed.meta?.changes!==1)return {busy:true,active:true};
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
- const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active};};
+ const discord=await syncDiscord(db,owner,env).catch(()=>({active:false}));
+ const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active:active||discord.active};};
  const advance=async()=>{const result=await advanceRuntimeWork(db,owner,env,config.advanceCursor);if(result.active){config.advanceCursor=result.cursor;config.lastError=result.error;config.workFirst=false;}return result.active;};
  // Alternate active work with housekeeping: collection can never starve research.
  if(config.workFirst!==false&&await advance())return await finish(true);
