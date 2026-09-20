@@ -3,11 +3,30 @@ from pathlib import Path
 import unittest
 import tempfile
 import json
+from unittest.mock import patch
+from types import SimpleNamespace
 spec = importlib.util.spec_from_file_location('migration', Path(__file__).parent.parent / 'public/downloads/hermes-discord-migrate.py')
 migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
 
 class MigrationTest(unittest.TestCase):
+    def test_restore_preserves_sessions_and_job_execution_counters(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'.env').write_text('SLACK_BOT_TOKEN=old');(root/'config.yaml').write_text('slack: enabled')
+            (root/'cron').mkdir();(root/'cron/jobs.json').write_text('{"repeat":3}')
+            saved=migration.backup(root,['.env','config.yaml','cron/jobs.json'])
+            (root/'.env').write_text('DISCORD_BOT_TOKEN=new');(root/'discord-migration.json').write_text('{}')
+            (root/'state.db').write_text('sessions unchanged');(root/'cron/jobs.json').write_text('{"repeat":4}')
+            migration.restore_settings(root,saved)
+            self.assertEqual((root/'.env').read_text(),'SLACK_BOT_TOKEN=old')
+            self.assertFalse((root/'discord-migration.json').exists())
+            self.assertEqual((root/'cron/jobs.json').read_text(),'{"repeat":4}')
+            self.assertEqual((root/'state.db').read_text(),'sessions unchanged')
+            self.assertEqual(saved.stat().st_mode & 0o777,0o700)
+            self.assertEqual((saved/'.env').stat().st_mode & 0o777,0o600)
+    def test_service_restart_also_requires_active_status(self):
+        with patch.object(migration.subprocess,'run',side_effect=[SimpleNamespace(returncode=0),SimpleNamespace(returncode=1)]):
+            with self.assertRaises(RuntimeError):migration.restart_service('hermes-gateway')
     def test_channel_restriction_replaces_wildcards_in_both_config_layers(self):
         config={'discord':{'allowed_channels':'*','free_response_channels':'*'},'platforms':{'discord':{'extra':{'allowed_channels':'*'}}}}
         allowed=migration.staged_discord(config,['222222222222222222'])

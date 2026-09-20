@@ -131,6 +131,26 @@ def ensure_unique_bot(profile, token):
         if path.is_file() and read_env(path.read_text()).get('DISCORD_BOT_TOKEN') == token:
             raise ValueError('다른 프로필에 같은 Discord 봇 토큰이 있습니다: ' + peer.name)
 
+def restore_settings(profile, saved):
+    """Restore only connector settings, never sessions or cron execution state."""
+    if saved.resolve().parent != (profile / 'discord-migration-backups').resolve():
+        raise ValueError('현재 프로필의 discord-migration-backups만 복구할 수 있습니다.')
+    if not (saved / '.env').is_file() or not (saved / 'config.yaml').is_file():
+        raise ValueError('설정 백업이 불완전합니다.')
+    for name in ['.env', 'config.yaml', 'gateway.json', 'discord-migration.json']:
+        source, destination = saved / name, profile / name
+        if source.is_file():
+            atomic_write(destination, source.read_text())
+        elif name == 'discord-migration.json' and destination.exists():
+            destination.unlink()
+
+def restart_service(service):
+    if not service:
+        return
+    result = subprocess.run(['systemctl', '--user', 'restart', service], check=False)
+    if result.returncode or subprocess.run(['systemctl', '--user', 'is-active', '--quiet', service], check=False).returncode:
+        raise RuntimeError('게이트웨이 서비스 재시작·활성 상태 확인에 실패했습니다.')
+
 def staged_discord(config, channels):
     # Hermes seeds per-profile extras from this top-level section. Set both
     # layers so an existing wildcard or free-response value cannot survive.
@@ -182,7 +202,7 @@ def verify_gateway_receipt(token, channel, user, bot, probe, since):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inspect', 'stage', 'cutover'])
+    parser.add_argument('action', choices=['inspect', 'stage', 'cutover', 'rollback'])
     parser.add_argument('--profile', type=Path, default=Path('~/.hermes'))
     parser.add_argument('--hermes-source', type=Path)
     parser.add_argument('--channel-map', type=Path, help='JSON: Slack channel ID -> Discord channel ID')
@@ -218,6 +238,31 @@ def main():
     if not isinstance(config, dict):
         raise RuntimeError('config.yaml 형식을 확인하세요.')
     receipt_path = profile / 'discord-migration.json'
+    if args.action == 'rollback':
+        if not receipt_path.is_file():
+            raise RuntimeError('이 프로필의 이전 접수 기록을 찾지 못했습니다.')
+        receipt = json.loads(receipt_path.read_text())
+        saved = Path(receipt.get('cutoverBackup') or receipt['backup'])
+        deliveries = receipt.get('migratedDeliveries', [])
+        current_jobs = {str(j['id']):j for j in jobs}
+        # Fail closed if an operator has changed a route after cutover.
+        for job_id, old, new in deliveries:
+            if job_id not in current_jobs or current_jobs[job_id].get('deliver') != new:
+                raise RuntimeError('이전 이후 예약 수신처가 변경돼 자동 복구를 중단합니다: ' + job_id)
+        if saved.resolve().parent != (profile / 'discord-migration-backups').resolve():
+            raise ValueError('백업 경로가 현재 프로필과 다릅니다.')
+        if not (saved / '.env').is_file() or not (saved / 'config.yaml').is_file():
+            raise ValueError('설정 백업이 불완전합니다.')
+        backup(profile, ['.env', 'config.yaml', 'gateway.json', 'cron/jobs.json', 'discord-migration.json'])
+        for job_id, old, new in deliveries:
+            if update_job(job_id, {'deliver':old}) is None:
+                raise RuntimeError('예약 수신처 복구에 실패했습니다: ' + job_id)
+        restore_settings(profile, saved)
+        restart_service(args.service)
+        print('연결 설정과 변경한 예약 수신처 복구 완료. 실행 이력과 예약 실행 횟수는 보존했습니다.')
+        if not args.service:
+            print('서비스 재시작은 실행하지 않았습니다. 해당 프로필의 gateway를 재시작하세요.')
+        return
     if args.action == 'stage':
         token = getpass.getpass('Discord 봇 토큰 (화면에 표시되지 않음): ').strip()
         user = input('본인의 Discord 사용자 ID: ').strip()
@@ -300,6 +345,7 @@ def main():
             receipt['stage'] = 'cutover'
             receipt['cutoverBackup'] = str(saved)
             receipt['migratedJobs'] = [j[0] for j in updates]
+            receipt['migratedDeliveries'] = updates
             atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2))
         except Exception:
             for job_id, old in reversed(applied):
@@ -311,9 +357,21 @@ def main():
         print('Discord 전환 설정 완료. 예약 이전:', len(updates), '/ 백업:', saved)
         print('과거 Slack 대화·세션 기록은 그대로 보존했습니다.')
     if args.service:
-        result = subprocess.run(['systemctl', '--user', 'restart', args.service], check=False)
-        if result.returncode:
-            raise RuntimeError('설정은 저장했지만 서비스 재시작에 실패했습니다. 해당 프로필의 서비스를 확인하세요.')
+        try:
+            restart_service(args.service)
+        except RuntimeError:
+            # A failed restart is not a successful transition. Revert changed
+            # delivery fields, keeping counters and unrelated jobs untouched.
+            if args.action == 'cutover':
+                for job_id, old, new in reversed(updates):
+                    if update_job(job_id, {'deliver':old}) is None:
+                        raise RuntimeError('재시작 실패 후 예약 복구도 실패했습니다. 백업: ' + str(saved))
+            restore_settings(profile, saved)
+            try:
+                restart_service(args.service)
+            except RuntimeError:
+                raise RuntimeError('설정은 복구했지만 서비스 재시작을 확인하지 못했습니다. 백업: ' + str(saved)) from None
+            raise RuntimeError('새 설정의 재시작 실패로 이전 설정을 복구하고 서비스 활성 상태를 확인했습니다.') from None
         print('지정한 게이트웨이 서비스를 재시작했습니다.')
     else:
         print('이 프로필의 기존 Hermes gateway 서비스를 재시작하세요.')

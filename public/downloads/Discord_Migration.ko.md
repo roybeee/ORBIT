@@ -65,3 +65,13 @@ ORBIT의 나의 궤도 → 앱을 닫아도 챙기기에서 받을 곳을 ‘Her
 - `attachments_threads`: 기존 사용 파일·스레드 대응 검증
 
 보고서는 운영자의 검증 기록이며, 도구가 각 근거의 진위를 자동 판별하는 것은 아닙니다. 전체 검증 이후에만 cutover를 실행하세요.
+
+## 복구
+
+전환 후 문제가 있으면 같은 프로필과 서비스로 다음 명령을 실행합니다.
+
+```bash
+python hermes-discord-migrate.py rollback --profile /home/hermes/.hermes --hermes-source /home/hermes/.hermes/hermes-agent --service hermes-gateway
+```
+
+cutover 복구는 Slack 병행 연결 상태로 돌아가고, stage 복구는 stage 전 설정으로 돌아갑니다. 변경한 예약의 수신처만 되돌리고 실행 횟수·세션·메시지는 보존합니다. 전환 이후 다른 운영자가 수신처를 수정했다면 자동 복구를 중단합니다. 서비스 재시작 실패 시에는 이전 설정을 복구한 뒤 활성 상태를 확인합니다. `active`는 프로세스 확인이며 실제 Slack 수신·발송 복구는 별도의 테스트 메시지와 예약 검증이 필요합니다.
