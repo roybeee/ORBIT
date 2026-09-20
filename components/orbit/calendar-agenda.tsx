@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownUp, ArrowLeft, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
 import type { CalendarEvent, Project, Preferences, Task } from '@/lib/orbit/model';
 import {categoryOf,categoryColor,categoryLabels} from '@/lib/orbit/calendar-categories';
@@ -246,11 +246,14 @@ export function CalendarAgenda(props: Props) {
   }, []);
 
   const conflict = preview && moveConflict(preview.event, props.events);
+  const completedIds=new Set(props.timelineTasks?.filter(t=>t.status==='done').map(t=>t.id));
+  const firstCompleted=props.events.findIndex(e=>completedIds.has(e.taskId??''));
+  const completedCount=new Set(props.events.filter(e=>completedIds.has(e.taskId??'')).map(e=>e.taskId)).size;
   return <div ref={root} className={`calendar-agenda ${preview ? 'is-moving' : ''}`}>
     <p id="calendar-move-help" className="calendar-gesture-hint"><span><ArrowLeft size={15}/>밀어서 수정·삭제</span><span><ArrowDownUp size={15}/>길게 눌러 시간 이동</span></p>
     {props.onDeleteTask&&<p className="calendar-gesture-hint"><span><Trash2 size={15}/>미배정 할 일은 길게 누르고 오른쪽으로 밀어 삭제</span></p>}
     {!props.events.length && <div className="calendar-empty"><Clock3 size={25}/><strong>{props.timelineTasks?'이날 할 일과 일정이 없어요':'예정된 일정이 없어요'}</strong><p>상단의 일정 추가로 하루를 계획해 보세요.</p></div>}
-    {props.events.map(event => {
+    {props.events.map((event,index) => {
       const task=props.timelineTasks?.find(t=>t.id===event.taskId),untimed=event.id.startsWith('task-due:');
       const canSchedule=untimed&&task&&task.status!=='done'&&!!props.onScheduleTask;
       const active = preview?.event.id === event.id;
@@ -262,8 +265,8 @@ export function CalendarAgenda(props: Props) {
       const deletingTask=deleting?.id===event.id?deleting:null;
       const offset = deletingTask ? deletingTask.offset : swiping ? swipe.offset : actionsOpen ? -SWIPE_ACTION_WIDTH : 0;
       const project = props.projects.find(p => p.id === event.projectId);
-      return <div className={`agenda-row ${active ? 'agenda-moving' : ''} ${task?.status==='done'?'agenda-task-done':''}`} key={event.id} id={'agenda-row-'+event.id} data-agenda-row={event.id}>
-        <time className="agenda-time">{shown.allDay?<>{untimed?'미배정':'종일'}<span>{untimed?'할 일':'일정'}</span></>:<>{formatTime(shown.start)}<span>{formatTime(shown.end)}</span></>}</time>
+      return <Fragment key={event.id}>{index===firstCompleted&&<h3 className="calendar-completed-heading">완료한 할 일 <span>{completedCount}개</span></h3>}<div className={`agenda-row ${active ? 'agenda-moving' : ''} ${task?.status==='done'?'agenda-task-done':''}`} id={'agenda-row-'+event.id} data-agenda-row={event.id}>
+        <time className="agenda-time">{shown.allDay?<>{untimed?(task?.status==='done'?'완료':'미배정'):'종일'}<span>{untimed?'할 일':'일정'}</span></>:<>{formatTime(shown.start)}<span>{formatTime(shown.end)}</span></>}</time>
         <div className="agenda-swipe-shell" style={{transform: active && !preview.saving ? `translateY(${preview.delta}px)` : undefined}}>
         <div className={`agenda-swipe-clip ${swiping || deletingTask ? 'is-swiping' : ''} ${actionsOpen ? 'actions-open' : ''} ${deletingTask ? 'is-deleting-task' : ''} ${deletingTask?.ready?'delete-ready':''}`}>
           {deletingTask&&<div className="agenda-delete-target" aria-hidden="true"><Trash2 size={24}/><span>{deletingTask.saving?'삭제 중…':deletingTask.ready?'놓으면 삭제':'오른쪽으로'}</span></div>}
@@ -290,7 +293,7 @@ export function CalendarAgenda(props: Props) {
         </div>
         </div>
         </div>
-      </div>;
+      </div></Fragment>;
     })}
     {deleting&&<div className="calendar-drag-feedback calendar-delete-feedback" role="status" aria-live="polite"><Trash2 size={20}/><div><strong>{deleting.saving?'할 일을 삭제하고 있어요':deleting.ready?'손을 놓으면 삭제됩니다':'오른쪽으로 밀어 삭제'}</strong><span>{deleting.saving?'저장 결과를 확인하고 있습니다':'왼쪽으로 되돌린 뒤 놓으면 취소'}</span></div></div>}
     {preview && <div className={`calendar-drag-feedback ${conflict ? 'has-conflict' : ''}`} role="status" aria-live="polite">

@@ -839,6 +839,7 @@ function WorkspaceContent({
   const selectedCalendarTaskIds=new Set(calendarTaskEvents.filter(e=>e.date===calendarDate).map(e=>e.taskId));
   const selectedCalendarTasks=tasks.filter(t=>selectedCalendarTaskIds.has(t.id));
   const selectedEvents = [...events,...protectedEvents(data,calendarDate)].map(e=>({...e,category:preferences.eventCategories?.[e.id]??e.category})).filter((e) => e.date === calendarDate).sort((a, b) => Number(!!b.allDay)-Number(!!a.allDay)||a.start - b.start);
+  const calendarInbox=tasks.filter(t=>t.status==='waiting');
   const selectedTimeline=calendarTimeline(tasks,selectedEvents,calendarDate,TODAY);
   const todayRemaining = focus.filter((t) => t.status !== 'done').reduce((s, t) => s + t.duration, 0);
   const renderTimeline = (date: string) => {
@@ -1269,9 +1270,11 @@ function WorkspaceContent({
                   <TabsTrigger value="timeline">타임라인 <span>{selectedTimeline.length}</span></TabsTrigger>
                   <TabsTrigger value="tasks">할 일 <span>{selectedCalendarTasks.filter(t=>t.status!=='done').length}</span></TabsTrigger>
                   <TabsTrigger value="events">일정 <span>{selectedEvents.length}</span></TabsTrigger>
+                  <TabsTrigger value="waiting">대기함 <span>{calendarInbox.length}</span></TabsTrigger>
                 </TabsList>
                 {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
                 <TabsContent value="tasks"><CalendarTasks tasks={selectedCalendarTasks} projects={projects} preferences={preferences} date={calendarDate} today={TODAY} disabled={busy||hasPending} onOpen={id=>selectedCalendarTasks.find(t=>t.id===id)?.status!=='done'&&selectedTimeline.some(e=>e.id==='task-due:'+id)?openTaskSchedule(id):setDetail({kind:'task',id})} onToggle={id=>void toggleTask(id)}/></TabsContent>
+                <TabsContent value="waiting"><CalendarTasks tasks={calendarInbox} projects={projects} preferences={preferences} date={calendarDate} today={TODAY} disabled={busy||hasPending} inbox onOpen={id=>openTaskSchedule(id)} onToggle={id=>void toggleTask(id)} onResume={id=>void perform({type:'task.status',id,status:'todo'},'할 일 목록으로 복귀했습니다.')}/></TabsContent>
                 <TabsContent value="timeline">
                   <div className="section-title"><h2>{Number(calendarDate.slice(-2))}일 타임라인</h2><span className="muted">{selectedTimeline.length}개</span></div>
                   <p className="calendar-task-guidance">시간 미정인 할 일과 일정에 배치한 일을 한눈에 확인하세요. 미완료 할 일은 다음 날로 이월됩니다.</p>
@@ -1733,7 +1736,7 @@ function WorkspaceContent({
           </div>
         </SheetContent>
       </Sheet>
-      {scheduleTask&&<QuickTaskSchedule key={scheduleTask.id+':'+scheduleTask.date} data={data} taskId={scheduleTask.id} initialDate={scheduleTask.date} now={clock} busy={busy} pending={hasPending} demo={demo} onSave={action=>perform(action,'시간을 배정했습니다.')} onRetry={()=>void retry()} onClose={()=>closeTaskSchedule()} onDetails={()=>{const id=scheduleTask.id;closeTaskSchedule(()=>setDetail({kind:'task',id}))}} onSaved={(date,eventId)=>closeTaskSchedule(()=>{setCalendarDate(date);setCalendarTab('timeline');navigate('calendar');window.dispatchEvent(new Event('orbit:calendar-changed'));requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById('agenda-row-'+eventId)?.scrollIntoView({block:'center',behavior:'instant'})))})}/>}
+      {scheduleTask&&<QuickTaskSchedule key={scheduleTask.id+':'+scheduleTask.date} data={data} taskId={scheduleTask.id} initialDate={scheduleTask.date} now={clock} busy={busy} pending={hasPending} demo={demo} onSave={action=>perform(action,'시간을 배정했습니다.')} onRetry={()=>void retry()} onClose={()=>closeTaskSchedule()} onHold={()=>perform({type:'task.hold',id:scheduleTask.id},'할 일 대기함으로 옮겼습니다.')} onHeld={()=>closeTaskSchedule(()=>{setCalendarTab('waiting');navigate('calendar')})} onDetails={()=>{const id=scheduleTask.id;closeTaskSchedule(()=>setDetail({kind:'task',id}))}} onSaved={(date,eventId)=>closeTaskSchedule(()=>{setCalendarDate(date);setCalendarTab('timeline');navigate('calendar');window.dispatchEvent(new Event('orbit:calendar-changed'));requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById('agenda-row-'+eventId)?.scrollIntoView({block:'center',behavior:'instant'})))})}/>}
       <Dialog
         open={!!create}
         onOpenChange={(open) => {

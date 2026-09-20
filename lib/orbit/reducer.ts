@@ -467,6 +467,16 @@ export function applyAction(
       }
       break;
     }
+    case 'task.hold': {
+      const t = task(action.id);
+      if (t.status === 'done') fail('완료한 할 일은 보류할 수 없습니다.');
+      finishSession(t);
+      t.status = 'waiting';
+      t.focus = false;
+      delete t.focusDate;
+      delete t.laserDate;
+      break;
+    }
     case 'task.status': {
       const t = task(action.id);
       t.status = action.status;

@@ -299,6 +299,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('task.delete'), id }).strict(),
+  z.object({ type: z.literal('task.hold'), id }).strict(),
   z
     .object({
       type: z.literal('note.upsert'),

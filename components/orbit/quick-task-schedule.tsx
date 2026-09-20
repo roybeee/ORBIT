@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowRight,CalendarDays,Check,Clock3} from 'lucide-react';
+import {ArrowRight,CalendarDays,Check,Clock3,Pause} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Checkbox} from '@/components/ui/checkbox';
 import type {WorkspaceData} from '@/lib/orbit/model';
@@ -9,8 +9,8 @@ import {addDays,planningFloor,todayInZone} from '@/lib/orbit/dates';
 import {taskScheduleSlots,taskScheduleProblem} from '@/lib/orbit/task-scheduling';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 
-type Props={data:WorkspaceData;taskId:string;initialDate:string;now:Date;busy:boolean;pending:boolean;demo:boolean;onSave:(action:WorkspaceAction)=>Promise<boolean>;onRetry:()=>void;onClose:()=>void;onDetails:()=>void;onSaved:(date:string,eventId:string)=>void};
-export function QuickTaskSchedule({data,taskId,initialDate,now,busy,pending,demo,onSave,onRetry,onClose,onDetails,onSaved}:Props){
+type Props={data:WorkspaceData;taskId:string;initialDate:string;now:Date;busy:boolean;pending:boolean;demo:boolean;onSave:(action:WorkspaceAction)=>Promise<boolean>;onRetry:()=>void;onClose:()=>void;onHold:()=>Promise<boolean>;onHeld:()=>void;onDetails:()=>void;onSaved:(date:string,eventId:string)=>void};
+export function QuickTaskSchedule({data,taskId,initialDate,now,busy,pending,demo,onSave,onRetry,onClose,onHold,onHeld,onDetails,onSaved}:Props){
  const task=data.tasks.find(t=>t.id===taskId),today=todayInZone(data.preferences.timeZone,now);
  const [eventId]=useState(()=>crypto.randomUUID()),[date,setDate]=useState(initialDate<today?today:initialDate);
  const [minutes,setMinutes]=useState(String(task?.duration??45)),[resolveWaiting,setResolveWaiting]=useState(false),[error,setError]=useState('');
@@ -21,6 +21,7 @@ export function QuickTaskSchedule({data,taskId,initialDate,now,busy,pending,demo
  });
  const heading=useRef<HTMLHeadingElement>(null);
  const saving=useRef(false),[submitting,setSubmitting]=useState(false),confirmed=useRef(false);
+ const holdRequested=useRef(false);
  const locked=busy||pending||submitting;
  const amount=Number(minutes),startMinute=/^\d{2}:\d{2}$/.test(start)?Number(start.slice(0,2))*60+Number(start.slice(3)):NaN;
  const input={taskId,date,start:startMinute,minutes:amount,resolveWaiting};
@@ -28,6 +29,7 @@ export function QuickTaskSchedule({data,taskId,initialDate,now,busy,pending,demo
  const saved=data.events.find(e=>e.id===eventId);
  useEffect(()=>{if(!task)onClose()},[task,onClose]);
  useEffect(()=>{if(saved&&!pending&&!confirmed.current){confirmed.current=true;onSaved(saved.date,eventId)}},[saved,pending,onSaved]);
+ useEffect(()=>{if(holdRequested.current&&task?.status==='waiting'&&!pending&&!confirmed.current){confirmed.current=true;onHeld()}},[task?.status,pending,onHeld]);
  if(!task)return null;
  const waiting=task.status==='waiting'||!!task.blocker?.trim();
  function chooseDate(value:string){setDate(value);setError('');const first=taskScheduleSlots(data,value,amount,now)[0];if(first!==undefined)setStart(formatTime(first))}
@@ -37,6 +39,13 @@ export function QuickTaskSchedule({data,taskId,initialDate,now,busy,pending,demo
   saving.current=true;setSubmitting(true);setError('');
   try{const ok=await onSave({type:'task.schedule',eventId,...input});if(ok&&!confirmed.current){confirmed.current=true;onSaved(date,eventId)}else if(!ok)setError('저장 결과를 확인해 주세요. 확인 중인 요청이 있으면 아래에서 다시 확인할 수 있어요.')}
   catch{setError('저장을 확인하지 못했어요. 입력한 시간은 유지됩니다.')}
+  finally{saving.current=false;setSubmitting(false)}
+ }
+ async function hold(){
+  if(locked||saving.current||demo)return;
+  saving.current=true;holdRequested.current=true;setSubmitting(true);setError('');
+  try{const ok=await onHold();if(ok&&!confirmed.current){confirmed.current=true;onHeld()}else if(!ok)setError('보류 결과를 확인해 주세요. 저장 확인 중에는 다시 요청하지 않아도 됩니다.')}
+  catch{setError('보류하지 못했어요. 다시 시도해 주세요.')}
   finally{saving.current=false;setSubmitting(false)}
  }
  return <Dialog open onOpenChange={open=>{if(!open&&!submitting)onClose()}}>
@@ -54,6 +63,7 @@ export function QuickTaskSchedule({data,taskId,initialDate,now,busy,pending,demo
     {(error||problem)&&!pending&&<p className="quick-schedule-error" role="alert">{error||problem}</p>}
     {pending&&<div className="quick-schedule-pending" role="status"><p>저장 결과를 확인하고 있어요. 같은 일정이 중복되지 않도록 기존 요청을 확인합니다.</p><button type="button" className="secondary-button" disabled={busy||submitting} onClick={onRetry}>저장 결과 확인</button></div>}
     <p className="quick-schedule-note">마감일 {task.due.slice(5).replace('-','/')}은 유지됩니다. Google 연결 시 자동으로 동기화됩니다.</p>
+    {task.status!=='waiting'&&<button type="button" className="secondary-button quick-schedule-hold" disabled={locked||demo} onClick={()=>void hold()}><Pause size={17}/><span>보류<small>할 일 대기함으로 이동</small></span></button>}
     <div className="quick-schedule-actions"><button type="button" className="text-button" disabled={locked} onClick={onDetails}>할 일 내용 보기</button><button type="submit" className="primary-button" disabled={locked||!!problem||demo}><Check size={18}/>{locked?'저장 확인 중…':'이 시간에 배정'}</button></div>
    </form>
   </DialogContent>

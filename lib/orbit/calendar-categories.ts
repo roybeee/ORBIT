@@ -11,5 +11,5 @@ export function googleCategoryColor(category:CalendarCategory,preferences:Prefer
 // Virtual due-date rows never enter the planner's busy intervals or duplicate task records.
 export function taskCalendarDate(task:Task,today:string){return task.status==='done'?(task.completedOn??task.due):task.due<today?today:task.due}
 export function taskCalendarEvent(task:Task,today=task.due):CalendarEvent{return {id:'task-due:'+task.id,taskId:task.id,projectId:task.projectId,title:(task.status==='done'?'✓ ':'')+task.title,date:taskCalendarDate(task,today),start:0,end:1440,kind:'focus',allDay:true,category:categoryOf(task)}}
-export function taskCalendarEvents(data:WorkspaceData,today=todayInZone(data.preferences.timeZone)){return data.tasks.map(task=>taskCalendarEvent(task,today))}
+export function taskCalendarEvents(data:WorkspaceData,today=todayInZone(data.preferences.timeZone)){return data.tasks.filter(task=>task.status!=='waiting').map(task=>taskCalendarEvent(task,today))}
 export function taskCalendarSource(task:Task,preferences:Preferences,today=todayInZone(preferences.timeZone)){const event=taskCalendarEvent(task,today);return JSON.stringify([event.title,event.date,event.category,categoryColor(categoryOf(task),preferences)])}
