@@ -134,7 +134,7 @@ export const noteSchema = z
     tags: z.array(z.string().max(40)).max(20),
     updated: dateSchema,
     wiki: z.object({parentId:id.optional(),order:z.string().max(40).optional(),aliases:z.array(z.string().max(160)).max(50),links:z.array(id).max(300),sources:z.array(z.string().max(300)).max(50),confidential:z.boolean().optional(),private:z.boolean().optional(),importedFrom:z.string().max(300).optional()}).strict().optional(),
-    source:z.object({mail:z.object({threadId:z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),senderEmail:z.string().email().max(254),receivedAt:z.string().datetime(),incoming:z.boolean()}).strict().optional(),provider:z.enum(['gmail','plaud','manual']),externalId:z.string().max(200),url:z.string().url().max(1000).optional(),date:dateSchema}).strict().optional(),
+    source:z.object({importHash:z.string().regex(/^[a-f0-9]{64}$/).optional(),mail:z.object({threadId:z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),senderEmail:z.string().email().max(254),receivedAt:z.string().datetime(),incoming:z.boolean()}).strict().optional(),provider:z.enum(['gmail','plaud','manual']),externalId:z.string().max(200),url:z.string().url().max(1000).optional(),date:dateSchema}).strict().optional(),
   })
   .strict();
 export const eventSchema = z

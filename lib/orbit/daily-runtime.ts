@@ -1,4 +1,5 @@
 import {syncDiscord} from './discord/runtime.ts';
+import {syncMeetings} from './meetings/sync.ts';
 import {collectMetrics} from './metric-collector.ts';
 import {replanBasis} from './reschedule.ts';
 import {syncActivity,activityStatus} from './agent/activity.ts';
@@ -31,11 +32,14 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
  const discord=await syncDiscord(db,owner,env).catch(()=>({active:false}));
- const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active:active||discord.active};};
+ let meetingsActive=false;
+ const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active:active||discord.active||meetingsActive};};
  const advance=async()=>{const result=await advanceRuntimeWork(db,owner,env,config.advanceCursor);if(result.active){config.advanceCursor=result.cursor;config.lastError=result.error;config.workFirst=false;}return result.active;};
  // Alternate active work with housekeeping: collection can never starve research.
  if(config.workFirst!==false&&await advance())return await finish(true);
  config.workFirst=true;
+ // One independently checkpointed Plaud operation per housekeeping tick.
+ meetingsActive=!!(await syncMeetings(db,owner,env).catch(()=>({active:false}))).active;
  const capture=await activityStatus(db,owner);if(!capture.lastSync||Date.now()-Date.parse(capture.lastSync)>=120000)try{await syncActivity(db,owner,env);}catch{/* independent collector error is visible in source status */}
  // One bounded unit per tick. Collection happens before preparing a new brief.
  if(!config.syncAt||Date.now()-Date.parse(config.syncAt)>=900000){

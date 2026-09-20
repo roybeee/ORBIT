@@ -87,6 +87,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from 'sonner';
 import { focusIds } from '@/lib/orbit/derived';
+import {PlaudPanel} from '@/components/orbit/plaud-panel';
 import { NoteLibrary } from '@/components/orbit/note-library';
 import { NoteDetail } from '@/components/orbit/note-detail';
 import { InstallRootHint } from '@/components/orbit/install-app';
@@ -1220,7 +1221,7 @@ function WorkspaceContent({
           )}
           {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub onReorder={ids=>perform({type:'project.reorder',ids},'프로젝트 순서를 저장했습니다.')} data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}
 
-          {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
+          {loaded&&(view==='wiki'||view==='knowledge')&&<>{!demo&&<PlaudPanel projects={data.projects} onRefresh={refresh} onOpen={id=>setDetail({kind:'note',id})} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}<WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
           <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={calendarInteracting||!!scheduleTask||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
           {loaded && view === 'calendar' && (
             <div className="calendar-two-col">

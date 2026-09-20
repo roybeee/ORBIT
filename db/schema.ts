@@ -1,5 +1,14 @@
 import {sql} from 'drizzle-orm';
 import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+export const plaudSync=sqliteTable('orbit_plaud_sync',{
+ ownerId:text('owner_id').primaryKey(),stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),
+});
+export const plaudImports=sqliteTable('orbit_plaud_imports',{
+ ownerId:text('owner_id').notNull(),externalId:text('external_id').notNull(),hash:text('hash').notNull(),stateJson:text('state_json').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.externalId]})]);
+export const answerFeedback=sqliteTable('orbit_answer_feedback',{
+ ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),kind:text('kind').notNull(),text:text('text').notNull(),question:text('question').notNull(),projectId:text('project_id'),sourcesJson:text('sources_json').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.turnId]}),index('idx_orbit_feedback_recent').on(t.ownerId,t.updatedAt)]);
 // Discord is a transport for the same owner, never an independent workspace.
 export const discordState=sqliteTable('orbit_discord_state',{
  ownerId:text('owner_id').primaryKey(),stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),

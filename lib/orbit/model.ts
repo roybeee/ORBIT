@@ -122,7 +122,7 @@ export interface WikiMetadata {
   parentId?: string; order?: string; aliases: string[]; links: string[];
   sources: string[]; confidential?: boolean; private?: boolean; importedFrom?: string;
 }
-export interface RecordSource { mail?:{threadId:string;senderEmail:string;receivedAt:string;incoming:boolean}; provider: 'gmail' | 'plaud' | 'manual'; externalId: string; url?: string; date: string }
+export interface RecordSource { importHash?:string; mail?:{threadId:string;senderEmail:string;receivedAt:string;incoming:boolean}; provider: 'gmail' | 'plaud' | 'manual'; externalId: string; url?: string; date: string }
 export interface Note {
   id: string;
   title: string;
