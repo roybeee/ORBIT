@@ -169,3 +169,9 @@ export const activitySessions=sqliteTable('orbit_activity_sessions',{
 export const activityMessages=sqliteTable('orbit_activity_messages',{
  ownerId:text('owner_id').notNull(),connectionId:text('connection_id').notNull(),sessionId:text('session_id').notNull(),id:text('id').notNull(),recordId:text('record_id').notNull(),role:text('role').notNull(),content:text('content').notNull(),toolName:text('tool_name').notNull(),toolCalls:text('tool_calls').notNull(),timestamp:text('timestamp').notNull(),
 },t=>[primaryKey({columns:[t.ownerId,t.connectionId,t.sessionId,t.id]}),index('idx_orbit_activity_messages_record').on(t.ownerId,t.recordId,t.timestamp)]);
+
+// Bounded durable analysis parts; total input is not stored in one job row.
+export const briefParts=sqliteTable('orbit_brief_parts',{
+ ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),generation:text('generation').notNull(),
+ stage:integer('stage').notNull(),part:integer('part').notNull(),content:text('content').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.turnId,table.generation,table.stage,table.part]})]);

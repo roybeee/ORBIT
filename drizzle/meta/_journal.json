@@ -162,6 +162,13 @@
       "when": 1789883635373,
       "tag": "0022_red_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1789906546424,
+      "tag": "0023_happy_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }
