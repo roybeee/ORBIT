@@ -1,7 +1,19 @@
 // Injected into Sy AFTER its controls are defined; use the app's session lifecycle.
+const orbitPopupOrder=(0,Z.useRef)([]);
 (0,Z.useEffect)(()=>{
-  const publish=()=>orbitSend({type:'state',state:{ready:!Q,activated:!!Fe.current?.ctx,busy:C,playing:A,active:!!D,title:Me?'무음 타이머':r.title,mode:r.mode,duration:l*60,elapsed:Math.floor(b),volume:f,needsFeedback:Zt}});
+  const popups=[
+    {id:'mixer',open:le,close:()=>te(false)},
+    {id:'routine',open:la,close:()=>Jt(false)},
+    {id:'feedback',open:Zt,close:()=>{if(!C)_(false)}},
+    {id:'immersive',open:fe,close:()=>Ke(false)},
+    {id:'guide',open:wa,close:()=>kt(false)},
+  ];
+  orbitPopupOrder.current=orbitPopupOrder.current.filter(id=>popups.some(p=>p.id===id&&p.open));
+  for(const popup of popups)if(popup.open&&!orbitPopupOrder.current.includes(popup.id))orbitPopupOrder.current.push(popup.id);
+  const popup=orbitPopupOrder.current.at(-1)??null;
+  const publish=()=>orbitSend({type:'state',state:{ready:!Q,activated:!!Fe.current?.ctx,busy:C,playing:A,active:!!D,title:Me?'무음 타이머':r.title,mode:r.mode,duration:l*60,elapsed:Math.floor(b),volume:f,needsFeedback:Zt,popup}});
   window.__orbitSoundBridge={
+    closePopup:expected=>{if(popup&&popup===expected)popups.find(p=>p.id===popup)?.close();},
     dismiss:async()=>{
       if(St.current)return;
       St.current=true;R(true);

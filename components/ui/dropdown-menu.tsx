@@ -1,5 +1,7 @@
 "use client"
 
+import { usePopupHistory } from "./use-popup-history"
+
 import * as React from "react"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
@@ -9,7 +11,8 @@ import { cn } from "@/lib/utils"
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+  const historyProps = usePopupHistory(props)
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} {...historyProps} />
 }
 
 function DropdownMenuPortal({

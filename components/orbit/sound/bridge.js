@@ -22,6 +22,7 @@ window.addEventListener('message',event=>{
     if(message.command==='toggle')bridge.toggle();
     if(message.command==='pause')bridge.pause();
     if(message.command==='dismiss')bridge.dismiss();
+    if(message.command==='close-popup')bridge.closePopup(message.value);
     if(message.command==='volume'&&Number.isFinite(message.value))bridge.volume(message.value);
     if(message.command==='prefill')bridge.prefill(message.value);
     if(message.command==='state')bridge.publish();

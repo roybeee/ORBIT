@@ -70,7 +70,7 @@ test('sandbox bridge rejects foreign messages, awaits real storage, keeps export
 });
 test('playback bridge drives original controls and never starts audio on mount or prefill',()=>{
   const calls=[],messages=[];
-  const context=vm.createContext({Z:{useEffect:fn=>fn()},Q:false,C:false,A:false,D:null,r:{title:'빗소리',mode:'focus'},Me:false,l:25,b:0,f:35,Zt:false,Fe:{current:null},
+  const context=vm.createContext({Z:{useEffect:fn=>fn(),useRef:value=>({current:value})},le:false,la:false,fe:false,wa:false,Q:false,C:false,A:false,D:null,r:{title:'빗소리',mode:'focus'},Me:false,l:25,b:0,f:35,Zt:false,Fe:{current:null},
     orbitSend:value=>messages.push(value),window:{},eu:()=>calls.push('toggle'),$i:()=>calls.push('pause'),p:v=>calls.push(['volume',v]),
     u:v=>calls.push(['goal',v]),o:()=>{},n:()=>{},c:()=>{},s:v=>calls.push(['minutes',v]),sa:()=>{},t:()=>{},go:[{mix:{rain:65}}],Math,Number});
   vm.runInContext(readFileSync(new URL('../components/orbit/sound/hook.js',import.meta.url),'utf8'),context);
@@ -85,7 +85,7 @@ test('dismiss stops audio before saving and reports a failed save without resumi
   for(const fail of [false,true]){
     const calls=[],messages=[];
     const noop=()=>{};
-    const context=vm.createContext({Z:{useEffect:fn=>fn()},Q:false,C:false,A:true,D:'session',r:{title:'코드',mode:'focus'},Me:false,l:25,b:10,f:35,Zt:false,
+    const context=vm.createContext({Z:{useEffect:fn=>fn(),useRef:value=>({current:value})},le:false,la:false,fe:false,wa:false,Q:false,C:false,A:true,D:'session',r:{title:'코드',mode:'focus'},Me:false,l:25,b:10,f:35,Zt:false,
       Fe:{current:{ctx:{},elapsed:()=>12.9,stop:async()=>calls.push('stop')}},St:{current:false},R:noop,w:noop,L:noop,
       navigator:{mediaSession:{}},vo:async action=>{calls.push(action);if(fail)throw Error('offline')},ps:()=>({}),X:noop,fs:{current:'session'},_:noop,ds:noop,se:noop,uo:async()=>{},
       orbitSend:value=>{messages.push(value);if(value.type==='dismissed')calls.push('hidden')},window:{},eu:noop,$i:noop,p:noop,
@@ -97,4 +97,21 @@ test('dismiss stops audio before saving and reports a failed save without resumi
     assert.equal(context.navigator.mediaSession.playbackState,'none');
     assert.equal(messages.some(x=>x.type==='dismiss-error'),fail);assert.equal(context.St.current,false);
   }
+});
+
+test('sound Back closes only the latest popup and preserves playback and the session',()=>{
+ const order={current:[]},closed=[],messages=[];
+ const noop=()=>{};
+ const context=vm.createContext({Z:{useEffect:fn=>fn(),useRef:()=>order},Q:false,C:false,A:true,D:'session',r:{title:'코드',mode:'focus'},Me:false,l:25,b:10,f:35,Zt:false,le:true,la:false,fe:false,wa:false,
+  te:value=>{closed.push('mixer');context.le=value},Jt:value=>{closed.push('routine');context.la=value},_:value=>{closed.push('feedback');context.Zt=value},Ke:value=>{closed.push('immersive');context.fe=value},kt:value=>{closed.push('guide');context.wa=value},
+  Fe:{current:{ctx:{},stop:()=>assert.fail('Back must not stop audio')}},orbitSend:value=>messages.push(value),window:{},eu:noop,$i:noop,p:noop});
+ const source=readFileSync(new URL('../components/orbit/sound/hook.js',import.meta.url),'utf8');
+ const render=()=>vm.runInContext('(function(){'+source+'})()',context);
+ render();context.la=true;render();context.window.__orbitSoundBridge.closePopup('routine');render();
+ assert.deepEqual(closed,['routine']);assert.equal(messages.at(-1).state.popup,'mixer');
+ context.wa=true;render();context.Zt=true;render();context.C=true;render();context.window.__orbitSoundBridge.closePopup('feedback');assert.deepEqual(closed,['routine']);
+ context.C=false;render();context.window.__orbitSoundBridge.closePopup('feedback');render();assert.equal(messages.at(-1).state.popup,'guide');
+ context.window.__orbitSoundBridge.closePopup('feedback');assert.deepEqual(closed,['routine','feedback']);
+ context.window.__orbitSoundBridge.closePopup('guide');render();assert.equal(messages.at(-1).state.popup,'mixer');
+ assert.equal(context.A,true);assert.equal(context.D,'session');
 });

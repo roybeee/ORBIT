@@ -6,10 +6,11 @@ import {agentRequest} from '@/components/orbit/agent/connections';
 import {emptySound,reduceSound,soundAction} from '@/lib/orbit/sound/state';
 
 import {SoundMini} from './mini';
+import {usePopupHistory} from '@/components/ui/use-popup-history';
 
 const protocol='orbit.sound.v1';
-type Playback={ready:boolean;activated:boolean;busy:boolean;playing:boolean;active:boolean;title:string;mode:string;duration:number;elapsed:number;volume:number;needsFeedback:boolean};
-const idle:Playback={ready:false,activated:false,busy:false,playing:false,active:false,title:'사운드스테이션',mode:'focus',duration:1500,elapsed:0,volume:35,needsFeedback:false};
+type Playback={ready:boolean;activated:boolean;busy:boolean;playing:boolean;active:boolean;title:string;mode:string;duration:number;elapsed:number;volume:number;needsFeedback:boolean;popup:string|null};
+const idle:Playback={ready:false,activated:false,busy:false,playing:false,active:false,title:'사운드스테이션',mode:'focus',duration:1500,elapsed:0,volume:35,needsFeedback:false,popup:null};
 const time=(seconds:number)=>`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
 
 export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:boolean;onOpen:()=>void}){
@@ -18,6 +19,7 @@ export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:
   const localDemo=useRef(emptySound()),prefill=useRef<{goal:string;minutes:number}|null>(null);
   const open=useRef(onOpen);open.current=onOpen;
   const command=(name:string,value?:unknown)=>frame.current?.contentWindow?.postMessage({protocol,type:'command',command:name,value},'*');
+  usePopupHistory({historyPriority:-1,open:visible&&!!playback.popup,onOpenChange:open=>{if(!open)command('close-popup',playback.popup);}});
   useEffect(()=>{if(visible){setMounted(true);setDismissed(false)}},[visible]);
   useEffect(()=>{
     const show=(event:Event)=>{
@@ -40,7 +42,7 @@ export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:
         const s=message.state;
         if(!s||typeof s.title!=='string'||s.title.length>120||![s.duration,s.elapsed,s.volume].every(Number.isFinite))return;
         setLoadError('');
-        setPlayback({ready:!!s.ready,activated:!!s.activated,busy:!!s.busy,playing:!!s.playing,active:!!s.active,title:s.title,mode:s.mode,duration:Math.max(60,Math.min(10800,s.duration)),elapsed:Math.max(0,Math.min(10800,s.elapsed)),volume:Math.max(0,Math.min(100,s.volume)),needsFeedback:!!s.needsFeedback});
+        setPlayback({ready:!!s.ready,activated:!!s.activated,busy:!!s.busy,playing:!!s.playing,active:!!s.active,title:s.title,mode:s.mode,duration:Math.max(60,Math.min(10800,s.duration)),elapsed:Math.max(0,Math.min(10800,s.elapsed)),volume:Math.max(0,Math.min(100,s.volume)),needsFeedback:!!s.needsFeedback,popup:['mixer','routine','feedback','immersive','guide'].includes(s.popup)?s.popup:null});
         if(s.ready&&prefill.current){command('prefill',prefill.current);prefill.current=null;}
         return;
       }

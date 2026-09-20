@@ -1,4 +1,5 @@
 'use client';
+import {replacePopupRoute} from '@/components/ui/use-popup-history';
 import {useEffect,useRef,useState} from 'react';
 import {Monitor,PlugZap,Play,Pause,Download,BookOpen,MessagesSquare,Check,Square,RefreshCw,ArrowUpRight} from 'lucide-react';
 import {toast} from 'sonner';
@@ -20,7 +21,7 @@ async function local<T>(token:string,path:string,input?:unknown):Promise<T>{
 const server=(input:unknown)=>agentRequest('/api/aside','POST',input) as Promise<{job:AsideJob}>;
 function capturePair(){
   const match=location.hash.match(/^#aside-connect=([a-f0-9]{64})$/);
-  if(match){sessionStorage.setItem('orbit.aside.token',match[1]);history.replaceState(null,'',location.pathname+location.search+'#aside');window.dispatchEvent(new Event('hashchange'));}
+  if(match){sessionStorage.setItem('orbit.aside.token',match[1]);replacePopupRoute(null,location.pathname+location.search+'#aside');window.dispatchEvent(new Event('hashchange'));}
   return sessionStorage.getItem('orbit.aside.token')||'';
 }
 export function AsidePanel({snapshot,perform,busy,demo,onAsk,visible}:{snapshot:WorkspaceSnapshot;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;busy:boolean;demo:boolean;onAsk:(text:string)=>void;visible:boolean}){

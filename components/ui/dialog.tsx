@@ -1,5 +1,7 @@
 "use client"
 
+import { usePopupHistory } from "./use-popup-history"
+
 import * as React from "react"
 import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
@@ -10,7 +12,8 @@ import { Button } from "@/components/ui/button"
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  const historyProps = usePopupHistory(props)
+  return <DialogPrimitive.Root data-slot="dialog" {...props} {...historyProps} />
 }
 
 function DialogTrigger({

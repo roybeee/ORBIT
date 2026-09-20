@@ -1,8 +1,7 @@
 'use client';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
-import {createOverlayHistory} from '@/lib/orbit/overlay-history';
-import {createConfirmableOverlayHistory} from '@/lib/orbit/confirmable-overlay-history';
+import {afterPopupClose,replacePopupRoute,pushPopupRoute} from '@/components/ui/use-popup-history';
 import {OrbitWordmark} from './brand';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
@@ -328,12 +327,6 @@ function WorkspaceContent({
   const [calendarDate, setCalendarDate] = useState(TODAY);
   const [calendarTab,setCalendarTab]=useState('timeline');
   const [scheduleTask,setScheduleTask]=useState<{id:string;date:string}|null>(null);
-  const scheduleHistory=useRef<ReturnType<typeof createOverlayHistory>|null>(null);
-  useEffect(()=>{
-    const boundary=createOverlayHistory(window);
-    scheduleHistory.current=boundary;
-    return ()=>{boundary.dispose();scheduleHistory.current=null;};
-  },[]);
   const previousToday=useRef(TODAY);
   useEffect(()=>{const previous=previousToday.current;previousToday.current=TODAY;if(previous!==TODAY){setCalendarDate(date=>date===previous?TODAY:date);window.dispatchEvent(new Event('orbit:calendar-changed'));}},[TODAY]);
   const [newCategory,setNewCategory]=useState<CalendarCategory>('work');
@@ -367,19 +360,7 @@ function WorkspaceContent({
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
   useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched]);
   const [discardTaskConfirm,setDiscardTaskConfirm]=useState(false);
-  const taskCreateHistory=useRef<ReturnType<typeof createConfirmableOverlayHistory>|null>(null);
-  const taskCreateState=useRef({busy,hasPending,ownerId});
-  taskCreateState.current={busy,hasPending,ownerId};
-  useEffect(()=>{
-    const boundary=createConfirmableOverlayHistory(window,{
-      blocked:()=>taskCreateState.current.busy||taskCreateState.current.hasPending,
-      onConfirmChange:setDiscardTaskConfirm,
-      onClose:()=>setCreate(null),
-      onDiscard:()=>{clearDraft(taskCreateState.current.ownerId,'form','task');setNewTitle('');setNewBody('');setFormDraftError('');},
-    });
-    taskCreateHistory.current=boundary;
-    return ()=>{boundary.dispose();taskCreateHistory.current=null;};
-  },[]);
+  const [discardProjectConfirm,setDiscardProjectConfirm]=useState(false);
   const [calendarInteracting, setCalendarInteracting] = useState(false);
   const [unconfirmedCalendarMove, setUnconfirmedCalendarMove] = useState<CalendarEvent | null>(null);
   const liveCalendar = useRef({events,data,busy,hasPending});
@@ -435,7 +416,7 @@ function WorkspaceContent({
   useEffect(() => {
     const v = location.hash.slice(1) as View;
     if (navigation.some((n) => n.id === v)) setView(v);
-    else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);history.replaceState(null,'',url.pathname+url.search+'#'+initial);}
+    else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);replacePopupRoute(null,url.pathname+url.search+'#'+initial);}
     const handle = () => {
       const next = location.hash.slice(1) as View;
       setView(navigation.some((n) => n.id === next) ? next : 'today');
@@ -454,8 +435,7 @@ function WorkspaceContent({
     setView(v);
     setDetail(null);
     setSearch('');
-    if (location.hash !== `#${v}`) history.pushState(null, '', `#${v}`);
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    afterPopupClose(()=>{if(location.hash!==`#${v}`)pushPopupRoute(null,`#${v}`);window.scrollTo({top:0,behavior:'instant'});});
   };
   const perform = async (action: WorkspaceAction, message?: string) => {
     const ok = await mutate(action);
@@ -463,12 +443,11 @@ function WorkspaceContent({
     return ok;
   };
   const openTaskSchedule=(id:string,date=calendarDate)=>{
-    if(busy||hasPending||!scheduleHistory.current?.open(()=>setScheduleTask(null)))return;
+    if(busy||hasPending)return;
     setDetail(null);setScheduleTask({id,date});
   };
   const closeTaskSchedule=(next?:()=>void)=>{
-    if(scheduleHistory.current)scheduleHistory.current.close(next);
-    else {setScheduleTask(null);next?.();}
+    setScheduleTask(null);if(next)afterPopupClose(next);
   };
   const moveCalendarEvent = async (before: CalendarEvent, after: CalendarEvent): Promise<boolean> => {
     const current = liveCalendar.current;
@@ -517,7 +496,6 @@ function WorkspaceContent({
       kind = 'project';
       toast('먼저 첫 프로젝트를 만들어 주세요.');
     }
-    if(kind==='task'&&!taskCreateHistory.current?.open())return;
     createId.current=crypto.randomUUID();
     setEditingId(null);
     setEditingNoteRevision(undefined);
@@ -557,7 +535,7 @@ function WorkspaceContent({
     const url=new URL(location.href);
     url.searchParams.set('chatProject',id);
     url.searchParams.delete('conversation');
-    history.replaceState(null,'',url.pathname+url.search+url.hash);
+    replacePopupRoute(null,url.pathname+url.search+url.hash);
     navigate('agent');
     window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{projectId:id}}));
   };
@@ -755,8 +733,7 @@ function WorkspaceContent({
       }
       if(create==='project'&&!editingId){navigate('projects');setDetail({kind:'project',id});}
       if(!editingId&&create)clearDraft(ownerId,'form',create);
-      if(create==='task'&&!editingId)taskCreateHistory.current?.finish();
-      else setCreate(null);
+      setCreate(null);
     }
   };
   const openEdit = (kind: 'task' | 'project' | 'note' | 'event', id: string, loadedNote?: Note) => {
@@ -945,7 +922,7 @@ function WorkspaceContent({
     const url = new URL(location.href);
     url.searchParams.set('conversation', id!);
     url.searchParams.delete('chatProject');
-    history.replaceState(null, '', url.pathname + url.search + '#agent');
+    replacePopupRoute(null,url.pathname + url.search + '#agent');
     navigate('agent');
     window.dispatchEvent(new CustomEvent('orbit:open-chat', { detail: { id } }));
   };
@@ -1406,12 +1383,12 @@ function WorkspaceContent({
       <Sheet
         open={!!detail}
         onOpenChange={(open) => {
-          if (!open) {if(projectDetail&&dataEditing){toast('작성 중인 설정이나 단계를 먼저 저장하거나 취소해 주세요.');return;}setDetail(null);}
+          if (!open) {if(projectDetail&&dataEditing){if(!busy&&!hasPending)setDiscardProjectConfirm(true);return;}setDetail(null);}
         }}
       >
         <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right" showCloseButton={!projectDetail}>
           <SheetHeader className={`px-7 pt-9 pb-5 border-b ${projectDetail?'project-flow-sheet-header':''}`}>
-            {projectDetail&&<SheetClose className="project-detail-back" disabled={dataEditing} aria-label="프로젝트 목록으로 돌아가기"><ChevronLeft size={22}/></SheetClose>}
+            {projectDetail&&<SheetClose className="project-detail-back" disabled={busy||hasPending} aria-label="프로젝트 목록으로 돌아가기"><ChevronLeft size={22}/></SheetClose>}
             <SheetTitle className="text-xl leading-relaxed">
               {taskDetail?.title ??
                 noteDetail?.title ??
@@ -1757,7 +1734,7 @@ function WorkspaceContent({
         open={!!create}
         onOpenChange={(open) => {
           if (!open) {
-            if(create==='task'&&!editingId)taskCreateHistory.current?.requestClose();
+            if(create==='task'&&!editingId){if(!busy&&!hasPending)setDiscardTaskConfirm(true);}
             else setCreate(null);
           }
         }}
@@ -2099,15 +2076,21 @@ function WorkspaceContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={discardTaskConfirm} onOpenChange={open=>{if(!open)taskCreateHistory.current?.cancel();}}>
+      <AlertDialog open={discardProjectConfirm} onOpenChange={setDiscardProjectConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>저장하지 않고 나가시겠습니까?</AlertDialogTitle><AlertDialogDescription>작성 중인 프로젝트 설정은 저장되지 않습니다.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>계속 작성</AlertDialogCancel><AlertDialogAction disabled={busy||hasPending} onClick={e=>{e.preventDefault();if(busy||hasPending)return;setDiscardProjectConfirm(false);setDetail(null);setDataEditing(false);}}>나가기</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={discardTaskConfirm} onOpenChange={setDiscardTaskConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>저장하지 않고 나가시겠습니까?</AlertDialogTitle>
             <AlertDialogDescription>작성 중인 할 일은 저장되지 않습니다.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={()=>taskCreateHistory.current?.cancel()}>계속 작성</AlertDialogCancel>
-            <AlertDialogAction disabled={busy||hasPending} onClick={event=>{event.preventDefault();taskCreateHistory.current?.discard();}}>나가기</AlertDialogAction>
+            <AlertDialogCancel onClick={()=>setDiscardTaskConfirm(false)}>계속 작성</AlertDialogCancel>
+            <AlertDialogAction disabled={busy||hasPending} onClick={event=>{event.preventDefault();if(busy||hasPending)return;clearDraft(ownerId,'form','task');setDiscardTaskConfirm(false);setCreate(null);setNewTitle('');setNewBody('');setFormDraftError('');}}>나가기</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

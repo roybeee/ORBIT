@@ -1,5 +1,7 @@
 "use client"
 
+import { usePopupHistory } from "./use-popup-history"
+
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
@@ -9,7 +11,8 @@ import { Button } from "@/components/ui/button"
 function AlertDialog({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+  const historyProps = usePopupHistory(props)
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} {...historyProps} />
 }
 
 function AlertDialogTrigger({
