@@ -1,6 +1,7 @@
 'use client';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import {createOverlayHistory} from '@/lib/orbit/overlay-history';
 import {OrbitWordmark} from './brand';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
@@ -326,6 +327,12 @@ function WorkspaceContent({
   const [calendarDate, setCalendarDate] = useState(TODAY);
   const [calendarTab,setCalendarTab]=useState('timeline');
   const [scheduleTask,setScheduleTask]=useState<{id:string;date:string}|null>(null);
+  const scheduleHistory=useRef<ReturnType<typeof createOverlayHistory>|null>(null);
+  useEffect(()=>{
+    const boundary=createOverlayHistory(window);
+    scheduleHistory.current=boundary;
+    return ()=>{boundary.dispose();scheduleHistory.current=null;};
+  },[]);
   const previousToday=useRef(TODAY);
   useEffect(()=>{const previous=previousToday.current;previousToday.current=TODAY;if(previous!==TODAY){setCalendarDate(date=>date===previous?TODAY:date);window.dispatchEvent(new Event('orbit:calendar-changed'));}},[TODAY]);
   const [newCategory,setNewCategory]=useState<CalendarCategory>('work');
@@ -440,7 +447,14 @@ function WorkspaceContent({
     if (ok && message) toast.success(message);
     return ok;
   };
-  const openTaskSchedule=(id:string,date=calendarDate)=>{if(busy||hasPending)return;setDetail(null);setScheduleTask({id,date});};
+  const openTaskSchedule=(id:string,date=calendarDate)=>{
+    if(busy||hasPending||!scheduleHistory.current?.open(()=>setScheduleTask(null)))return;
+    setDetail(null);setScheduleTask({id,date});
+  };
+  const closeTaskSchedule=(next?:()=>void)=>{
+    if(scheduleHistory.current)scheduleHistory.current.close(next);
+    else {setScheduleTask(null);next?.();}
+  };
   const moveCalendarEvent = async (before: CalendarEvent, after: CalendarEvent): Promise<boolean> => {
     const current = liveCalendar.current;
     const saved = current.events.find(e => e.id === before.id);
@@ -1719,7 +1733,7 @@ function WorkspaceContent({
           </div>
         </SheetContent>
       </Sheet>
-      {scheduleTask&&<QuickTaskSchedule key={scheduleTask.id+':'+scheduleTask.date} data={data} taskId={scheduleTask.id} initialDate={scheduleTask.date} now={clock} busy={busy} pending={hasPending} demo={demo} onSave={action=>perform(action,'시간을 배정했습니다.')} onRetry={()=>void retry()} onClose={()=>setScheduleTask(null)} onDetails={()=>{const id=scheduleTask.id;setScheduleTask(null);setDetail({kind:'task',id})}} onSaved={(date,eventId)=>{setScheduleTask(null);setCalendarDate(date);setCalendarTab('timeline');navigate('calendar');window.dispatchEvent(new Event('orbit:calendar-changed'));requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById('agenda-row-'+eventId)?.scrollIntoView({block:'center',behavior:'instant'})))}}/>}
+      {scheduleTask&&<QuickTaskSchedule key={scheduleTask.id+':'+scheduleTask.date} data={data} taskId={scheduleTask.id} initialDate={scheduleTask.date} now={clock} busy={busy} pending={hasPending} demo={demo} onSave={action=>perform(action,'시간을 배정했습니다.')} onRetry={()=>void retry()} onClose={()=>closeTaskSchedule()} onDetails={()=>{const id=scheduleTask.id;closeTaskSchedule(()=>setDetail({kind:'task',id}))}} onSaved={(date,eventId)=>closeTaskSchedule(()=>{setCalendarDate(date);setCalendarTab('timeline');navigate('calendar');window.dispatchEvent(new Event('orbit:calendar-changed'));requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById('agenda-row-'+eventId)?.scrollIntoView({block:'center',behavior:'instant'})))})}/>}
       <Dialog
         open={!!create}
         onOpenChange={(open) => {
