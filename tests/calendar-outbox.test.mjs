@@ -166,3 +166,40 @@ test('task and event palettes persist independently and timed tasks use task col
  await flushCalendarOutbox(db,'a',env,'timed-task');
  assert.equal(taskGoogle.remote.colorId,'7');assert.equal(taskGoogle.patches,1);
 }));
+
+test('individual event colors persist, survive omitted fields and update the same Google event',()=>fixture(async db=>{
+ await connect(db);await save(db,{...event,color:'#f83a22'});const g=google();await flushCalendarOutbox(db,'a',env,'meeting');
+ assert.equal(g.remote.colorId,'11');const remoteId=g.remote.id;
+ await save(db,{...event,title:'Title only'});
+ assert.equal((await readWorkspace(db,'a')).data.events[0].color,'#f83a22');
+ await save(db,{...event,color:'#46d6db'});await flushCalendarOutbox(db,'a',env,'meeting');
+ assert.equal(g.remote.colorId,'7');assert.equal(g.remote.id,remoteId);assert.equal(g.posts,1);
+ await save(db,{...event,color:null});await flushCalendarOutbox(db,'a',env,'meeting');
+ assert.equal(g.remote.colorId,'1');assert.equal((await readWorkspace(db,'a')).data.events[0].color,null);
+}));
+
+test('task-specific colors persist and propagate to timed blocks without changing category peers',()=>fixture(async db=>{
+ const task=await taskFixture(db);
+ const command=async action=>{const current=await readWorkspace(db,'a');return writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:current.revision,action})};
+ await command({type:'task.schedule',taskId:task.id,eventId:'timed-color',date:event.date,start:840,minutes:45});
+ await command({type:'task.upsert',task:{...task,color:'#f83a22'}});
+ await command({type:'task.upsert',task:{...task,title:'Renamed task'}});
+ const snapshot=await readWorkspace(db,'a');assert.equal(snapshot.data.tasks[0].color,'#f83a22');
+ const {calendarItemColor,taskCalendarEvent}=await import('../lib/orbit/calendar-categories.ts');
+ assert.equal(calendarItemColor(taskCalendarEvent(snapshot.data.tasks[0]),snapshot.data.preferences,'task'),'#f83a22');
+ assert.equal(calendarItemColor({...task,id:'peer'},snapshot.data.preferences,'task'),'#7ae7bf');
+ await connect(db);const g=google();await flushCalendarOutbox(db,'a',env,'timed-color');assert.equal(g.remote.colorId,'11');
+ await command({type:'task.upsert',task:{...task,color:null}});
+ assert.equal((await calendarExports(db,'a')).find(x=>x.eventId==='timed-color').status,'pending');
+ await flushCalendarOutbox(db,'a',env,'timed-color');assert.equal(g.remote.colorId,'2');assert.equal(g.posts,1);assert.equal(g.patches,1);
+}));
+
+test('imported event color overrides are isolated and reset to category defaults',()=>fixture(async db=>{
+ const {calendarItemColor}=await import('../lib/orbit/calendar-categories.ts');
+ let snapshot=await readWorkspace(db,'a');
+ snapshot=await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'preferences.update',preferences:{...snapshot.data.preferences,eventColors:{'google:test':'#fbd75b'}}}});
+ assert.equal(calendarItemColor({...event,id:'google:test'},snapshot.data.preferences,'event'),'#fbd75b');
+ assert.equal(calendarItemColor({...event,id:'google:other'},snapshot.data.preferences,'event'),'#a4bdfc');
+ snapshot=await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'preferences.update',preferences:{...snapshot.data.preferences,eventColors:{'google:test':null}}}});
+ assert.equal(calendarItemColor({...event,id:'google:test'},snapshot.data.preferences,'event'),'#a4bdfc');
+}));

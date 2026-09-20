@@ -64,3 +64,10 @@ test('an async iframe popup stays below an already-open host dialog',()=>{
  const sound=b.stack.register(()=>{closed.push('sound');sound()},{id:Symbol(),priority:-1});
  b.back();assert.deepEqual(closed,['settings']);b.back();assert.deepEqual(closed,['settings','sound']);
 });
+
+test('event editor replaces details; discard returns to calendar without reopening detail or leaving the route',()=>{
+ const b=fixture();const detail=b.stack.register(()=>{});detail();let confirm;
+ const editor=b.stack.register(()=>{confirm=b.stack.register(()=>{confirm();confirm=undefined})});
+ b.flush();b.back();assert.ok(confirm);assert.equal(b.routeChanges,0);
+ confirm();editor();b.flush();assert.equal(b.browser.location.href,'https://orbit.test/#calendar');assert.equal(b.routeChanges,0);assert.deepEqual(b.browser.history.state,{route:'calendar',scroll:420});
+});

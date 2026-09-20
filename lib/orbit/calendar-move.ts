@@ -44,6 +44,6 @@ export function moveConflict(event: CalendarEvent, events: CalendarEvent[]): Cal
 
 // Google metadata belongs to imported records, not the strict workspace command schema.
 export function eventCommand(event: CalendarEvent) {
-  const { id, title, date, start, end, kind, projectId, taskId, category } = event;
-  return { type: 'event.upsert' as const, event: { id, title, date, start, end, kind, projectId, taskId, category } };
+  const { id, title, date, start, end, kind, projectId, taskId, category, color } = event;
+  return { type: 'event.upsert' as const, event: { id, title, date, start, end, kind, projectId, taskId, category, color } };
 }

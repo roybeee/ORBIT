@@ -40,6 +40,7 @@ export const projectSchema = z
   .strict();
 export const taskSchema = z
   .object({
+    color:z.string().refine(v=>calendarPalette.some(p=>p[0]===v)).nullable().optional(),
     category:z.enum(calendarCategories).optional(),
     id,
     title,
@@ -138,6 +139,7 @@ export const noteSchema = z
   .strict();
 export const eventSchema = z
   .object({
+    color:z.string().refine(v=>calendarPalette.some(p=>p[0]===v)).nullable().optional(),
     category:z.enum(calendarCategories).optional(),
     id,
     title,
@@ -162,6 +164,7 @@ export const illustrationPreferencesSchema = z.object({
 }).strict();
 export const preferencesSchema = z
   .object({
+    eventColors:z.record(z.string().max(200),z.string().refine(v=>calendarPalette.some(p=>p[0]===v)).nullable()).refine(v=>Object.keys(v).length<=2000).optional(),
     eventCategories:z.record(z.string().max(200),z.enum(calendarCategories)).refine(v=>Object.keys(v).length<=2000).optional(),
     taskCategoryColors:z.record(z.enum(calendarCategories),z.string().refine(v=>calendarPalette.some(p=>p[0]===v))).optional(),
     categoryColors:z.record(z.enum(calendarCategories),z.string().refine(v=>calendarPalette.some(p=>p[0]===v))).optional(),

@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownUp, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
 import type { CalendarEvent, Project, Preferences, Task } from '@/lib/orbit/model';
-import {categoryOf,categoryColor,categoryLabels} from '@/lib/orbit/calendar-categories';
+import {categoryOf,calendarItemColor,categoryLabels} from '@/lib/orbit/calendar-categories';
 import {Checkbox} from '@/components/ui/checkbox';
 import {taskDeleteDrag} from '@/lib/orbit/task-delete-gesture';
 import { formatTime, statusLabel } from '@/lib/orbit/model';
@@ -10,7 +10,7 @@ import { HOLD_MS, MOVE_SLOP, SWIPE_ACTION_WIDTH, SWIPE_OPEN_THRESHOLD, canEditCa
 
 type Props = {
   onDeleteTask?: (id: string) => Promise<boolean>;
-  timelineTasks?:Task[]; date?:string; onToggleTask?:(id:string)=>void; onScheduleTask?:(id:string)=>void;
+  colorTasks?:Task[]; timelineTasks?:Task[]; date?:string; onToggleTask?:(id:string)=>void; onScheduleTask?:(id:string)=>void;
   events: CalendarEvent[]; preferences?:Preferences; projects: Project[]; disabled: boolean;
   onOpen: (event: CalendarEvent) => void;
   onEdit: (id: string) => void;
@@ -273,7 +273,7 @@ export function CalendarAgenda(props: Props) {
             <button type="button" className="agenda-action-delete" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 삭제`} onClick={()=>{showActions(null);props.onDelete(event)}}><Trash2 size={18}/><span>삭제</span></button>
           </div>}
         <div className={`agenda-card ${active && conflict ? 'has-conflict' : ''}`}
-          style={{ '--event-color': categoryColor(categoryOf(event),props.preferences,event.taskId?'task':'event'), transform: `translateX(${offset}px)` } as CSSProperties}>
+          style={{ '--event-color': calendarItemColor(event,props.preferences,event.taskId?'task':'event',task??props.colorTasks?.find(t=>t.id===event.taskId)), transform: `translateX(${offset}px)` } as CSSProperties}>
           {task&&props.onToggleTask&&<label className="agenda-task-checkbox"><Checkbox checked={task.status==='done'} disabled={props.disabled||!!preview||!!deleting} aria-label={`${task.title} ${task.status==='done'?'완료 취소':'완료'}`} onCheckedChange={()=>props.onToggleTask!(task.id)}/></label>}
           <button type="button" className="agenda-event" disabled={props.disabled&&!!canSchedule} data-move-event={event.id}
             aria-label={`${event.title}, ${shown.allDay?(untimed?'시간 미정 할 일':'종일 일정'):formatTime(shown.start)+'부터 '+formatTime(shown.end)+'까지'}${canSchedule?', 시간 배정':restriction ? ', ' + restriction : ''}`}

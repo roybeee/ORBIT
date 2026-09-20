@@ -438,6 +438,7 @@ export function applyAction(
       // Execution history survives edits that omit it (agent proposals send full records).
       for (const key of [
         'category',
+        'color',
         'actualMinutes',
         'outcome',
         'outcomeReason',
@@ -662,7 +663,8 @@ export function applyAction(
       if (e.id.startsWith('approved:')) fail('승인한 집중 시간은 제안 화면에서 조정해 주세요.');
       if (data.events.some((x) => x.id !== e.id && x.google?.orbitEventId !== e.id && x.date === e.date && overlaps(x, e)))
         fail('같은 시간에 다른 일정이 있습니다.');
-      data.events = replace(data.events, e);
+      const old = data.events.find(x=>x.id===e.id);
+      data.events = replace(data.events, {...e,color:e.color===undefined?old?.color:e.color});
       break;
     }
     case 'event.attach': {

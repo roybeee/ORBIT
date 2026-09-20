@@ -100,8 +100,9 @@ import {calendarTimeline} from '@/lib/orbit/calendar-timeline';
 import {ProjectHub} from './project-hub';
 import {ProjectActions,type ProjectIntent} from './project-actions';
 import {CalendarDateStrip} from './calendar-date-strip';
+import {ItemColorPicker} from './item-color-picker';
 import {CalendarColors} from './calendar-colors';
-import {taskCalendarEvents,calendarCategories,categoryLabels,categoryOf,categoryColor,type CalendarCategory} from '@/lib/orbit/calendar-categories';
+import {taskCalendarEvents,calendarCategories,categoryLabels,categoryOf,categoryColor,calendarItemColor,type CalendarCategory} from '@/lib/orbit/calendar-categories';
 import {ProjectDetailPanel} from './project-detail';
 import {eventCommand,moveConflict,moveRestriction,canEditCalendarEvent} from '@/lib/orbit/calendar-move';
 import type {CalendarEvent} from '@/lib/orbit/model';
@@ -330,6 +331,7 @@ function WorkspaceContent({
   const previousToday=useRef(TODAY);
   useEffect(()=>{const previous=previousToday.current;previousToday.current=TODAY;if(previous!==TODAY){setCalendarDate(date=>date===previous?TODAY:date);window.dispatchEvent(new Event('orbit:calendar-changed'));}},[TODAY]);
   const [newCategory,setNewCategory]=useState<CalendarCategory>('work');
+  const [newColor,setNewColor]=useState<string|null>(null);
   const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string; revision?:number; projectIntent?:ProjectIntent } | null>(
     null,
   );
@@ -358,8 +360,8 @@ function WorkspaceContent({
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
-  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched]);
-  const [discardTaskConfirm,setDiscardTaskConfirm]=useState(false);
+  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,projectTouched]);
+  const [discardCreateConfirm,setDiscardCreateConfirm]=useState(false);
   const [discardProjectConfirm,setDiscardProjectConfirm]=useState(false);
   const [calendarInteracting, setCalendarInteracting] = useState(false);
   const [unconfirmedCalendarMove, setUnconfirmedCalendarMove] = useState<CalendarEvent | null>(null);
@@ -499,7 +501,7 @@ function WorkspaceContent({
     createId.current=crypto.randomUUID();
     setEditingId(null);
     setEditingNoteRevision(undefined);
-    setNewTitle('');setNewCategory(kind==='event'?'meeting':'work');
+    setNewTitle('');setNewColor(null);setNewCategory(kind==='event'?'meeting':'work');
     setNewBody('');
     setNewProject(
       kind === 'event'
@@ -523,7 +525,7 @@ function WorkspaceContent({
     setProjectTouched(false);
     const restored=!demo&&readDraft<any>(ownerId,'form',kind);
     if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
-      createId.current=restored.id;setNewTitle(restored.newTitle);setNewCategory(restored.newCategory??(kind==='event'?'meeting':'work'));setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
+      createId.current=restored.id;setNewTitle(restored.newTitle);setNewColor(restored.newColor??null);setNewCategory(restored.newCategory??(kind==='event'?'meeting':'work'));setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
     }
     if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);if((projects.find(p=>p.id===contextProjectId)?.status??'active')!=='active')setNewFocus(false);}
     setCreate(kind);
@@ -649,6 +651,7 @@ function WorkspaceContent({
           duration: Number(newDuration),
           due: newDate,
           category:newCategory,
+          color:newColor,
           impact: old?.impact ?? 3,
           focus: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active',
           focusDate: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active' ? (old?.focusDate ?? TODAY) : undefined,
@@ -698,6 +701,7 @@ function WorkspaceContent({
           end: start + Number(newDuration),
           kind: old?.kind ?? 'meeting',
           category:newCategory,
+          color:newColor,
           projectId: newProject === 'none' ? undefined : newProject,
         },
       };
@@ -742,7 +746,7 @@ function WorkspaceContent({
     if (kind === 'task') {
       const t = tasks.find((t) => t.id === id)!;
       setCreate('task');
-      setNewTitle(t.title);setNewCategory(categoryOf(t));
+      setNewTitle(t.title);setNewColor(t.color??null);setNewCategory(categoryOf(t));
       setNewBody(t.definition);
       setNewProject(t.projectId);
       setNewDuration(String(t.duration));
@@ -773,8 +777,9 @@ function WorkspaceContent({
       setNewProject(n.projectId);
     } else {
       const e = events.find((e) => e.id === id)!;
+      setDetail(null);
       setCreate('event');
-      setNewTitle(e.title);setNewCategory(categoryOf(e));
+      setNewTitle(e.title);setNewColor(e.color??null);setNewCategory(categoryOf(e));
       setNewProject(e.projectId ?? 'none');
       setNewDate(e.date);
       setNewTime(formatTime(e.start));
@@ -1164,7 +1169,7 @@ function WorkspaceContent({
               <section className="full-card">
                 {filteredTasks.length ? (
                   filteredTasks.map((t) => (
-                    <div className={`task-list-row ${t.status === 'done' ? 'task-done' : ''}`} key={t.id} style={{borderLeft:`4px solid ${categoryColor(categoryOf(t),preferences,'task')}`}}>
+                    <div className={`task-list-row ${t.status === 'done' ? 'task-done' : ''}`} key={t.id} style={{borderLeft:`4px solid ${calendarItemColor(t,preferences,'task')}`}}>
                       <div className="task-check">
                         <Checkbox
                           checked={t.status === 'done'}
@@ -1279,7 +1284,7 @@ function WorkspaceContent({
                   <span className="muted">{selectedEvents.length}개</span>
                 </div>
 
-                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
+                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} colorTasks={tasks} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
                 </TabsContent></Tabs>
               </section>
               <aside className="review-summary">
@@ -1644,7 +1649,7 @@ function WorkspaceContent({
             {projectDetail && <ProjectDetailPanel key={projectDetail.id+':'+(detail?.projectIntent??'overview')} intent={detail?.projectIntent} onManage={()=>setProjectAction({id:projectDetail.id,mode:'menu'})} project={projectDetail} data={data} today={TODAY} busy={busy||hasPending||!loaded} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onCreate={openCreate} onEdit={()=>openEdit('project',projectDetail.id)} onDelete={()=>setProjectAction({id:projectDetail.id,mode:'delete'})} onChat={()=>openProjectChat(projectDetail.id)} onEditing={setDataEditing} followup={<FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}/>}
             {eventDetail && (
               <>
-                <label className="form-label">카테고리</label><Choice value={preferences.eventCategories?.[eventDetail.id]??categoryOf(eventDetail)} label="일정 카테고리" onChange={v=>{if(!busy&&!hasPending)void perform(canEditCalendarEvent(eventDetail)?eventCommand({...eventDetail,category:v as CalendarCategory}):{type:'preferences.update',preferences:{...preferences,eventCategories:{...preferences.eventCategories,[eventDetail.id]:v as CalendarCategory}}},'일정 카테고리를 저장했습니다.')}} items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><p className="form-hint">Google에서 가져온 일정도 ORBIT에서 카테고리별로 구분할 수 있어요.</p>
+                <label className="form-label">카테고리</label><Choice value={preferences.eventCategories?.[eventDetail.id]??categoryOf(eventDetail)} label="일정 카테고리" onChange={v=>{if(!busy&&!hasPending)void perform(canEditCalendarEvent(eventDetail)?eventCommand({...eventDetail,category:v as CalendarCategory}):{type:'preferences.update',preferences:{...preferences,eventCategories:{...preferences.eventCategories,[eventDetail.id]:v as CalendarCategory}}},'일정 카테고리를 저장했습니다.')}} items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><ItemColorPicker value={preferences.eventColors?.[eventDetail.id]??eventDetail.color??null} defaultColor={tasks.find(t=>t.id===eventDetail.taskId)?.color??categoryColor(preferences.eventCategories?.[eventDetail.id]??categoryOf(eventDetail),preferences,eventDetail.taskId?'task':'event')} disabled={busy||hasPending} onChange={color=>{if(!busy&&!hasPending)void perform(canEditCalendarEvent(eventDetail)?eventCommand({...eventDetail,color}):{type:'preferences.update',preferences:{...preferences,eventColors:{...preferences.eventColors,[eventDetail.id]:color}}},'일정 색상을 저장했습니다.')}}/>
                 <EventFiles
                   key={eventDetail.id}
                   eventId={eventDetail.id}
@@ -1734,7 +1739,7 @@ function WorkspaceContent({
         open={!!create}
         onOpenChange={(open) => {
           if (!open) {
-            if(create==='task'&&!editingId){if(!busy&&!hasPending)setDiscardTaskConfirm(true);}
+            if(create==='task'||create==='event'){if(!busy&&!hasPending)setDiscardCreateConfirm(true);}
             else setCreate(null);
           }
         }}
@@ -1845,7 +1850,7 @@ function WorkspaceContent({
                 <Choice value={newProject} onChange={v=>{setProjectTouched(true);setNewProject(v)}} label="연결 프로젝트" items={[{value:'none',label:'개인 일정'},...projects.map(p=>({value:p.id,label:p.name}))]}/>
               </>
             )}
-            {(create==='task'||create==='event')&&<><label className="form-label">카테고리</label><Choice value={newCategory} onChange={v=>setNewCategory(v as CalendarCategory)} label="카테고리" items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><p className="form-hint">{create==='task'?'지정한 날짜의 종일 할 일로 일정과 Google 캘린더에 자동 연결됩니다.':'카테고리 색상은 일정 화면에서 변경할 수 있습니다.'}</p></>}
+            {(create==='task'||create==='event')&&<><label className="form-label">카테고리</label><Choice value={newCategory} onChange={v=>setNewCategory(v as CalendarCategory)} label="카테고리" items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><ItemColorPicker value={newColor} onChange={setNewColor} disabled={busy||hasPending} defaultColor={(create==='event'&&tasks.find(t=>t.id===events.find(e=>e.id===editingId)?.taskId)?.color)||categoryColor(newCategory,preferences,create==='task'||!!events.find(e=>e.id===editingId)?.taskId?'task':'event')}/></>}
             {create === 'task' && (
               <>
                 <div className="field-grid">
@@ -2082,15 +2087,15 @@ function WorkspaceContent({
           <AlertDialogFooter><AlertDialogCancel>계속 작성</AlertDialogCancel><AlertDialogAction disabled={busy||hasPending} onClick={e=>{e.preventDefault();if(busy||hasPending)return;setDiscardProjectConfirm(false);setDetail(null);setDataEditing(false);}}>나가기</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={discardTaskConfirm} onOpenChange={setDiscardTaskConfirm}>
+      <AlertDialog open={discardCreateConfirm} onOpenChange={setDiscardCreateConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>저장하지 않고 나가시겠습니까?</AlertDialogTitle>
-            <AlertDialogDescription>작성 중인 할 일은 저장되지 않습니다.</AlertDialogDescription>
+            <AlertDialogDescription>{editingId?'수정한 내용은 저장되지 않습니다.':create==='event'?'작성 중인 일정은 저장되지 않습니다.':'작성 중인 할 일은 저장되지 않습니다.'}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={()=>setDiscardTaskConfirm(false)}>계속 작성</AlertDialogCancel>
-            <AlertDialogAction disabled={busy||hasPending} onClick={event=>{event.preventDefault();if(busy||hasPending)return;clearDraft(ownerId,'form','task');setDiscardTaskConfirm(false);setCreate(null);setNewTitle('');setNewBody('');setFormDraftError('');}}>나가기</AlertDialogAction>
+            <AlertDialogCancel onClick={()=>setDiscardCreateConfirm(false)}>계속 작성</AlertDialogCancel>
+            <AlertDialogAction disabled={busy||hasPending} onClick={event=>{event.preventDefault();if(busy||hasPending)return;if(!editingId&&create)clearDraft(ownerId,'form',create);setDiscardCreateConfirm(false);setCreate(null);setNewTitle('');setNewBody('');setFormDraftError('');}}>나가기</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

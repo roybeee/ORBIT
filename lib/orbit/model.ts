@@ -32,6 +32,7 @@ export interface Project {
   milestones?: ProjectMilestone[];
 }
 export interface Task {
+  color?: string | null;
   category?: import('./calendar-categories').CalendarCategory;
   id: string;
   title: string;
@@ -143,6 +144,7 @@ export interface NoteRevision {
   updatedAt: string;
 }
 export interface CalendarEvent {
+  color?: string | null;
   allDay?: boolean;
   category?: import('./calendar-categories').CalendarCategory;
   google?:{calendarId:string;eventId:string;orbitEventId?:string};
@@ -191,6 +193,7 @@ export interface Rhythm {
   lunchEnd: number;
 }
 export interface Preferences {
+  eventColors?: Record<string,string|null>;
   eventCategories?: Record<string,import('./calendar-categories').CalendarCategory>;
   taskCategoryColors?: Partial<Record<import('./calendar-categories').CalendarCategory,string>>;
   categoryColors?: Partial<Record<import('./calendar-categories').CalendarCategory,string>>;
@@ -318,6 +321,7 @@ export const withDefaults = (p: Preferences): Required<Preferences> => ({
   categoryColors:p.categoryColors??{},
   taskCategoryColors:p.taskCategoryColors??{},
   eventCategories:p.eventCategories??{},
+  eventColors:p.eventColors??{},
   illustrations: p.illustrations ?? defaultIllustrations(),
   rhythm: p.rhythm ?? { ...DEFAULT_RHYTHM },
   laserMinutes: p.laserMinutes ?? 180,
