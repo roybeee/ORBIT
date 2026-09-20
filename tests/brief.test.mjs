@@ -96,19 +96,15 @@ test('Plaud read evidence is carried into the brief instead of treating connecti
  const brief=(await readWorkspace(db,'owner')).data.proposals[0].brief;assert.equal(transcripts,1);assert.match(brief.coverage.plaud,/조회에 성공/);assert.match(brief.evidence.find(e=>e.kind==='plaud').excerpt,/meeting-1/);
 }));
 
-test('oversized Korean records are trimmed to the run budget with explicit coverage warnings instead of failing',()=>fixture(async db=>{
- let snapshot=await seed(db);await hermes(db);
- for(let i=0;i<3;i++){snapshot=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{id:'large-'+i,title:'긴 회의 '+i,kind:'meeting',projectId:'p',summary:'긴 원문',body:'가'.repeat(80000),tags:[],updated:today}}})}
+test('large catalogs retain all old tasks, conversations and complete note bodies at every request budget',()=>fixture(async db=>{
+ let snapshot=await seed(db);
+ for(let i=0;i<3;i++)snapshot=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{id:'large-'+i,title:'긴 회의 '+i,kind:'meeting',projectId:'p',summary:'긴 원문',body:'가'.repeat(80000)+'마지막 결정',tags:[],updated:today}}});
  for(let i=0;i<50;i++)await db.prepare("INSERT INTO orbit_agent_turns(owner_id,id,conversation_id,input,attachment_ids,status,response_json,created_at,updated_at) VALUES(?,?,'legacy',?,'[]','completed',?,?,?)").bind('owner',randomUUID(),'나'.repeat(4000),JSON.stringify({text:'다'.repeat(4000),sources:[]}),new Date().toISOString(),new Date().toISOString()).run();
- snapshot=await readWorkspace(db,'owner');const context=await collectPlanningContext(db,'owner',snapshot,planning,[],env);
- assert.ok(JSON.stringify(context.catalog).length<=PLANNING_BUDGETS[0].catalog);assert.equal(context.catalog.notes.length,4,'every note stays listed');assert.equal(context.catalog.conversations.length,10);assert.equal(context.coverage.notes,4);assert.ok(context.coverage.noteBodies<=1);
- assert.ok(context.coverage.warnings.some(w=>w.includes('원문 전체는')));
- let posts=[];globalThis.fetch=async(url,options={})=>{if(options.method==='POST'){posts.push(JSON.parse(options.body));return j({run_id:'run_1',status:'started'},202)}return response({kind:'brief',brief:content()})};
- const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);await complete(db,id);
- assert.equal(posts.length,1);assert.ok(posts[0].input.length<PLANNING_BUDGETS[0].catalog+200);assert.equal((await readWorkspace(db,'owner')).data.proposals[0].brief.headline,content().headline);
- // A workspace whose open work alone exceeds the smallest budget still fails explicitly, keeping the previous plan.
- const data=snapshot.data;data.tasks.push(...Array.from({length:400},(_,i)=>({...task,id:'open-'+i,title:'미완료 업무 '+i,definition:'상세 설명 '.repeat(20)})));await db.prepare('UPDATE orbit_workspaces SET state_json=? WHERE owner_id=?').bind(JSON.stringify(data),'owner').run();
- const crowded=await readWorkspace(db,'owner');await assert.rejects(()=>collectPlanningContext(db,'owner',crowded,planning,[],env,[],PLANNING_BUDGETS[2]),e=>e.code==='CONTEXT_SIZE');
+ snapshot=await readWorkspace(db,'owner');snapshot.data.tasks.push(...Array.from({length:400},(_,i)=>({...task,id:'old-'+i,status:'done',completedOn:'2020-01-01',definition:'상세 설명 '.repeat(20)})));
+ for(const budget of PLANNING_BUDGETS){const context=await collectPlanningContext(db,'owner',snapshot,planning,[],env,[],budget);
+  assert.ok(JSON.stringify(context.catalog).length>90000);assert.equal(context.catalog.notes.length,4);assert.equal(context.catalog.conversations.length,50);assert.equal(context.coverage.noteBodies,4);assert.equal(context.catalog.tasks.length,402);
+  assert.ok(context.catalog.notes.find(n=>n.id==='large-0').body.endsWith('마지막 결정'));
+ }
 }));
 
 test('a failed Hermes run retries the analysis with a smaller catalog and a new session, then shows the provider error if every level fails',()=>fixture(async db=>{
@@ -120,7 +116,7 @@ test('a failed Hermes run retries the analysis with a smaller catalog and a new 
  };
  const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);await complete(db,id);
  let turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
- assert.equal(turn.status,'running');assert.match(JSON.parse(turn.response_json).progress,/더 적은 기록으로 다시 분석/);assert.match(JSON.parse(turn.response_json).progress,/32768/);
+ assert.equal(turn.status,'running');assert.match(JSON.parse(turn.response_json).progress,/전송 분량을 조절해 전체 기록을 다시 분석/);assert.match(JSON.parse(turn.response_json).progress,/32768/);
  await complete(db,id);await advanceAgent(db,'owner',id,env);
  assert.equal(posts.length,2);assert.notEqual(posts[0].key,posts[1].key);assert.notEqual(posts[0].body.session_id,posts[1].body.session_id);assert.match(posts[0].body.input,/"budget":"표준"/);assert.match(posts[1].body.input,/"budget":"축소"/);
  turn=await db.prepare('SELECT status FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();assert.equal(turn.status,'completed');
@@ -130,7 +126,7 @@ test('a failed Hermes run retries the analysis with a smaller catalog and a new 
  await runAgent(db,'owner',{id:failing,message:briefMessage({date:addDays(date,1),energy:'normal'}),planning:{date:addDays(date,1),energy:'normal'}},env);
  for(let n=0;n<8;n++)await advanceAgent(db,'owner',failing,env);
  turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',failing).first();
- assert.equal(attempts,3);assert.equal(turn.status,'failed');const error=JSON.parse(turn.response_json).error;assert.match(error,/model overloaded/);assert.match(error,/3단계로 줄여도/);assert.equal((await readWorkspace(db,'owner')).data.proposals.length,1,'the earlier brief is kept');
+ assert.equal(attempts,3);assert.equal(turn.status,'failed');const error=JSON.parse(turn.response_json).error;assert.match(error,/model overloaded/);assert.match(error,/3단계로 조절해도/);assert.equal((await readWorkspace(db,'owner')).data.proposals.length,1,'the earlier brief is kept');
 }));
 
 test('provider authentication failures, external cancellation and approval waits are reported honestly without retries',()=>fixture(async db=>{
@@ -220,4 +216,62 @@ test('Hermes generates and reloads yesterday and today independently, preserving
  const result=await readWorkspace(db,'owner');assert.equal(result.data.proposals.length,3);
  const old=result.data.proposals.find(p=>p.date===addDays(today,-1));assert.ok(old.items.length);
  assert.throws(()=>applyAction(result.data,{type:'proposal.approve',date:old.date,itemId:old.items[0].id}),/지난 날짜/);
+}));
+
+test('durable batches analyze a multi-megabyte corpus, retry only the failed part, reduce recursively, then publish once',()=>fixture(async db=>{
+ await seed(db);await hermes(db);
+ let snapshot=await readWorkspace(db,'owner');
+ for(let i=0;i<30;i++)snapshot=await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{id:'bulk-'+i,title:'원문 '+i,kind:'meeting',projectId:'p',summary:'회의 원문',body:'가나다라마바사'.repeat(12000)+(i===29?'TAIL_SENTINEL':''),tags:[],updated:today}}});
+ snapshot.data.tasks.push(...Array.from({length:450},(_,i)=>({...task,id:'extra-'+i,title:'기록 '+i,definition:'기존 업무 내용'})));
+ await db.prepare('UPDATE orbit_workspaces SET state_json=? WHERE owner_id=?').bind(JSON.stringify(snapshot.data),'owner').run();
+ const id=randomUUID();let request,posts=0,failed=false,sourceSeen=0,reductions=0,tailSeen=false,finals=0;
+ const sourceParts=new Set();
+ function refs(v){if(!v||typeof v!=='object')return [];return [...new Set([...(typeof v.evidence==='string'?[v.evidence]:Array.isArray(v.evidence)?v.evidence.filter(x=>typeof x==='string'):[]),...Object.values(v).flatMap(refs)])]}
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST'){request=JSON.parse(options.body);posts++;assert.ok(request.input.length<33000);return j({run_id:'run_'+posts,status:'started'},202)}
+  const result=data=>j({object:'hermes.run',run_id:'run_'+posts,...data});
+  if(request.instructions.includes('one part of an Orbit')){
+   const part=JSON.parse(request.input);
+   if(part.stage==='source-analysis'&&part.part===2&&!failed){failed=true;return result({status:'failed',error:'temporary model overload'})}
+   if(part.stage==='source-analysis'){sourceSeen++;assert.ok(!sourceParts.has(part.part));sourceParts.add(part.part);tailSeen ||= request.input.includes('TAIL_SENTINEL')}else reductions++;
+   return result({status:'completed',output:JSON.stringify({kind:'analysis',summary:'기록에서 확인한 조건과 의존성을 함께 고려합니다. '.repeat(60),evidence:refs(part).slice(0,16)})});
+  }
+  finals++;assert.ok(tailSeen);assert.ok(reductions>0);return result({status:'completed',output:JSON.stringify({kind:'brief',brief:content()})});
+ };
+ await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);
+ let total;
+ for(let step=0;step<1500;step++){
+  const row=await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind('owner',id).first();
+  if(!row)break;
+  assert.ok(Buffer.byteLength(row.job_json)<250000,'job holds only one bounded part');
+  const job=JSON.parse(row.job_json);total??=job.batch.total;
+  if(job.batch)assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0,'no partial report is published');
+  // Simulate phone reconnect after elapsed total runtime. Each next part gets a fresh deadline.
+  if(step===4){job.started=Date.now()-600000;await db.prepare('UPDATE orbit_hermes_jobs SET job_json=? WHERE owner_id=? AND turn_id=?').bind(JSON.stringify(job),'owner',id).run()}
+  await advanceAgent(db,'owner',id,env);
+ }
+ const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
+ assert.equal(turn.status,'completed',turn.response_json);assert.equal(sourceSeen,total);assert.ok(failed);assert.equal(finals,1);
+ const data=(await readWorkspace(db,'owner')).data;assert.equal(data.proposals.length,1);assert.equal(data.tasks.length,452);assert.equal(data.events.length,0);assert.ok(data.proposals[0].brief.evidence.some(e=>e.id==='note:n'));
+ assert.equal(await db.prepare('SELECT * FROM orbit_brief_parts').first(),null,'temporary source text is cleaned up');
+}));
+
+test('partitioning preserves every large text fragment, escaped character and Unicode tail within the per-request bound',async()=>{
+ const {partitionCatalog,PART_CHARS}=await import('../lib/orbit/brief/batches.ts');
+ const body=('김밥🍕\\"\n').repeat(30000)+'꼬리',catalog={notes:[{id:'huge',evidence:'note:huge',body}]};
+ const parts=partitionCatalog(catalog);assert.ok(parts.length>1);assert.ok(parts.every(p=>p.length<=PART_CHARS));
+ const fragments=parts.flatMap(p=>JSON.parse(p)).filter(p=>p.path==='catalog.notes[0].body').sort((a,b)=>a.offset-b.offset);
+ assert.equal(fragments.map(p=>p.text).join(''),body);assert.ok(fragments.every(p=>p.evidence.includes('note:huge')));
+});
+
+test('batch intermediate evidence is owner-scoped and cancellation never publishes a partial plan',()=>fixture(async db=>{
+ const {prepareBatches,batchInput,acceptAnalysis,restoreEvidence}=await import('../lib/orbit/brief/batches.ts');
+ const snapshot=await seed(db),ctx=await collectPlanningContext(db,'owner',snapshot,planning,[],env),id=randomUUID();
+ const state=await prepareBatches(db,'owner',id,ctx),input=await batchInput(db,'owner',id,state,planning);
+ await assert.rejects(()=>acceptAnalysis(db,'owner',id,state,input,{kind:'analysis',summary:'거짓 근거',evidence:['note:other-owner']}),e=>e.code==='BRIEF_EVIDENCE');assert.equal(state.cursor,0);
+ assert.deepEqual(await restoreEvidence(db,'other-owner',id,state.generation,['note:n']),[]);
+ await hermes(db);snapshot.data.tasks.push(...Array.from({length:200},(_,i)=>({...task,id:'b'+i,definition:'설명'.repeat(500)})));
+ await db.prepare('UPDATE orbit_workspaces SET state_json=? WHERE owner_id=?').bind(JSON.stringify(snapshot.data),'owner').run();
+ const run=randomUUID();await runAgent(db,'owner',{id:run,message:briefMessage(planning),planning},env);await advanceAgent(db,'owner',run,env,true);
+ assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_brief_parts WHERE turn_id=?').bind(run).first(),null);
 }));
