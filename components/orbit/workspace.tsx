@@ -2,6 +2,7 @@
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import {createOverlayHistory} from '@/lib/orbit/overlay-history';
+import {createConfirmableOverlayHistory} from '@/lib/orbit/confirmable-overlay-history';
 import {OrbitWordmark} from './brand';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
@@ -365,6 +366,20 @@ function WorkspaceContent({
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
   useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,projectTouched]);
+  const [discardTaskConfirm,setDiscardTaskConfirm]=useState(false);
+  const taskCreateHistory=useRef<ReturnType<typeof createConfirmableOverlayHistory>|null>(null);
+  const taskCreateState=useRef({busy,hasPending,ownerId});
+  taskCreateState.current={busy,hasPending,ownerId};
+  useEffect(()=>{
+    const boundary=createConfirmableOverlayHistory(window,{
+      blocked:()=>taskCreateState.current.busy||taskCreateState.current.hasPending,
+      onConfirmChange:setDiscardTaskConfirm,
+      onClose:()=>setCreate(null),
+      onDiscard:()=>{clearDraft(taskCreateState.current.ownerId,'form','task');setNewTitle('');setNewBody('');setFormDraftError('');},
+    });
+    taskCreateHistory.current=boundary;
+    return ()=>{boundary.dispose();taskCreateHistory.current=null;};
+  },[]);
   const [calendarInteracting, setCalendarInteracting] = useState(false);
   const [unconfirmedCalendarMove, setUnconfirmedCalendarMove] = useState<CalendarEvent | null>(null);
   const liveCalendar = useRef({events,data,busy,hasPending});
@@ -502,6 +517,7 @@ function WorkspaceContent({
       kind = 'project';
       toast('먼저 첫 프로젝트를 만들어 주세요.');
     }
+    if(kind==='task'&&!taskCreateHistory.current?.open())return;
     createId.current=crypto.randomUUID();
     setEditingId(null);
     setEditingNoteRevision(undefined);
@@ -739,7 +755,8 @@ function WorkspaceContent({
       }
       if(create==='project'&&!editingId){navigate('projects');setDetail({kind:'project',id});}
       if(!editingId&&create)clearDraft(ownerId,'form',create);
-      setCreate(null);
+      if(create==='task'&&!editingId)taskCreateHistory.current?.finish();
+      else setCreate(null);
     }
   };
   const openEdit = (kind: 'task' | 'project' | 'note' | 'event', id: string, loadedNote?: Note) => {
@@ -1739,7 +1756,10 @@ function WorkspaceContent({
       <Dialog
         open={!!create}
         onOpenChange={(open) => {
-          if (!open) setCreate(null);
+          if (!open) {
+            if(create==='task'&&!editingId)taskCreateHistory.current?.requestClose();
+            else setCreate(null);
+          }
         }}
       >
         <DialogContent className={`orbit-create-dialog ${create === 'event' ? 'event-create-dialog' : ''}`}>
@@ -2076,6 +2096,18 @@ function WorkspaceContent({
             >
               삭제
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={discardTaskConfirm} onOpenChange={open=>{if(!open)taskCreateHistory.current?.cancel();}}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>저장하지 않고 나가시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>작성 중인 할 일은 저장되지 않습니다.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={()=>taskCreateHistory.current?.cancel()}>계속 작성</AlertDialogCancel>
+            <AlertDialogAction disabled={busy||hasPending} onClick={event=>{event.preventDefault();taskCreateHistory.current?.discard();}}>나가기</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

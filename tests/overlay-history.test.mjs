@@ -82,3 +82,48 @@ test('disposing an open boundary preserves pre-existing router state and removes
   assert.deepEqual(b.browser.history.state,{route:'calendar',scroll:640});
   b.browser.history.back();b.flush();assert.equal(dismissed,0);
 });
+
+const {createConfirmableOverlayHistory}=await import('../lib/orbit/confirmable-overlay-history.ts');
+function unsavedForm(b){
+ const state={open:true,confirm:false,discarded:0,closed:0,blocked:false,title:'작성 중인 할 일'};
+ const h=createConfirmableOverlayHistory(b.browser,{
+  blocked:()=>state.blocked,onConfirmChange:value=>state.confirm=value,
+  onClose:()=>{state.open=false;state.closed++},
+  onDiscard:()=>{state.discarded++;state.title=''},
+ });
+ h.open();return {h,state};
+}
+test('new-task Back asks first; leaving discards only the form and retains the underlying calendar',()=>{
+ const b=browserAtCalendar(),{h,state}=unsavedForm(b);let routeChanges=0;
+ b.browser.addEventListener('popstate',()=>routeChanges++);
+ b.browser.history.back();b.flush();
+ assert.equal(state.open,true);assert.equal(state.confirm,true);assert.equal(state.discarded,0);
+ h.discard();h.discard();assert.equal(b.pending.length,1);b.flush();
+ assert.equal(state.open,false);assert.equal(state.confirm,false);assert.equal(state.discarded,1);assert.equal(state.closed,1);
+ assert.equal(b.browser.location.href,'https://orbit.test/#calendar');assert.equal(routeChanges,0);
+ b.browser.history.back();b.flush();assert.equal(b.browser.location.href,'https://orbit.test/#today');
+});
+test('continue writing and Back on the confirmation preserve inputs without growing history',()=>{
+ const b=browserAtCalendar(),{h,state}=unsavedForm(b);
+ for(let i=0;i<4;i++){
+  b.browser.history.back();b.flush();assert.equal(state.confirm,true);
+  if(i%2)h.cancel();else{b.browser.history.back();b.flush();}
+  assert.equal(state.confirm,false);assert.equal(state.open,true);assert.equal(state.title,'작성 중인 할 일');
+  assert.equal(state.discarded,0);assert.equal(b.entries.length,3);
+ }
+ h.requestClose();assert.equal(state.confirm,true);h.discard();b.flush();assert.equal(state.closed,1);
+});
+test('successful new-task save consumes its boundary without asking or discarding',()=>{
+ const b=browserAtCalendar(),{h,state}=unsavedForm(b);let savedNext=false;
+ state.blocked=true;h.finish(()=>savedNext=true);b.flush();
+ assert.equal(state.open,false);assert.equal(state.confirm,false);assert.equal(state.discarded,0);assert.equal(savedNext,true);
+ assert.deepEqual(b.browser.history.state,{route:'calendar',scroll:640});
+ h.open();state.open=true;b.browser.history.back();state.blocked=false;b.flush();assert.equal(state.confirm,true);
+});
+test('pending saves prevent discarding or leaving even with repeated Back or close requests',()=>{
+ const b=browserAtCalendar(),{h,state}=unsavedForm(b);
+ state.blocked=true;h.requestClose();b.browser.history.back();b.flush();
+ assert.equal(state.open,true);assert.equal(state.confirm,false);assert.equal(b.browser.location.href,'https://orbit.test/#calendar');
+ state.blocked=false;h.requestClose();state.blocked=true;h.discard();assert.equal(b.pending.length,0);
+ assert.equal(state.discarded,0);state.blocked=false;h.discard();b.flush();assert.equal(state.discarded,1);
+});
