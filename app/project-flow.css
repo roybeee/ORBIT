@@ -139,3 +139,15 @@
 @keyframes project-card-wiggle{from{transform:rotate(-.45deg)}to{transform:rotate(.45deg)}}
 @media(max-width:420px){.project-reorder-bar{flex-wrap:wrap}.project-reorder-bar>div{flex-basis:100%}.project-reorder-bar button{flex:1}}
 @media(prefers-reduced-motion:reduce){.project-poster.is-wiggling{animation:none;transform:none}}
+
+/* Light project surfaces must not inherit dark global button backgrounds. */
+.project-detail-surface .secondary-button,
+.project-action-dialog .secondary-button{background:#e8ecf5;color:#182139;border-color:#c9cddb}
+.project-detail-surface .secondary-button:hover:not(:disabled),
+.project-action-dialog .secondary-button:hover:not(:disabled){background:#dce2ef;color:#182139;border-color:#a8b3c9}
+.project-detail-surface .secondary-button:disabled,
+.project-action-dialog .secondary-button:disabled{background:#e8ecf5;color:#56647e;opacity:1;cursor:not-allowed}
+.project-detail-surface .secondary-button:focus-visible,
+.project-action-dialog .secondary-button:focus-visible{outline:2px solid #6653cc;outline-offset:3px}
+.project-resource-actions{display:flex;flex-wrap:wrap;gap:8px}
+.project-resource-actions .secondary-button{min-height:44px;flex:1 1 130px;justify-content:center;white-space:nowrap}
