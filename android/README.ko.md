@@ -111,3 +111,24 @@ cd android
 수정 APK는 버전 `0.1.1-beta`, versionCode `2`이며, 전달했던 0.1.0 APK와 같은 베타 서명 키로 빌드합니다. 이전 앱을 삭제하지 않고 APK를 열어 **업데이트**하면 로컬 받은 파일을 유지할 수 있습니다. 이 업데이트 안내는 동일한 인증서로 서명한 배포 파일에 해당하며 GitHub Actions의 임시 디버그 인증서와는 구별해야 합니다.
 
 `testDebugUnitTest lintDebug assembleDebug`가 성공했고, 기존 24개와 실행 회귀 검사 9개를 합한 33개 검사가 통과했습니다. 누락 manifest에서는 새 검사에 `NameNotFoundException`이 발생하며, 수정 후 통과하는 것을 확인했습니다. 오류 복구·주소 복사·각 버튼의 목적지와 첨부 안내를 포함합니다. 실제 APK 안의 컴포넌트 선언과 이전 배포 APK와의 서명 인증서 일치도 확인했습니다. 실제 갤럭시에서 업데이트 설치 후 ORBIT 화면으로 전환되는지는 추가 확인이 필요합니다.
+
+
+## 고정 서명 직접 설치판 0.1.4
+
+기존 `co.mealzip.orbit.debug` 베타의 키를 복구하지 못해, 새 직접 설치판은
+`co.mealzip.orbit` 패키지를 사용합니다. 기존 베타를 삭제하지 않고 함께 설치할 수 있습니다.
+일반 실행은 안내 화면을 건너뛰고 오늘 화면을 엽니다. 같은 브라우저/계정의 웹 데이터로 연결하며,
+기존 베타의 로컬 받은 파일은 자동 이전하지 않습니다.
+
+CI의 `assembleDirect` 결과는 의도적으로 **미서명** 상태입니다. 배포 전 반드시
+`scripts/sign-direct.sh`로 개인 보관된 `ORBIT-Android-Signing-Backup.zip`의 고정 키를 사용해 서명합니다.
+개인 키와 비밀번호를 저장소 또는 공개 CI 결과물에 넣지 않습니다.
+스크립트는 인증서가 아래 값과 다르면 출력 APK 생성을 거부합니다.
+
+- 인증서 SHA-256: `e433dd8a8eb8ab6632b165522f906a32625c25b3514adc0d60baea3cd20c2252`
+- 다음 업데이트: 같은 패키지/키 유지, versionCode 5보다 큰 값 사용
+- `ORBIT_KEYSTORE_FILE`: 백업 내 orbit-direct.p12의 로컬 경로
+- `ORBIT_KEYSTORE_PASSWORD_FILE`: 백업 내 store-password.txt의 로컬 경로
+- 명령: `bash scripts/sign-direct.sh app/build/outputs/apk/direct/app-direct-unsigned.apk ORBIT.apk`
+
+이 직접 설치판은 Play Store 배포가 아닙니다. 기존 release 빌드의 필수 서명 검사도 유지합니다.
