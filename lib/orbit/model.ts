@@ -192,6 +192,7 @@ export interface Rhythm {
 }
 export interface Preferences {
   eventCategories?: Record<string,import('./calendar-categories').CalendarCategory>;
+  taskCategoryColors?: Partial<Record<import('./calendar-categories').CalendarCategory,string>>;
   categoryColors?: Partial<Record<import('./calendar-categories').CalendarCategory,string>>;
   illustrations?: IllustrationPreferences;
   timeZone: string;
@@ -315,6 +316,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 export const withDefaults = (p: Preferences): Required<Preferences> => ({
   ...p,
   categoryColors:p.categoryColors??{},
+  taskCategoryColors:p.taskCategoryColors??{},
   eventCategories:p.eventCategories??{},
   illustrations: p.illustrations ?? defaultIllustrations(),
   rhythm: p.rhythm ?? { ...DEFAULT_RHYTHM },

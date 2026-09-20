@@ -1170,7 +1170,7 @@ function WorkspaceContent({
               <section className="full-card">
                 {filteredTasks.length ? (
                   filteredTasks.map((t) => (
-                    <div className={`task-list-row ${t.status === 'done' ? 'task-done' : ''}`} key={t.id} style={{borderLeft:`4px solid ${categoryColor(categoryOf(t),preferences)}`}}>
+                    <div className={`task-list-row ${t.status === 'done' ? 'task-done' : ''}`} key={t.id} style={{borderLeft:`4px solid ${categoryColor(categoryOf(t),preferences,'task')}`}}>
                       <div className="task-check">
                         <Checkbox
                           checked={t.status === 'done'}
@@ -1264,7 +1264,7 @@ function WorkspaceContent({
                   ))}
                 </div>
                 </CalendarDateStrip>
-                <CalendarColors preferences={preferences} disabled={busy||hasPending||demo} onSave={p=>void perform({type:'preferences.update',preferences:p},'카테고리 색상을 저장했습니다.')}/>
+                <CalendarColors preferences={preferences} disabled={busy||hasPending||demo} onSave={p=>void perform({type:'preferences.update',preferences:p},'일정·할 일 색상을 저장했습니다.')}/>
                 <Tabs value={calendarTab} onValueChange={setCalendarTab} className="calendar-content-tabs">
                 <TabsList aria-label="날짜별 할 일과 일정" className="calendar-tab-list">
                   <TabsTrigger value="timeline">타임라인 <span>{selectedTimeline.length}</span></TabsTrigger>
@@ -1277,7 +1277,6 @@ function WorkspaceContent({
                 <TabsContent value="waiting"><CalendarTasks tasks={calendarInbox} projects={projects} preferences={preferences} date={calendarDate} today={TODAY} disabled={busy||hasPending} inbox onOpen={id=>openTaskSchedule(id)} onToggle={id=>void toggleTask(id)} onResume={id=>void perform({type:'task.status',id,status:'todo'},'할 일 목록으로 복귀했습니다.')}/></TabsContent>
                 <TabsContent value="timeline">
                   <div className="section-title"><h2>{Number(calendarDate.slice(-2))}일 타임라인</h2><span className="muted">{selectedTimeline.length}개</span></div>
-                  <p className="calendar-task-guidance">시간 미정인 할 일과 일정에 배치한 일을 한눈에 확인하세요. 미완료 할 일은 다음 날로 이월됩니다.</p>
                   <CalendarAgenda key={'timeline:'+calendarDate} events={selectedTimeline} timelineTasks={tasks} date={calendarDate} onToggleTask={id=>void toggleTask(id)} onScheduleTask={id=>openTaskSchedule(id)} onDeleteTask={id=>perform({type:'task.delete',id},'할 일을 삭제했습니다.')} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/>
                 </TabsContent>
                 <TabsContent value="events">

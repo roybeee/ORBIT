@@ -51,7 +51,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   state.calendarId=calendar.data.id;
   const actionId=await digest(owner+'\0'+state.eventId),googleId='orbit'+actionId;
   const base='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(state.calendarId!)+'/events';
-  const payload=event?{summary:event.title,...(event.allDay?{start:{date:event.date},end:{date:addDays(event.date,1)},transparency:'transparent'}:{start:{dateTime:zonedInstant(event.date,event.start,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone},end:{dateTime:zonedInstant(event.date,event.end,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone}}),colorId:googleCategoryColor(snapshot.data.preferences.eventCategories?.[event.id]??categoryOf(event),snapshot.data.preferences)}:null;
+  const payload=event?{summary:event.title,...(event.allDay?{start:{date:event.date},end:{date:addDays(event.date,1)},transparency:'transparent'}:{start:{dateTime:zonedInstant(event.date,event.start,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone},end:{dateTime:zonedInstant(event.date,event.end,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone}}),colorId:googleCategoryColor(snapshot.data.preferences.eventCategories?.[event.id]??categoryOf(event),snapshot.data.preferences,event.taskId?'task':'event')}:null;
   state.fingerprint=await digest(payload?signature(payload):'deleted');
   const previousSignatures=[state.lastSignature,...(state.attemptedSignatures??[])];
   // Persist the target before the first remote mutation, including lost ACKs.

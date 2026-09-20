@@ -314,7 +314,7 @@ export async function writeCommand(
   // the Google write, and replaying the command cannot enqueue it twice.
   const calendarEventId = action.type === 'task.schedule' ? action.eventId : action.type === 'event.upsert' ? action.event.id
     : action.type === 'proposal.approve' ? 'approved:' + action.itemId : undefined;
-  const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories))?next.events.filter(e=>!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
+  const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.taskCategoryColors)!==JSON.stringify(next.preferences.taskCategoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories))?next.events.filter(e=>!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
   for (const calendarEventId of calendarEventIds.filter(id=>!id.startsWith('google:'))) {
     // Keep existing, explicitly exported focus blocks on their original flow.
       const state = {eventId:calendarEventId, automatic:true, status:'pending',

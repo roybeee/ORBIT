@@ -1,4 +1,26 @@
 'use client';
 import {calendarCategories,categoryLabels,categoryColor,calendarPalette} from '@/lib/orbit/calendar-categories';
 import type {Preferences} from '@/lib/orbit/model';
-export function CalendarColors({preferences,disabled,onSave}:{preferences:Preferences;disabled:boolean;onSave:(p:Preferences)=>void}){return <details className="calendar-color-settings"><summary>카테고리 색상</summary><div>{calendarCategories.map(category=><label key={category}><span className="category-swatch" style={{background:categoryColor(category,preferences)}}/>{categoryLabels[category]}<select aria-label={`${categoryLabels[category]} 색상`} disabled={disabled} value={categoryColor(category,preferences)} onChange={e=>onSave({...preferences,categoryColors:{...preferences.categoryColors,[category]:e.target.value}})}>{calendarPalette.map(([color,label])=><option key={color} value={color}>{label}</option>)}</select></label>)}</div></details>}
+
+export function CalendarColors({preferences,disabled,onSave}:{preferences:Preferences;disabled:boolean;onSave:(p:Preferences)=>void}){
+ return <details className="calendar-color-settings">
+  <summary>일정·할 일 색상</summary>
+  <div className="calendar-color-groups">{(['event','task'] as const).map(kind=>
+   <fieldset key={kind} disabled={disabled}>
+    <legend>{kind==='event'?'일정':'할 일'}</legend>
+    {calendarCategories.map(category=>{
+     const color=categoryColor(category,preferences,kind);
+     return <label key={category}>
+      <span className="category-swatch" style={{background:color}} aria-hidden="true"/>
+      <span>{categoryLabels[category]}</span>
+      <select aria-label={`${kind==='event'?'일정':'할 일'} ${categoryLabels[category]} 색상`} value={color} onChange={e=>{
+       // Preserve inherited task colors when editing an event palette independently.
+       const taskCategoryColors=Object.fromEntries(calendarCategories.map(c=>[c,categoryColor(c,preferences,'task')]));
+       onSave(kind==='task'?{...preferences,taskCategoryColors:{...taskCategoryColors,[category]:e.target.value}}:{...preferences,taskCategoryColors,categoryColors:{...preferences.categoryColors,[category]:e.target.value}});
+      }}>{calendarPalette.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+     </label>;
+    })}
+   </fieldset>
+  )}</div>
+ </details>;
+}

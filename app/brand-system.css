@@ -70,3 +70,7 @@ html[data-orbit-theme=focus] .cosmic-motion,html[data-orbit-theme=focus] .agent-
 .project-hub-compact .project-hub-card.is-held{background:var(--accent)}
 .project-hub-compact .project-next-action{background:var(--muted)}
 .project-action-error{background:var(--galaxy-warm-surface);border-color:var(--border)}
+
+/* Keep item colors visible in both themes without coloring the reading text. */
+.agenda-card{background:color-mix(in srgb,var(--event-color) 9%,var(--card));border-left-width:4px}
+.calendar-task-card{background:color-mix(in srgb,var(--task-category-color) 9%,var(--card))}

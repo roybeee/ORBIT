@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowDownUp, ArrowLeft, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
+import { ArrowDownUp, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
 import type { CalendarEvent, Project, Preferences, Task } from '@/lib/orbit/model';
 import {categoryOf,categoryColor,categoryLabels} from '@/lib/orbit/calendar-categories';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -250,8 +250,6 @@ export function CalendarAgenda(props: Props) {
   const firstCompleted=props.events.findIndex(e=>completedIds.has(e.taskId??''));
   const completedCount=new Set(props.events.filter(e=>completedIds.has(e.taskId??'')).map(e=>e.taskId)).size;
   return <div ref={root} className={`calendar-agenda ${preview ? 'is-moving' : ''}`}>
-    <p id="calendar-move-help" className="calendar-gesture-hint"><span><ArrowLeft size={15}/>밀어서 수정·삭제</span><span><ArrowDownUp size={15}/>길게 눌러 시간 이동</span></p>
-    {props.onDeleteTask&&<p className="calendar-gesture-hint"><span><Trash2 size={15}/>미배정 할 일은 길게 누르고 오른쪽으로 밀어 삭제</span></p>}
     {!props.events.length && <div className="calendar-empty"><Clock3 size={25}/><strong>{props.timelineTasks?'이날 할 일과 일정이 없어요':'예정된 일정이 없어요'}</strong><p>상단의 일정 추가로 하루를 계획해 보세요.</p></div>}
     {props.events.map((event,index) => {
       const task=props.timelineTasks?.find(t=>t.id===event.taskId),untimed=event.id.startsWith('task-due:');
@@ -275,10 +273,9 @@ export function CalendarAgenda(props: Props) {
             <button type="button" className="agenda-action-delete" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 삭제`} onClick={()=>{showActions(null);props.onDelete(event)}}><Trash2 size={18}/><span>삭제</span></button>
           </div>}
         <div className={`agenda-card ${active && conflict ? 'has-conflict' : ''}`}
-          style={{ '--event-color': categoryColor(categoryOf(event),props.preferences), transform: `translateX(${offset}px)` } as CSSProperties}>
+          style={{ '--event-color': categoryColor(categoryOf(event),props.preferences,event.taskId?'task':'event'), transform: `translateX(${offset}px)` } as CSSProperties}>
           {task&&props.onToggleTask&&<label className="agenda-task-checkbox"><Checkbox checked={task.status==='done'} disabled={props.disabled||!!preview||!!deleting} aria-label={`${task.title} ${task.status==='done'?'완료 취소':'완료'}`} onCheckedChange={()=>props.onToggleTask!(task.id)}/></label>}
           <button type="button" className="agenda-event" disabled={props.disabled&&!!canSchedule} data-move-event={event.id}
-            aria-describedby={!restriction ? 'calendar-move-help' : undefined}
             aria-label={`${event.title}, ${shown.allDay?(untimed?'시간 미정 할 일':'종일 일정'):formatTime(shown.start)+'부터 '+formatTime(shown.end)+'까지'}${canSchedule?', 시간 배정':restriction ? ', ' + restriction : ''}`}
             onClick={e => { if (session.current?.active || Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } if(openActions.current === event.id){showActions(null);return;} if(canSchedule){props.onScheduleTask!(task!.id);return;} props.onOpen(event); }}>
             {props.timelineTasks&&<span className="agenda-type-label">{task?(untimed?'할 일':'할 일 · 일정'):'일정'}{task?.status==='done'?' · 완료':''}</span>}

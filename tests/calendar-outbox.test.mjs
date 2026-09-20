@@ -96,10 +96,10 @@ test('quick task scheduling atomically queues one timed Google event, survives r
 test('dated project task creates one transparent all-day Google event and changing its date patches the same ID',()=>fixture(async db=>{
  const task=await taskFixture(db);assert.equal((await calendarExports(db,'a'))[0].eventId,'task-due:recruit');
  await connect(db);const g=google({lose:true});await flushCalendarOutbox(db,'a',env,'task-due:recruit');await flushCalendarOutbox(db,'a',env,'task-due:recruit');
- assert.equal(g.posts,1);assert.deepEqual(g.remote.start,{date:'2026-09-21'});assert.deepEqual(g.remote.end,{date:'2026-09-22'});assert.equal(g.remote.transparency,'transparent');assert.equal(g.remote.colorId,'9');const id=g.remote.id;
+ assert.equal(g.posts,1);assert.deepEqual(g.remote.start,{date:'2026-09-21'});assert.deepEqual(g.remote.end,{date:'2026-09-22'});assert.equal(g.remote.transparency,'transparent');assert.equal(g.remote.colorId,'2');const id=g.remote.id;
  const snapshot=await readWorkspace(db,'a');assert.equal(snapshot.data.events.length,0,'due reminders must not reserve the entire day in the planner');
  await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task:{...task,due:'2026-09-22',category:'health'}}});
- await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.posts,1);assert.equal(g.patches,1);assert.equal(g.remote.id,id);assert.equal(g.remote.start.date,'2026-09-22');assert.equal(g.remote.end.date,'2026-09-23');assert.equal(g.remote.colorId,'2');
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.posts,1);assert.equal(g.patches,1);assert.equal(g.remote.id,id);assert.equal(g.remote.start.date,'2026-09-22');assert.equal(g.remote.end.date,'2026-09-23');assert.equal(g.remote.colorId,'7');
 }));
 test('existing dated task backfill is idempotent and completion updates the same reminder',()=>fixture(async db=>{
  const {queueTaskCalendarBackfill}=await import('../db/repository.ts');
@@ -141,4 +141,28 @@ test('midnight rollover moves the same Google task, includes old backlog, and st
  t.mock.timers.setTime(new Date('2026-10-04T03:00:00Z').getTime());
  await queueTaskCalendarBackfill(db,'a','2026-10-04');assert.equal((await calendarExports(db,'a'))[0].status,'verified');
  assert.equal(g.posts,1);assert.equal(g.remote.start.date,'2026-10-03');
+}));
+
+test('task and event palettes persist independently and timed tasks use task colors in Google',()=>fixture(async db=>{
+ const task=await taskFixture(db);
+ await save(db,{...event,category:'work'});
+ let snapshot=await readWorkspace(db,'a');
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.schedule',taskId:task.id,eventId:'timed-task',date:event.date,start:840,minutes:45}});
+ snapshot=await readWorkspace(db,'a');
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'preferences.update',preferences:{...snapshot.data.preferences,categoryColors:{work:'#dbadff'},taskCategoryColors:{work:'#ffb878'}}}});
+ snapshot=await readWorkspace(db,'a');
+ const {categoryColor}=await import('../lib/orbit/calendar-categories.ts');
+ assert.equal(categoryColor('work',snapshot.data.preferences,'event'),'#dbadff');
+ assert.equal(categoryColor('work',snapshot.data.preferences,'task'),'#ffb878');
+ await connect(db);
+ let taskGoogle;
+ for(const [id,color] of [['meeting','3'],['task-due:recruit','6'],['timed-task','6']]){
+  const g=google();await flushCalendarOutbox(db,'a',env,id);assert.equal(g.remote.colorId,color);taskGoogle=g;
+ }
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'preferences.update',preferences:{...snapshot.data.preferences,taskCategoryColors:{work:'#46d6db'}}}});
+ const updated=await readWorkspace(db,'a');
+ assert.equal(categoryColor('work',updated.data.preferences,'event'),'#dbadff');
+ assert.equal((await calendarExports(db,'a')).find(x=>x.eventId==='timed-task').status,'pending');
+ await flushCalendarOutbox(db,'a',env,'timed-task');
+ assert.equal(taskGoogle.remote.colorId,'7');assert.equal(taskGoogle.patches,1);
 }));

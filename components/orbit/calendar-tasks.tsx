@@ -12,7 +12,7 @@ export function CalendarTasks({tasks,projects,preferences,date,today,disabled,on
  const carried=pending.filter(t=>t.due<date);
  const row=(task:Task)=>{
   const done=task.status==='done',category=categoryOf(task),project=projects.find(p=>p.id===task.projectId);
-  return <article key={task.id} className={`calendar-task-card ${done?'is-done':''}`} style={{'--task-category-color':categoryColor(category,preferences)} as CSSProperties}>
+  return <article key={task.id} className={`calendar-task-card ${done?'is-done':''}`} style={{'--task-category-color':categoryColor(category,preferences,'task')} as CSSProperties}>
    <label className="calendar-task-check"><Checkbox checked={done} disabled={disabled} aria-label={`${task.title} ${done?'완료 취소':'완료'}`} onCheckedChange={()=>onToggle(task.id)}/></label>
    <button className="calendar-task-open" disabled={disabled} onClick={()=>onOpen(task.id)}><strong>{task.title}</strong><span>{project?.name??'개인 할 일'} · {categoryLabels[category]} · {task.duration}분</span>
     {inbox?<span>대기 · 마감 {task.due.slice(5).replace('-','/')}{task.blocker?` · ${task.blocker}`:''}</span>:!done&&task.due<date?<span className="calendar-task-carried"><RotateCcw size={14}/>이월 · 원래 마감 {task.due.slice(5).replace('-','/')} · {statusLabel[task.status]}</span>:<span>{done?'완료':statusLabel[task.status]}</span>}

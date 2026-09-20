@@ -163,6 +163,7 @@ export const illustrationPreferencesSchema = z.object({
 export const preferencesSchema = z
   .object({
     eventCategories:z.record(z.string().max(200),z.enum(calendarCategories)).refine(v=>Object.keys(v).length<=2000).optional(),
+    taskCategoryColors:z.record(z.enum(calendarCategories),z.string().refine(v=>calendarPalette.some(p=>p[0]===v))).optional(),
     categoryColors:z.record(z.enum(calendarCategories),z.string().refine(v=>calendarPalette.some(p=>p[0]===v))).optional(),
     illustrations: illustrationPreferencesSchema.optional(),
     timeZone: z.string().refine((value) => {
