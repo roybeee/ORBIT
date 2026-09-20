@@ -4,10 +4,12 @@ import { ArrowDownUp, ArrowLeft, Clock3, MoreHorizontal, Pencil, Trash2, LockKey
 import type { CalendarEvent, Project, Preferences, Task } from '@/lib/orbit/model';
 import {categoryOf,categoryColor,categoryLabels} from '@/lib/orbit/calendar-categories';
 import {Checkbox} from '@/components/ui/checkbox';
+import {taskDeleteDrag} from '@/lib/orbit/task-delete-gesture';
 import { formatTime, statusLabel } from '@/lib/orbit/model';
 import { HOLD_MS, MOVE_SLOP, SWIPE_ACTION_WIDTH, SWIPE_OPEN_THRESHOLD, canEditCalendarEvent, calendarGestureIntent, swipeOffset, moveConflict, moveRestriction, shiftedEvent } from '@/lib/orbit/calendar-move';
 
 type Props = {
+  onDeleteTask?: (id: string) => Promise<boolean>;
   timelineTasks?:Task[]; date?:string; onToggleTask?:(id:string)=>void; onScheduleTask?:(id:string)=>void;
   events: CalendarEvent[]; preferences?:Preferences; projects: Project[]; disabled: boolean;
   onOpen: (event: CalendarEvent) => void;
@@ -20,6 +22,7 @@ type Session = {
   event: CalendarEvent; x: number; y: number; currentX: number; currentY: number; scrollY: number;
   active: boolean; moved: boolean; swiping: boolean; initialOffset: number; input: 'touch' | 'pointer'; pointerId: number;
   timer?: ReturnType<typeof setTimeout>; frame?: number;
+  deleteTaskId?: string; width: number;
 };
 type Preview = { event: CalendarEvent; delta: number; saving?: boolean };
 
@@ -27,6 +30,7 @@ export function CalendarAgenda(props: Props) {
   const root = useRef<HTMLDivElement>(null), latest = useRef(props), session = useRef<Session | null>(null);
   latest.current = props;
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [deleting, setDeleting] = useState<{id:string;offset:number;ready:boolean;saving?:boolean}|null>(null);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [swipe, setSwipe] = useState<{id: string; offset: number} | null>(null);
   const openActions = useRef<string | null>(null);
@@ -50,6 +54,10 @@ export function CalendarAgenda(props: Props) {
     const changed = () => {
       const s = session.current;
       if (!s?.active) return;
+      if (s.deleteTaskId) {
+        setDeleting({id:s.event.id,...taskDeleteDrag(s.currentX-s.x,s.currentY-s.y,s.width)});
+        return;
+      }
       const delta = s.currentY - s.y + window.scrollY - s.scrollY;
       setPreview({ event: shiftedEvent(s.event, delta), delta });
     };
@@ -64,6 +72,7 @@ export function CalendarAgenda(props: Props) {
       if (session.current?.active || session.current?.swiping) suppressClickUntil.current = Date.now() + 700;
       clear();
       setSwipe(null);
+      if (!saving.current) setDeleting(null);
       if (!saving.current) setPreview(null);
     };
     const autoScroll = () => {
@@ -79,13 +88,14 @@ export function CalendarAgenda(props: Props) {
       if (session.current || saving.current || latest.current.disabled) return;
       const button = target instanceof Element ? target.closest<HTMLElement>('[data-move-event]') : null;
       const event = latest.current.events.find(e => e.id === button?.dataset.moveEvent);
-      if (!event || !canEditCalendarEvent(event)) return;
+      const deleteTaskId = event?.id.startsWith('task-due:') && latest.current.onDeleteTask && latest.current.timelineTasks?.some(t=>t.id===event.taskId) ? event.taskId : undefined;
+      if (!event || (!deleteTaskId && !canEditCalendarEvent(event))) return;
       const initialOffset = openActions.current === event.id ? -SWIPE_ACTION_WIDTH : 0;
       if (openActions.current !== event.id) showActions(null);
-      const s: Session = { event: { ...event }, x, y, currentX: x, currentY: y, scrollY: window.scrollY, active: false, moved: false, swiping: false, initialOffset, input, pointerId };
+      const s: Session = { event: { ...event }, x, y, currentX: x, currentY: y, scrollY: window.scrollY, active: false, moved: false, swiping: false, initialOffset, input, pointerId, deleteTaskId, width:button?.closest('.agenda-card')?.getBoundingClientRect().width??240 };
       session.current = s;
       latest.current.onInteractionChange(true);
-      if (!moveRestriction(event)) s.timer = setTimeout(() => {
+      if (deleteTaskId || !moveRestriction(event)) s.timer = setTimeout(() => {
         if (session.current !== s || latest.current.disabled) { cancel(); return; }
         s.active = true;
         showActions(null);
@@ -99,6 +109,8 @@ export function CalendarAgenda(props: Props) {
       if (!s) return;
       if (!s.active && !s.swiping) {
         const intent = calendarGestureIntent(x - s.x, y - s.y);
+        // A task requires a stationary hold first. Ordinary swipes only scroll.
+        if (s.deleteTaskId && intent !== 'pending') { suppressClickUntil.current=Date.now()+700; cancel(); return; }
         if (intent === 'scroll') { cancel(); return; }
         if (intent === 'pending') return;
         if (s.timer) clearTimeout(s.timer);
@@ -107,6 +119,7 @@ export function CalendarAgenda(props: Props) {
       }
       if (s.input === 'touch' && !event.cancelable) { cancel(); return; }
       if (event.cancelable) event.preventDefault();
+      if (s.deleteTaskId) { s.currentX=x; s.currentY=y; changed(); return; }
       if (s.swiping) {
         s.currentX = x;
         setSwipe({id: s.event.id, offset: swipeOffset(s.initialOffset, x - s.x)});
@@ -119,9 +132,21 @@ export function CalendarAgenda(props: Props) {
       }
       changed();
     };
-    const finish = async () => {
+    const finish = async (x?:number,y?:number) => {
       const s = session.current;
       if (!s) return;
+      if (s.deleteTaskId) {
+        const result=taskDeleteDrag((x??s.currentX)-s.x,(y??s.currentY)-s.y,s.width);
+        const remove=s.active&&result.ready&&!latest.current.disabled;
+        if(s.active)suppressClickUntil.current=Date.now()+700;
+        clear();
+        if(!remove){setDeleting(null);return;}
+        saving.current=true;latest.current.onInteractionChange(true);
+        setDeleting({id:s.event.id,...result,saving:true});
+        try {await latest.current.onDeleteTask?.(s.deleteTaskId);}
+        finally {saving.current=false;if(alive.current){setDeleting(null);latest.current.onInteractionChange(false);}}
+        return;
+      }
       if (s.swiping) {
         const offset = swipeOffset(s.initialOffset, s.currentX - s.x);
         showActions(offset <= -SWIPE_OPEN_THRESHOLD ? s.event.id : null);
@@ -156,8 +181,10 @@ export function CalendarAgenda(props: Props) {
     };
     const touchEnd = (e: TouchEvent) => {
       if (session.current?.input !== 'touch') return;
+      const t=Array.from(e.changedTouches).find(t=>t.identifier===session.current?.pointerId);
+      if(!t)return;
       if ((session.current.active || session.current.swiping) && e.cancelable) e.preventDefault();
-      void finish();
+      void finish(t.clientX,t.clientY);
     };
     const pointerDown = (e: PointerEvent) => {
       if (e.pointerType === 'touch' || e.button !== 0) return;
@@ -167,7 +194,7 @@ export function CalendarAgenda(props: Props) {
       if (session.current?.input === 'pointer' && session.current.pointerId === e.pointerId) move(e.clientX, e.clientY, e);
     };
     const pointerUp = (e: PointerEvent) => {
-      if (session.current?.input === 'pointer' && session.current.pointerId === e.pointerId) void finish();
+      if (session.current?.input === 'pointer' && session.current.pointerId === e.pointerId) void finish(e.clientX,e.clientY);
     };
     const pointerCancel = (e: PointerEvent) => { if (session.current?.input === 'pointer' && session.current.pointerId === e.pointerId) cancel(); };
     const contextMenu = (e: Event) => { if (session.current || Date.now() < suppressClickUntil.current) e.preventDefault(); };
@@ -221,6 +248,7 @@ export function CalendarAgenda(props: Props) {
   const conflict = preview && moveConflict(preview.event, props.events);
   return <div ref={root} className={`calendar-agenda ${preview ? 'is-moving' : ''}`}>
     <p id="calendar-move-help" className="calendar-gesture-hint"><span><ArrowLeft size={15}/>밀어서 수정·삭제</span><span><ArrowDownUp size={15}/>길게 눌러 시간 이동</span></p>
+    {props.onDeleteTask&&<p className="calendar-gesture-hint"><span><Trash2 size={15}/>미배정 할 일은 길게 누르고 오른쪽으로 밀어 삭제</span></p>}
     {!props.events.length && <div className="calendar-empty"><Clock3 size={25}/><strong>{props.timelineTasks?'이날 할 일과 일정이 없어요':'예정된 일정이 없어요'}</strong><p>상단의 일정 추가로 하루를 계획해 보세요.</p></div>}
     {props.events.map(event => {
       const task=props.timelineTasks?.find(t=>t.id===event.taskId),untimed=event.id.startsWith('task-due:');
@@ -231,23 +259,25 @@ export function CalendarAgenda(props: Props) {
       const editable = canEditCalendarEvent(event);
       const actionsOpen = openActionsId === event.id;
       const swiping = swipe?.id === event.id;
-      const offset = swiping ? swipe.offset : actionsOpen ? -SWIPE_ACTION_WIDTH : 0;
+      const deletingTask=deleting?.id===event.id?deleting:null;
+      const offset = deletingTask ? deletingTask.offset : swiping ? swipe.offset : actionsOpen ? -SWIPE_ACTION_WIDTH : 0;
       const project = props.projects.find(p => p.id === event.projectId);
       return <div className={`agenda-row ${active ? 'agenda-moving' : ''} ${task?.status==='done'?'agenda-task-done':''}`} key={event.id} id={'agenda-row-'+event.id} data-agenda-row={event.id}>
         <time className="agenda-time">{shown.allDay?<>{untimed?'미배정':'종일'}<span>{untimed?'할 일':'일정'}</span></>:<>{formatTime(shown.start)}<span>{formatTime(shown.end)}</span></>}</time>
         <div className="agenda-swipe-shell" style={{transform: active && !preview.saving ? `translateY(${preview.delta}px)` : undefined}}>
-        <div className={`agenda-swipe-clip ${swiping ? 'is-swiping' : ''} ${actionsOpen ? 'actions-open' : ''}`}>
+        <div className={`agenda-swipe-clip ${swiping || deletingTask ? 'is-swiping' : ''} ${actionsOpen ? 'actions-open' : ''} ${deletingTask ? 'is-deleting-task' : ''} ${deletingTask?.ready?'delete-ready':''}`}>
+          {deletingTask&&<div className="agenda-delete-target" aria-hidden="true"><Trash2 size={24}/><span>{deletingTask.saving?'삭제 중…':deletingTask.ready?'놓으면 삭제':'오른쪽으로'}</span></div>}
           {editable && <div id={`agenda-actions-${event.id}`} className="agenda-swipe-actions" role="group" aria-label={`${event.title} 수정 및 삭제`} aria-hidden={!actionsOpen} style={{visibility: offset < 0 ? 'visible' : 'hidden'}}>
             <button type="button" className="agenda-action-edit" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 수정`} onClick={()=>{showActions(null);props.onEdit(event.id)}}><Pencil size={18}/><span>수정</span></button>
             <button type="button" className="agenda-action-delete" tabIndex={actionsOpen ? 0 : -1} disabled={props.disabled || !!preview || !actionsOpen || swiping} aria-label={`${event.title} 삭제`} onClick={()=>{showActions(null);props.onDelete(event)}}><Trash2 size={18}/><span>삭제</span></button>
           </div>}
         <div className={`agenda-card ${active && conflict ? 'has-conflict' : ''}`}
           style={{ '--event-color': categoryColor(categoryOf(event),props.preferences), transform: `translateX(${offset}px)` } as CSSProperties}>
-          {task&&props.onToggleTask&&<label className="agenda-task-checkbox"><Checkbox checked={task.status==='done'} disabled={props.disabled||!!preview} aria-label={`${task.title} ${task.status==='done'?'완료 취소':'완료'}`} onCheckedChange={()=>props.onToggleTask!(task.id)}/></label>}
+          {task&&props.onToggleTask&&<label className="agenda-task-checkbox"><Checkbox checked={task.status==='done'} disabled={props.disabled||!!preview||!!deleting} aria-label={`${task.title} ${task.status==='done'?'완료 취소':'완료'}`} onCheckedChange={()=>props.onToggleTask!(task.id)}/></label>}
           <button type="button" className="agenda-event" disabled={props.disabled&&!!canSchedule} data-move-event={event.id}
             aria-describedby={!restriction ? 'calendar-move-help' : undefined}
             aria-label={`${event.title}, ${shown.allDay?(untimed?'시간 미정 할 일':'종일 일정'):formatTime(shown.start)+'부터 '+formatTime(shown.end)+'까지'}${canSchedule?', 시간 배정':restriction ? ', ' + restriction : ''}`}
-            onClick={e => { if (Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } if(openActions.current === event.id){showActions(null);return;} if(canSchedule){props.onScheduleTask!(task!.id);return;} props.onOpen(event); }}>
+            onClick={e => { if (session.current?.active || Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } if(openActions.current === event.id){showActions(null);return;} if(canSchedule){props.onScheduleTask!(task!.id);return;} props.onOpen(event); }}>
             {props.timelineTasks&&<span className="agenda-type-label">{task?(untimed?'할 일':'할 일 · 일정'):'일정'}{task?.status==='done'?' · 완료':''}</span>}
             <strong>{task?.title??event.title}</strong>
             <span className="agenda-meta">{project?.name ?? (event.kind === 'focus' ? '집중 시간' : event.kind === 'break' ? '휴식' : '개인 일정')}<span>·</span>{event.allDay?categoryLabels[categoryOf(event)]:`${event.end - event.start}분 · ${categoryLabels[categoryOf(event)]}`}</span>
@@ -262,6 +292,7 @@ export function CalendarAgenda(props: Props) {
         </div>
       </div>;
     })}
+    {deleting&&<div className="calendar-drag-feedback calendar-delete-feedback" role="status" aria-live="polite"><Trash2 size={20}/><div><strong>{deleting.saving?'할 일을 삭제하고 있어요':deleting.ready?'손을 놓으면 삭제됩니다':'오른쪽으로 밀어 삭제'}</strong><span>{deleting.saving?'저장 결과를 확인하고 있습니다':'왼쪽으로 되돌린 뒤 놓으면 취소'}</span></div></div>}
     {preview && <div className={`calendar-drag-feedback ${conflict ? 'has-conflict' : ''}`} role="status" aria-live="polite">
       <ArrowDownUp size={20}/><div><strong>{formatTime(preview.event.start)} — {formatTime(preview.event.end)}</strong><span>{preview.saving ? '변경한 시간을 저장하는 중…' : conflict ? `‘${conflict.title}’ 일정과 겹쳐요 · 다른 시간으로 이동하세요` : '위로는 더 일찍 · 아래로는 더 늦게 · 놓으면 저장'}</span></div>
     </div>}

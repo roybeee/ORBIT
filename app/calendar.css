@@ -66,6 +66,10 @@
 .agenda-swipe-actions button { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 7px; min-height: 44px; min-width: 44px; border: 0; padding: 10px 4px; font-size: .875rem; font-weight: 600; color: #fff; }
 .agenda-action-edit { background: var(--orbit-legacy-6650bd); }
 .agenda-action-delete { background: var(--orbit-legacy-b33953); }
+.agenda-delete-target{position:absolute;inset:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:10px;padding:18px;color:#fff;background:#713448;font-size:.875rem;font-weight:600}
+.delete-ready .agenda-delete-target{background:#aa2849}
+.is-deleting-task .agenda-card{border-color:#ef829c;box-shadow:0 0 0 2px #ef829c33}
+.calendar-delete-feedback{border-color:#ef829c;background:var(--card);color:var(--foreground);pointer-events:none}
 .agenda-action-edit:hover { background: var(--orbit-legacy-765dcc); }
 .agenda-action-delete:hover { background: var(--orbit-legacy-c74660); }
 .agenda-swipe-actions button:disabled { opacity: 1; }
