@@ -1,6 +1,7 @@
 import {WORKSPACE_LIMIT_BYTES,workspaceUsage} from './storage-usage.ts';
 import {workEligibility} from './work-policy.ts';
 import {reconcileProjectWork} from './project-management.ts';
+import {reorderProjectSlots} from './project-order.ts';
 import {monthlyReport} from './phase4.ts';
 import {prepareReplan,replanBasis} from './reschedule.ts';
 import {planningFloor,minuteInZone} from './dates.ts';
@@ -348,6 +349,11 @@ export function applyAction(
       if(updated.status==='completed')updated.completedOn=updated.completedOn??today;else delete updated.completedOn;
       data.projects = replace(data.projects, updated);
       if(updated.status&&updated.status!=='active')suspendProject(updated.id);
+      break;
+    }
+    case 'project.reorder': {
+      try { data.projects=reorderProjectSlots(data.projects,action.ids,data.dominoProjectId); }
+      catch { fail('코어 프로젝트는 고정됩니다. 순서를 바꿀 프로젝트를 다시 확인해 주세요.'); }
       break;
     }
     case 'project.manage': {

@@ -259,6 +259,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('project.milestone.delete'),id,milestoneId:id}).strict(),
   z.object({type:z.literal('project.task-stage'),id,taskId:id,milestoneId:id.nullable()}).strict(),
   z.object({type:z.literal('project.next-task'),id,taskId:id.nullable()}).strict(),
+  z.object({type:z.literal('project.reorder'),ids:z.array(id).min(2).max(500).refine(ids=>new Set(ids).size===ids.length)}).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),
   z.object({ type: z.literal('goal.upsert'), goal: goalSchema, clearFields: z.array(z.enum(['deadline','parentId','metric'])).max(3).optional() }).strict(),

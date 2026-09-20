@@ -20,6 +20,28 @@ const manage=(status,result='')=>({type:'project.manage',id:'p',status,priority:
 const run=(data,action)=>applyAction(data,actionSchema.parse(action),now);
 const withStage=()=>run(seed(),{type:'project.milestone.upsert',id:'p',milestone});
 
+test('manual project order preserves core and hidden slots and rejects invalid or core IDs',()=>{
+ const data=seed();data.projects=[{...project,id:'a'},{...project,id:'core'},{...project,id:'hidden'},{...project,id:'b'},{...project,id:'p'},{...project,id:'q'}];data.dominoProjectId='core';
+ const reordered=run(data,{type:'project.reorder',ids:['b','a']});
+ assert.deepEqual(reordered.projects.map(p=>p.id),['b','core','hidden','a','p','q']);assert.deepEqual(reordered.tasks,data.tasks);assert.equal(reordered.dominoProjectId,'core');
+ for(const ids of [['a','a'],['a','missing'],['a','core'],['a']])assert.throws(()=>run(data,{type:'project.reorder',ids}));
+ assert.equal(data.projects[0].id,'a');
+});
+
+test('manual project order survives reload and replay without overwriting a concurrent edit',async()=>{
+ const db=createDatabase();try{
+  let state=await readWorkspace(db,'reorder-owner');
+  for(const id of ['a','core','b'])state=await writeCommand(db,'reorder-owner',{expectedRevision:state.revision,operationId:randomUUID(),action:{type:'project.upsert',project:{...project,id}}},now);
+  state=await writeCommand(db,'reorder-owner',{expectedRevision:state.revision,operationId:randomUUID(),action:{type:'project.domino',id:'core'}},now);
+  const command={expectedRevision:state.revision,operationId:randomUUID(),action:actionSchema.parse({type:'project.reorder',ids:['b','a']})};
+  state=await writeCommand(db,'reorder-owner',command,now);
+  assert.deepEqual((await readWorkspace(db,'reorder-owner')).data.projects.map(p=>p.id),['b','core','a']);
+  assert.equal((await writeCommand(db,'reorder-owner',command,now)).revision,state.revision);
+  await assert.rejects(()=>writeCommand(db,'reorder-owner',{...command,operationId:randomUUID()},now),RevisionConflict);
+  assert.equal((await readWorkspace(db,'another-owner')).data.projects.length,0);
+ }finally{db.close()}
+});
+
 test('legacy project edits preserve management metadata and keep existing optional-field clearing semantics',()=>{
  let data=withStage();data=run(data,{type:'project.next-task',id:'p',taskId:'a'});data=run(data,manage('paused'));
  data=run(data,{type:'project.upsert',project:{...project,name:'수정 제목'}});

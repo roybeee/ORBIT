@@ -94,6 +94,7 @@ import {TodayHome} from './today-home';
 import {CalendarSyncStatus} from './calendar-sync';
 import {CalendarAgenda} from './calendar-agenda';
 import {CalendarTasks} from './calendar-tasks';
+import {calendarTimeline} from '@/lib/orbit/calendar-timeline';
 import {ProjectHub} from './project-hub';
 import {ProjectActions,type ProjectIntent} from './project-actions';
 import {CalendarDateStrip} from './calendar-date-strip';
@@ -322,7 +323,7 @@ function WorkspaceContent({
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
-  const [calendarTab,setCalendarTab]=useState('tasks');
+  const [calendarTab,setCalendarTab]=useState('timeline');
   const previousToday=useRef(TODAY);
   useEffect(()=>{const previous=previousToday.current;previousToday.current=TODAY;if(previous!==TODAY){setCalendarDate(date=>date===previous?TODAY:date);window.dispatchEvent(new Event('orbit:calendar-changed'));}},[TODAY]);
   const [newCategory,setNewCategory]=useState<CalendarCategory>('work');
@@ -821,6 +822,7 @@ function WorkspaceContent({
   const selectedCalendarTaskIds=new Set(calendarTaskEvents.filter(e=>e.date===calendarDate).map(e=>e.taskId));
   const selectedCalendarTasks=tasks.filter(t=>selectedCalendarTaskIds.has(t.id));
   const selectedEvents = [...events,...protectedEvents(data,calendarDate)].map(e=>({...e,category:preferences.eventCategories?.[e.id]??e.category})).filter((e) => e.date === calendarDate).sort((a, b) => Number(!!b.allDay)-Number(!!a.allDay)||a.start - b.start);
+  const selectedTimeline=calendarTimeline(tasks,selectedEvents,calendarDate,TODAY);
   const todayRemaining = focus.filter((t) => t.status !== 'done').reduce((s, t) => s + t.duration, 0);
   const renderTimeline = (date: string) => {
     const list = [...events,...protectedEvents(data,date)].filter((e) => e.date === date).sort((a, b) => Number(!!b.allDay)-Number(!!a.allDay)||a.start - b.start);
@@ -1198,7 +1200,7 @@ function WorkspaceContent({
             />
             </>
           )}
-          {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}
+          {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub onReorder={ids=>perform({type:'project.reorder',ids},'프로젝트 순서를 저장했습니다.')} data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}
 
           {loaded&&(view==='wiki'||view==='knowledge')&&<><WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
           <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={calendarInteracting||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
@@ -1247,16 +1249,23 @@ function WorkspaceContent({
                 <CalendarColors preferences={preferences} disabled={busy||hasPending||demo} onSave={p=>void perform({type:'preferences.update',preferences:p},'카테고리 색상을 저장했습니다.')}/>
                 <Tabs value={calendarTab} onValueChange={setCalendarTab} className="calendar-content-tabs">
                 <TabsList aria-label="날짜별 할 일과 일정" className="calendar-tab-list">
+                  <TabsTrigger value="timeline">타임라인 <span>{selectedTimeline.length}</span></TabsTrigger>
                   <TabsTrigger value="tasks">할 일 <span>{selectedCalendarTasks.filter(t=>t.status!=='done').length}</span></TabsTrigger>
                   <TabsTrigger value="events">일정 <span>{selectedEvents.length}</span></TabsTrigger>
                 </TabsList>
+                {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
                 <TabsContent value="tasks"><CalendarTasks tasks={selectedCalendarTasks} projects={projects} preferences={preferences} date={calendarDate} today={TODAY} disabled={busy||hasPending} onOpen={id=>setDetail({kind:'task',id})} onToggle={id=>void toggleTask(id)}/></TabsContent>
+                <TabsContent value="timeline">
+                  <div className="section-title"><h2>{Number(calendarDate.slice(-2))}일 타임라인</h2><span className="muted">{selectedTimeline.length}개</span></div>
+                  <p className="calendar-task-guidance">시간 미정인 할 일과 일정에 배치한 일을 한눈에 확인하세요. 미완료 할 일은 다음 날로 이월됩니다.</p>
+                  <CalendarAgenda key={'timeline:'+calendarDate} events={selectedTimeline} timelineTasks={tasks} date={calendarDate} onToggleTask={id=>void toggleTask(id)} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/>
+                </TabsContent>
                 <TabsContent value="events">
                 <div className="section-title">
                   <h2>{Number(calendarDate.slice(-2))}일 일정</h2>
                   <span className="muted">{selectedEvents.length}개</span>
                 </div>
-                {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
+
                 <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
                 </TabsContent></Tabs>
               </section>
