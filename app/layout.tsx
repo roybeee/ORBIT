@@ -11,6 +11,7 @@ import "./project-flow.css";
 import "./mission-dashboard.css";
 import "./mobile-overlays.css";
 import "./city-themes.css";
+import "./chat-experience.css";
 import {AppearanceProvider} from "@/components/orbit/appearance";
 export const metadata: Metadata = {
   title: "Orbit · 나의 페이스메이커",
