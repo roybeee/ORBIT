@@ -1,4 +1,5 @@
-import type {Database} from '../../../db/repository.ts';
+import {readWorkspace,type Database} from '../../../db/repository.ts';
+import {automaticProject} from '../classify.ts';
 import {createConversation,getConversation} from '../agent/conversations.ts';
 import {runAgent} from '../agent/runner.ts';
 import {dispatchOrder,advanceOrder,listOrders} from '../agent/orders.ts';
@@ -13,6 +14,16 @@ import {readDiscord,type DiscordState} from './connection.ts';
 import {parseCommand,stableId,discordHelp,type Command,type DiscordConfig} from './protocol.ts';
 const stamp=()=>new Date().toISOString();
 const safe=(s:string,config:DiscordConfig)=>redactActivity(s,config.token).replace(/@(everyone|here)/g,'＠$1');
+export async function resolveDiscordProject(db:Database,owner:string,command:Command):Promise<Command>{
+ if(command.kind!=='ask'&&command.kind!=='run')return command;
+ const {data}=await readWorkspace(db,owner);
+ if(command.projectId!==undefined){
+  if(command.projectId!==null&&!data.projects.some(p=>p.id===command.projectId))throw new AgentError('내 프로젝트 번호를 확인하세요. !orbit 프로젝트로 조회할 수 있습니다.');
+  return command;
+ }
+ const match=automaticProject(command.text,data.projects,data.tasks,data.notes);
+ return {...command,projectId:match?.projectId??null};
+}
 export async function queueDiscord(db:Database,owner:string,config:DiscordConfig,event:string,content:string){
  const id=await stableId(owner+':discord:'+event),text=safe(content,config),suffix='\n\n전체 기록·검토: '+config.origin;
  await db.prepare("INSERT OR IGNORE INTO orbit_discord_outbox(owner_id,id,channel_id,content,status,created_at) VALUES(?,?,?,?,'pending',?)").bind(owner,id,config.channelId,text.slice(0,1900-suffix.length)+(text.length>1900-suffix.length?'\n[일부 생략]':'')+suffix,stamp()).run();
@@ -37,17 +48,24 @@ export async function deliverDiscord(db:Database,owner:string,config:DiscordConf
 export async function executeDiscordCommand(db:Database,owner:string,config:DiscordConfig,messageId:string,command:Command,env:Runtime){
  const id=await stableId(owner+':discord:message:'+messageId);
  if(command.kind==='help')return discordHelp;
+ if(command.kind==='projects'){
+  const {data}=await readWorkspace(db,owner);
+  return '내 프로젝트\n'+(data.projects.map(p=>`${p.name} · ${p.id}`).join('\n')||'등록된 프로젝트 없음')+'\n\n!orbit 실행 [프로젝트:프로젝트번호] 업무 내용';
+ }
  if(command.kind==='status'){
   const orders=(await listOrders(db,owner)).slice(0,8),actions=(await pendingActions(db,owner)).slice(0,6);
   return '업무 현황\n'+(orders.map(o=>`${orderStatusLabel[o.status]} · ${o.title}\n업무번호 ${o.id}${o.approval?'\n승인요청번호 '+o.approval.id:''}`).join('\n\n')||'등록된 실행 없음')+'\n\n검토할 제안\n'+(actions.map(a=>`${a.title} · ${a.state}\n제안번호 ${a.id}`).join('\n\n')||'없음');
  }
  if(command.kind==='ask'||command.kind==='run'){
-  const conversationId=await stableId(owner+':discord:channel:'+config.channelId+':'+config.userId);
+  // One durable conversation per command prevents unrelated projects from
+  // sharing context. Resolve once before receipt insertion for replay safety.
+  const projectId=command.projectId??null;
+  const conversationId=await stableId(command.projectId===undefined?owner+':discord:channel:'+config.channelId+':'+config.userId:owner+':discord:message-conversation:'+messageId);
   const existing=await getConversation(db,owner,conversationId).catch(e=>{if(e instanceof AgentError&&e.code==='NOT_FOUND')return null;throw e;});
-  if(!existing)await createConversation(db,owner,{id:conversationId,title:'Discord · '+config.channelName,projectId:null});
+  if(!existing)await createConversation(db,owner,{id:conversationId,title:('Discord · '+command.text).slice(0,100),projectId});
   if(command.kind==='ask'){await runAgent(db,owner,{id,conversationId,message:command.text},env,{defer:true});return '질문을 접수했습니다. 응답과 제안은 이 채널과 ORBIT에 저장됩니다.\n대화번호 '+id;}
-  const order=await dispatchOrder(db,owner,id,{type:'agent.dispatch',title:command.text.slice(0,120),instruction:command.text,projectId:null,taskIds:[],mode:'workflow'},env,conversationId);
-  return `${orderStatusLabel[order.status]} · ${order.title}\n업무번호 ${id}`;
+  const order=await dispatchOrder(db,owner,id,{type:'agent.dispatch',title:command.text.slice(0,120),instruction:command.text,projectId,taskIds:[],mode:'workflow'},env,conversationId);
+  return `${orderStatusLabel[order.status]} · ${order.title}\n업무번호 ${id}\n프로젝트 ${projectId??'미분류 · 프로젝트를 명시해 주세요.'}`;
  }
  if(command.kind==='stop'){const order=await advanceOrder(db,owner,command.id,env,{action:'stop',id:command.id});return `${orderStatusLabel[order.status]}\n업무번호 ${command.id}`;}
  if(command.kind==='allow'||command.kind==='deny'){const order=await advanceOrder(db,owner,command.id,env,{action:'approval',id:command.id,requestId:command.requestId,choice:command.kind==='allow'?'once':'deny'});return `승인 응답을 처리했습니다. ${orderStatusLabel[order.status]}\n업무번호 ${command.id}`;}
@@ -61,12 +79,17 @@ export async function receiveDiscord(db:Database,owner:string,config:DiscordConf
  if(!Array.isArray(messages))throw new DiscordError(502);
  const sorted=messages.filter((m:any)=>/^\d{17,20}$/.test(m.id)&&BigInt(m.id)>BigInt(state.after)).sort((a:any,b:any)=>BigInt(a.id)<BigInt(b.id)?-1:1);
  for(const message of sorted){
-  if(message.author?.id!==config.userId||message.author?.bot||message.webhook_id){state.after=message.id;continue;}
+  if(message.channel_id&&message.channel_id!==config.channelId||message.guild_id&&message.guild_id!==config.guildId||message.author?.id!==config.userId||message.author?.bot||message.webhook_id){state.after=message.id;continue;}
   let command:Command|null;try{command=parseCommand(String(message.content??''));}catch(error){await queueDiscord(db,owner,config,'syntax:'+message.id,error instanceof Error?error.message:discordHelp);state.after=message.id;return true;}
   if(!command){if(!message.content)state.lastError='내용 없는 메시지를 받았습니다. 명령이 읽히지 않으면 봇의 Message Content Intent를 켜 주세요.';state.after=message.id;continue;}
   // Persist the original command BEFORE executing; stable execution IDs make a
   // resumed receive safe after process interruption or a lost network response.
-  await db.prepare("INSERT OR IGNORE INTO orbit_discord_commands(owner_id,message_id,command_json,status,created_at) VALUES(?,?,?,'processing',?)").bind(owner,message.id,JSON.stringify(command),stamp()).run();
+  const known=await db.prepare('SELECT message_id FROM orbit_discord_commands WHERE owner_id=? AND message_id=?').bind(owner,message.id).first();
+  if(!known){
+   try{command=await resolveDiscordProject(db,owner,command);}catch(error){if(!(error instanceof AgentError))throw error;await queueDiscord(db,owner,config,'project-error:'+message.id,error.message);state.after=message.id;return true;}
+   const source={platform:'discord',guildId:config.guildId,channelId:config.channelId,messageId:message.id,userId:config.userId,url:`https://discord.com/channels/${config.guildId}/${config.channelId}/${message.id}`,timestamp:message.timestamp??stamp(),executionId:await stableId(owner+':discord:message:'+message.id)};
+   await db.prepare("INSERT OR IGNORE INTO orbit_discord_commands(owner_id,message_id,command_json,status,created_at) VALUES(?,?,?,'processing',?)").bind(owner,message.id,JSON.stringify({...command,source}),stamp()).run();
+  }
   const receipt=await db.prepare('SELECT command_json,status,response FROM orbit_discord_commands WHERE owner_id=? AND message_id=?').bind(owner,message.id).first<{command_json:string;status:string;response:string}>();
   let response=receipt!.response;
   if(receipt!.status==='processing'){

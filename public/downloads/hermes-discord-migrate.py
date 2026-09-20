@@ -57,10 +57,15 @@ def patch_env(text, changes):
 
 def target(value, channel_map, default_channel):
     if value == 'slack':
-        return 'discord:' + default_channel
+        mapped = channel_map.get('slack')
+        if not mapped or not ID.fullmatch(str(mapped)):
+            raise ValueError('기본 Slack 수신처도 channel-map의 slack 키로 명시해야 합니다.')
+        return 'discord:' + str(mapped)
     if isinstance(value, str) and value.startswith('slack:'):
         old = value[6:]
-        mapped = channel_map.get(old) or channel_map.get(old.split(':')[0])
+        # A Slack thread is a separate destination. Never collapse it into its
+        # parent channel, which can disclose a private approval or result.
+        mapped = channel_map.get(old)
         if not mapped or not ID.fullmatch(str(mapped)):
             raise ValueError('Slack 수신처 %s에 해당하는 Discord 채널 매핑이 필요합니다.' % old)
         return 'discord:' + str(mapped)
@@ -69,15 +74,21 @@ def target(value, channel_map, default_channel):
 def job_changes(jobs, channel_map, default_channel):
     updates = []
     for job in jobs:
+        # Disabled/completed jobs are historical records, not delivery routes.
+        if job.get('enabled') is False or job.get('state') == 'completed':
+            continue
         delivery = job.get('deliver', 'origin')
         def resolve(value):
             origin = job.get('origin') or {}
             if value in (None, 'origin') and origin.get('platform') == 'slack':
-                return target('slack:' + str(origin.get('chat_id', '')), channel_map, default_channel)
+                destination = str(origin.get('chat_id', ''))
+                if origin.get('thread_id'):
+                    destination += ':' + str(origin['thread_id'])
+                return target('slack:' + destination, channel_map, default_channel)
             return target(value, channel_map, default_channel)
         changed = [resolve(v) for v in delivery] if isinstance(delivery, list) else resolve(delivery)
         # Explicit Slack instructions can also occur in jobs with local delivery.
-        if re.search(r'(slack:|SLACK_|platform\s*[=:]\s*[\"\']?slack)', str(job.get('prompt', '')), re.I):
+        if re.search(r'slack|슬랙', str(job.get('prompt', '')), re.I):
             raise ValueError('예약 %s 본문에 Slack 전용 지시가 있어 내용을 먼저 수정해야 합니다.' % job.get('id'))
         if changed != delivery:
             updates.append((str(job['id']), delivery, changed))
@@ -99,6 +110,7 @@ def atomic_write(path, text):
 def backup(profile, names):
     directory = profile / 'discord-migration-backups' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     directory.mkdir(parents=True, mode=0o700)
+    directory.parent.chmod(0o700)
     directory.chmod(0o700)
     for name in names:
         path = profile / name
@@ -108,6 +120,50 @@ def backup(profile, names):
             shutil.copy2(path, dest)
             dest.chmod(0o600)
     return directory
+
+def ensure_unique_bot(profile, token):
+    root = profile.parent.parent if profile.parent.name == 'profiles' else profile
+    peers = [root] + list((root / 'profiles').glob('*'))
+    for peer in peers:
+        if peer.resolve() == profile.resolve():
+            continue
+        path = peer / '.env'
+        if path.is_file() and read_env(path.read_text()).get('DISCORD_BOT_TOKEN') == token:
+            raise ValueError('다른 프로필에 같은 Discord 봇 토큰이 있습니다: ' + peer.name)
+
+def staged_discord(config, channels):
+    # Hermes seeds per-profile extras from this top-level section. Set both
+    # layers so an existing wildcard or free-response value cannot survive.
+    allowed = ','.join(sorted(set(channels)))
+    settings = {'allowed_channels': allowed, 'require_mention': True,
+                'free_response_channels': '', 'auto_thread': True}
+    config.setdefault('discord', {}).update(settings)
+    platform = config.setdefault('platforms', {}).setdefault('discord', {})
+    platform['enabled'] = True
+    platform.setdefault('extra', {}).update(settings)
+    config['group_sessions_per_user'] = True
+    return allowed
+
+REQUIRED_CHECKS = ('owner_command', 'profile_execution', 'progress_and_result',
+                   'orbit_project_record', 'approval_defer_reject_stop',
+                   'unauthorized_rejected', 'duplicate_restart_retry',
+                   'scheduled_delivery', 'attachments_threads')
+
+def validate_cutover_evidence(path, receipt, profile):
+    if not path:
+        raise ValueError('실제 업무 검증 보고서 --verification이 필요합니다. Slack을 유지합니다.')
+    evidence = json.loads(path.read_text())
+    for key, value in [('profile', str(profile)), ('bot', receipt['bot']),
+                       ('channel', receipt['channel']), ('probe', receipt['probe'])]:
+        if evidence.get(key) != value:
+            raise ValueError('검증 보고서의 대상이 현재 stage와 다릅니다: ' + key)
+    if not evidence.get('runId') or not evidence.get('orbitRecordId'):
+        raise ValueError('실제 HERMES 실행 ID와 ORBIT 기록 ID가 필요합니다.')
+    for name in REQUIRED_CHECKS:
+        check = evidence.get('checks', {}).get(name, {})
+        if check.get('passed') is not True or not isinstance(check.get('evidence'), str) or not check['evidence'].strip():
+            raise ValueError('실제 검증이 완료되지 않았습니다: ' + name)
+    return evidence
 
 def verify_gateway_receipt(token, channel, user, bot, probe, since):
     messages = api(token, '/channels/' + channel + '/messages?limit=100')
@@ -130,6 +186,7 @@ def main():
     parser.add_argument('--profile', type=Path, default=Path('~/.hermes'))
     parser.add_argument('--hermes-source', type=Path)
     parser.add_argument('--channel-map', type=Path, help='JSON: Slack channel ID -> Discord channel ID')
+    parser.add_argument('--verification', type=Path, help='실제 실행 ID·ORBIT 기록 ID와 9개 검증 근거를 담은 JSON')
     parser.add_argument('--service', help='현재 프로필의 systemd 사용자 서비스 이름. 지정한 서비스만 재시작합니다.')
     args = parser.parse_args()
     profile = args.profile.expanduser().resolve()
@@ -173,20 +230,32 @@ def main():
             raise ValueError('서버의 일반 텍스트 채널과 봇 토큰이 필요합니다.')
         api(token, '/guilds/' + selected['guild_id'] + '/members/' + user)
         api(token, '/channels/' + channel + '/messages?limit=1')
+        ensure_unique_bot(profile, token)
+        mapping = json.loads(args.channel_map.read_text()) if args.channel_map else {}
+        if not isinstance(mapping, dict):
+            raise ValueError('채널 매핑은 JSON 객체여야 합니다.')
+        channels = {channel}
+        for destination in mapping.values():
+            if not ID.fullmatch(str(destination)):
+                raise ValueError('Discord 채널 ID 형식을 확인하세요.')
+            destination_info = api(token, '/channels/' + str(destination))
+            if destination_info.get('guild_id') != selected['guild_id'] or destination_info.get('type') not in (0, 11, 12):
+                raise ValueError('모든 수신처는 같은 Discord 서버의 텍스트 채널 또는 스레드여야 합니다.')
+            channels.add(str(destination))
         saved = backup(profile, ['.env', 'config.yaml', 'gateway.json', 'cron/jobs.json', 'discord-migration.json'])
+        allowed = staged_discord(config, channels)
         changes = {'DISCORD_BOT_TOKEN':token, 'DISCORD_ALLOWED_USERS':user, 'DISCORD_ALLOWED_ROLES':'',
                    'DISCORD_ALLOW_ALL_USERS':'false', 'DISCORD_HOME_CHANNEL':channel,
                    'DISCORD_HOME_CHANNEL_NAME':'ORBIT', 'DISCORD_REQUIRE_MENTION':'true',
-                   'DISCORD_FREE_RESPONSE_CHANNELS':'', 'DISCORD_ALLOWED_CHANNELS':'',
-                   'DISCORD_ALLOW_BOTS':'none', 'DISCORD_COMMAND_SYNC_POLICY':'safe',
+                   'DISCORD_FREE_RESPONSE_CHANNELS':'', 'DISCORD_ALLOWED_CHANNELS':allowed,
+                   'DISCORD_ALLOW_BOTS':'none', 'DISCORD_COMMAND_SYNC_POLICY':'off',
                    'DISCORD_HISTORY_BACKFILL':'false'}
-        config.setdefault('platforms', {}).setdefault('discord', {})['enabled'] = True
-        config['group_sessions_per_user'] = True
         # Shared channel contents are not silently imported into the owner's agent.
         atomic_write(env_path, patch_env(original_env, changes))
         atomic_write(config_path, yaml.safe_dump(config, allow_unicode=True, sort_keys=False))
         probe = 'ORBIT-연결확인-' + os.urandom(4).hex()
         receipt = {'user':user, 'channel':channel, 'bot':bot['id'], 'probe':probe,
+                   'guild':selected['guild_id'], 'channels':sorted(channels),
                    'since':datetime.now(timezone.utc).isoformat(), 'backup':str(saved), 'stage':'configured'}
         atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2))
         print('Discord 설정 저장. 백업:', saved)
@@ -195,6 +264,7 @@ def main():
         if not receipt_path.exists():
             raise RuntimeError('stage로 Discord를 먼저 연결하세요.')
         receipt = json.loads(receipt_path.read_text())
+        validate_cutover_evidence(args.verification, receipt, profile)
         token = current.get('DISCORD_BOT_TOKEN', '')
         if not verify_gateway_receipt(token, receipt['channel'], receipt['user'], receipt['bot'], receipt['probe'], receipt['since']):
             raise RuntimeError('Discord에서 본인의 연결확인 메시지와 HERMES 답변을 확인하지 못했습니다. Slack을 유지합니다.')
@@ -206,7 +276,9 @@ def main():
         for destination in set(mapping.values()):
             if not ID.fullmatch(str(destination)):
                 raise ValueError('Discord 채널 ID 형식을 확인하세요.')
-            api(token, '/channels/' + str(destination))
+            selected = api(token, '/channels/' + str(destination))
+            if selected.get('guild_id') != receipt.get('guild') or str(destination) not in receipt.get('channels', []):
+                raise ValueError('stage에서 검증한 같은 서버의 허용 수신처만 사용할 수 있습니다.')
         saved = backup(profile, ['.env', 'config.yaml', 'gateway.json', 'cron/jobs.json', 'discord-migration.json'])
         applied = []
         try:

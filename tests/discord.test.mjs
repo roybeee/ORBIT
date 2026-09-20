@@ -5,7 +5,8 @@ import {createDatabase} from './sqlite-d1.mjs';
 import {parseCommand,stableId,snowflakeNow} from '../lib/orbit/discord/protocol.ts';
 import {channelPermissions} from '../lib/orbit/discord/api.ts';
 import {configureDiscord,readDiscord,discordStatus} from '../lib/orbit/discord/connection.ts';
-import {queueDiscord,deliverDiscord,receiveDiscord,executeDiscordCommand,collectDiscordNotifications,syncDiscord} from '../lib/orbit/discord/runtime.ts';
+import {queueDiscord,deliverDiscord,receiveDiscord,executeDiscordCommand,collectDiscordNotifications,syncDiscord,resolveDiscordProject} from '../lib/orbit/discord/runtime.ts';
+import {readWorkspace,writeCommand} from '../db/repository.ts';
 import {saveConnection} from '../lib/orbit/agent/secrets.ts';
 const owner='owner',guildId='111111111111111111',channelId='222222222222222222',userId='333333333333333333',botId='444444444444444444',token='discord-test-token-not-real-1234567890';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
@@ -87,4 +88,53 @@ test('disabled connectors never fetch and active leases prevent concurrent consu
  assert.deepEqual(await syncDiscord(db,owner,env),{active:false});
  await saveConnection(db,owner,'discord',config,{connected:true},env.ORBIT_ENCRYPTION_KEY);
  await db.prepare('INSERT INTO orbit_discord_state VALUES(?,?,?)').bind(owner,JSON.stringify(state()),Date.now()+60000).run();assert.equal((await syncDiscord(db,owner,env)).busy,true);db.close();
+});
+
+test('project commands support explicit owner project IDs and reject malformed selectors',()=>{
+ assert.deepEqual(parseCommand('!orbit 프로젝트'),{kind:'projects'});
+ assert.deepEqual(parseCommand('!orbit 실행 [프로젝트:p] 자료 정리'),{kind:'run',text:'자료 정리',projectId:'p'});
+ assert.throws(()=>parseCommand('!orbit 실행 [프로젝트:p]'));
+});
+const project={id:'p',name:'오로라테스트',keywords:['오로라테스트'],color:'#5558e8',symbol:'P',goal:'결과물',due:'2026-09-30',priority:3};
+async function addProject(db){await readWorkspace(db,owner);await writeCommand(db,owner,{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project}});}
+test('project resolution uses owner data only and leaves ambiguous work unclassified',async()=>{
+ const db=createDatabase();try{
+  await addProject(db);
+  assert.equal((await resolveDiscordProject(db,owner,{kind:'run',text:'오로라테스트 자료 확인'})).projectId,'p');
+  assert.equal((await resolveDiscordProject(db,owner,{kind:'run',text:'일반 업무 확인'})).projectId,null);
+  await assert.rejects(()=>resolveDiscordProject(db,'other',{kind:'run',text:'자료',projectId:'p'}),/프로젝트 번호/);
+ }finally{db.close();}
+});
+test('Discord execution persists project and source IDs; receipt replay never submits twice',async()=>{
+ const db=createDatabase();try{
+  await addProject(db);
+  await saveConnection(db,owner,'hermes',{endpoint:'https://hermes.example.com',token:'test-secret',connectionId:'connection-a'},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+  const message={id:'100000000000000001',channel_id:channelId,guild_id:guildId,author:{id:userId},timestamp:'2026-09-20T12:00:00Z',content:'!orbit 실행 [프로젝트:p] 테스트 자료 정리'};
+  let submissions=0;
+  globalThis.fetch=async(url,init={})=>{
+   if(url.includes('discord.com'))return response([message]);
+   if(url.endsWith('/v1/capabilities'))return response({object:'hermes.api_server.capabilities',features:{run_submission:true,run_status:true,run_stop:true,runs_idempotency:{durable:true,retention_seconds:86400}}});
+   if(url.endsWith('/v1/toolsets'))return response({data:[]});
+   if(init.method==='POST'){submissions++;return response({run_id:'discord_test_run',status:'started'},202);}
+   return response({object:'hermes.run',run_id:'discord_test_run',status:'running'});
+  };
+  await receiveDiscord(db,owner,config,state(),env);
+  const receipt=JSON.parse((await db.prepare('SELECT command_json FROM orbit_discord_commands').first()).command_json);
+  assert.equal(receipt.projectId,'p');assert.equal(receipt.source.platform,'discord');assert.equal(receipt.source.timestamp,message.timestamp);
+  assert.equal(receipt.source.url,`https://discord.com/channels/${guildId}/${channelId}/${message.id}`);
+  const order=JSON.parse((await db.prepare('SELECT state_json FROM orbit_agent_orders').first()).state_json);
+  assert.equal(order.projectId,'p');assert.equal(order.runId,'discord_test_run');assert.equal(order.id,receipt.source.executionId);
+  assert.equal((await db.prepare('SELECT project_id FROM orbit_conversations').first()).project_id,'p');
+  // Emulate interruption after dispatch but before command acknowledgement.
+  await db.prepare("UPDATE orbit_discord_commands SET status='processing',response=''").run();
+  await receiveDiscord(db,owner,config,state(),env);
+  assert.equal(submissions,1);assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM orbit_agent_orders').first()).count,1);
+ }finally{db.close();}
+});
+test('messages with mismatched channel or guild cannot enter command receipts',async()=>{
+ const db=createDatabase();try{
+  globalThis.fetch=async()=>response([{id:'100000000000000001',channel_id:'999999999999999999',author:{id:userId},content:'!orbit 상태'},{id:'100000000000000002',guild_id:'999999999999999999',author:{id:userId},content:'!orbit 상태'}]);
+  await receiveDiscord(db,owner,config,state(),env);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM orbit_discord_commands').first()).count,0);
+ }finally{db.close();}
 });
