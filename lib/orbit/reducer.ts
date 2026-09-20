@@ -2,6 +2,8 @@ import {WORKSPACE_LIMIT_BYTES,workspaceUsage} from './storage-usage.ts';
 import {workEligibility} from './work-policy.ts';
 import {reconcileProjectWork} from './project-management.ts';
 import {reorderProjectSlots} from './project-order.ts';
+import {taskScheduleProblem,taskAfterWaiting} from './task-scheduling.ts';
+import {categoryOf} from './calendar-categories.ts';
 import {monthlyReport} from './phase4.ts';
 import {prepareReplan,replanBasis} from './reschedule.ts';
 import {planningFloor,minuteInZone} from './dates.ts';
@@ -636,6 +638,14 @@ export function applyAction(
         fail('이 기록을 참조하는 할 일이 있습니다. 연결을 먼저 해제해 주세요.');
       data.notes = data.notes.filter((n) => n.id !== action.id);
       break;
+    case 'task.schedule': {
+      if(data.events.some(e=>e.id===action.eventId))fail('이미 저장된 일정입니다. 최신 일정을 확인해 주세요.');
+      const problem=taskScheduleProblem(data,action,now);if(problem)fail(problem);
+      const task=data.tasks.find(t=>t.id===action.taskId)!;
+      if(action.resolveWaiting)Object.assign(task,taskAfterWaiting(task,true));
+      data.events.push({id:action.eventId,taskId:task.id,projectId:task.projectId,title:task.title,category:categoryOf(task),date:action.date,start:action.start,end:action.start+action.minutes,kind:'focus'});
+      break;
+    }
     case 'event.upsert': {
       const e = action.event;
       if (e.id.startsWith('google:')) fail('Google 일정은 원본 캘린더에서 수정해 주세요.');

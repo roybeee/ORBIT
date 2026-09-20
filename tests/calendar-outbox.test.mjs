@@ -84,6 +84,15 @@ async function taskFixture(db){
  const task={id:'recruit',title:'마케터1명 채용 제안',projectId:'hr',status:'todo',due:'2026-09-21',duration:45,impact:3,focus:false,definition:'제안 전달',category:'work'};
  await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task}});return task;
 }
+test('quick task scheduling atomically queues one timed Google event, survives replay and keeps the due reminder separate',()=>fixture(async db=>{
+ const task=await taskFixture(db),snapshot=await readWorkspace(db,'a'),eventId=randomUUID();
+ const command={operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.schedule',taskId:task.id,eventId,date:'2026-10-08',start:600,minutes:30}};
+ const saved=await writeCommand(db,'a',command);await writeCommand(db,'a',command);
+ assert.equal((await readWorkspace(db,'a')).data.events.length,1);assert.equal(saved.data.tasks[0].due,task.due);assert.equal(saved.data.tasks[0].duration,45);
+ const exports=await calendarExports(db,'a');assert.equal(exports.filter(x=>x.eventId===eventId).length,1);assert.ok(exports.some(x=>x.eventId==='task-due:'+task.id));
+ await connect(db);const g=google({lose:true});await flushCalendarOutbox(db,'a',env,eventId);await flushCalendarOutbox(db,'a',env,eventId);
+ assert.equal(g.posts,1);assert.equal(g.remote.summary,task.title);assert.equal(g.remote.start.dateTime,'2026-10-08T01:00:00.000Z');assert.equal(g.remote.end.dateTime,'2026-10-08T01:30:00.000Z');assert.equal(g.remote.extendedProperties.private.orbitEventId,eventId);
+}));
 test('dated project task creates one transparent all-day Google event and changing its date patches the same ID',()=>fixture(async db=>{
  const task=await taskFixture(db);assert.equal((await calendarExports(db,'a'))[0].eventId,'task-due:recruit');
  await connect(db);const g=google({lose:true});await flushCalendarOutbox(db,'a',env,'task-due:recruit');await flushCalendarOutbox(db,'a',env,'task-due:recruit');

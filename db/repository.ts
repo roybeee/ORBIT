@@ -312,7 +312,7 @@ export async function writeCommand(
   const statements: Statement[] = [update];
   // The outbox and the local event commit together. A lost response cannot lose
   // the Google write, and replaying the command cannot enqueue it twice.
-  const calendarEventId = action.type === 'event.upsert' ? action.event.id
+  const calendarEventId = action.type === 'task.schedule' ? action.eventId : action.type === 'event.upsert' ? action.event.id
     : action.type === 'proposal.approve' ? 'approved:' + action.itemId : undefined;
   const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories))?next.events.filter(e=>!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
   for (const calendarEventId of calendarEventIds.filter(id=>!id.startsWith('google:'))) {
