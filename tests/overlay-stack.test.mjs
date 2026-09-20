@@ -7,9 +7,10 @@ function fixture(){
  const browser={location:{get href(){return entries[index].url}},history:{get state(){return entries[index].state},pushState(state,_,url){entries.splice(index+1);entries.push({state,url:new URL(url,entries[index].url).href});index++},replaceState(state,_,url){entries[index]={state,url:new URL(url,entries[index].url).href}},back(){traversals.push(-1)}},addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events)};
  const stack=createOverlayStack(browser,fn=>fn(),fn=>jobs.push(fn));
  browser.addEventListener('popstate',()=>routeChanges++);
+ browser.addEventListener('hashchange',()=>routeChanges++);
  const runJobs=()=>{while(jobs.length)jobs.shift()()};
  const traverse=()=>{assert.ok(traversals.length);index=Math.max(0,index+traversals.shift());events.dispatchEvent(new Event('popstate'))};
- return {browser,entries,jobs,traversals,stack,runJobs,traverse,get routeChanges(){return routeChanges},flush(){let guard=0;while(jobs.length||traversals.length){assert.ok(++guard<30);runJobs();if(traversals.length)traverse()}},back(){browser.history.back();this.flush()}};
+ return {browser,entries,jobs,traversals,stack,runJobs,traverse,get routeChanges(){return routeChanges},skipBack(){const oldURL=browser.location.href;index=Math.max(0,index-2);const newURL=browser.location.href;events.dispatchEvent(new Event('popstate'));const event=new Event('hashchange');Object.assign(event,{oldURL,newURL});events.dispatchEvent(event);this.flush()},flush(){let guard=0;while(jobs.length||traversals.length){assert.ok(++guard<30);runJobs();if(traversals.length)traverse()}},back(){browser.history.back();this.flush()}};
 }
 test('event detail Back closes its Sheet and keeps the same calendar, then normal Back navigates',()=>{
  const b=fixture();let open=true;const off=b.stack.register(()=>{open=false;off()});
@@ -70,4 +71,23 @@ test('event editor replaces details; discard returns to calendar without reopeni
  const editor=b.stack.register(()=>{confirm=b.stack.register(()=>{confirm();confirm=undefined})});
  b.flush();b.back();assert.ok(confirm);assert.equal(b.routeChanges,0);
  confirm();editor();b.flush();assert.equal(b.browser.location.href,'https://orbit.test/#calendar');assert.equal(b.routeChanges,0);assert.deepEqual(b.browser.history.state,{route:'calendar',scroll:420});
+});
+
+
+test('Android Back skipping the sentinel keeps task editing on its route and opens discard confirmation',()=>{
+ const b=fixture();let confirm=null,closed=false;
+ const detail=b.stack.register(()=>{});detail();
+ const form=b.stack.register(()=>{if(!confirm)confirm=b.stack.register(()=>{confirm();confirm=null})});b.flush();
+ b.skipBack();assert.ok(confirm);assert.equal(b.routeChanges,0);assert.equal(b.browser.location.href,'https://orbit.test/#calendar');
+ // A second system Back dismisses the confirmation; the edited values stay in the form.
+ b.skipBack();assert.equal(confirm,null);assert.equal(b.routeChanges,0);
+ b.skipBack();assert.ok(confirm);confirm();form();closed=true;b.flush();
+ assert.ok(closed);assert.equal(b.routeChanges,0);assert.equal(b.browser.location.href,'https://orbit.test/#calendar');
+ assert.deepEqual(b.browser.history.state,{route:'calendar',scroll:420});
+ b.back();assert.equal(b.browser.location.href,'https://orbit.test/#today');assert.equal(b.routeChanges,1);
+});
+
+test('a skipped route traversal closes a read-only popup without navigating its background',()=>{
+ const b=fixture();let closed=false;const off=b.stack.register(()=>{closed=true;off()});
+ b.skipBack();assert.ok(closed);assert.equal(b.routeChanges,0);assert.equal(b.browser.location.href,'https://orbit.test/#calendar');
 });

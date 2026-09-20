@@ -7,6 +7,7 @@ export function createOverlayStack(browser:Browser,dispatch:(fn:()=>void)=>void=
  const layers:{id:symbol;parent?:symbol;priority:number;close:()=>void}[]=[];
  let boundary:Boundary|null=null,releasing=false,queued=false;
  const callbacks:(()=>void)[]=[];
+ let swallowedHash:{from:string;to:string}|null=null;
  const owns=()=>!!boundary&&browser.history.state?.[marker]===boundary.token;
  function ensure(){
   if(releasing)return;
@@ -31,10 +32,14 @@ export function createOverlayStack(browser:Browser,dispatch:(fn:()=>void)=>void=
   const samePage=browser.location.href===current.target||browser.location.href===current.url;
   boundary=null;
   const cleanup=releasing;releasing=false;
-  if(samePage){
+  if(samePage||layers.length){
    event.stopImmediatePropagation();
-   // Query replacements made while the popup was open also replace its base.
-   if(current.url!==current.target)browser.history.replaceState(current.base,'',current.url);
+   // Android/browser Back can skip a synthetic history entry. Restore the
+   // popup's route before the router sees the traversal, then close one layer.
+   if(!samePage){
+    swallowedHash={from:current.url,to:browser.location.href};
+    browser.history.pushState(current.base,'',current.url);
+   }else if(current.url!==current.target)browser.history.replaceState(current.base,'',current.url);
    if(!cleanup){
     // Layout effects register children before parents on a simultaneous mount.
     // Pick the most recently opened leaf, never its enclosing popup.
@@ -48,7 +53,12 @@ export function createOverlayStack(browser:Browser,dispatch:(fn:()=>void)=>void=
    callbacks.length=0;
   }
  }
+ function hash(event:Event){
+  const change=event as HashChangeEvent;
+  if(swallowedHash&&change.oldURL===swallowedHash.from&&change.newURL===swallowedHash.to){event.stopImmediatePropagation();swallowedHash=null;}
+ }
  browser.addEventListener('popstate',pop,true);
+ browser.addEventListener('hashchange',hash,true);
  return {
   register(close:()=>void,scope?:{id:symbol;parent?:symbol;priority?:number}){
    const layer={id:scope?.id??Symbol(),parent:scope?.parent,priority:scope?.priority??0,close};layers.push(layer);ensure();
@@ -70,6 +80,6 @@ export function createOverlayStack(browser:Browser,dispatch:(fn:()=>void)=>void=
     browser.history.replaceState({...state as object,[marker]:boundary!.token},'',url);
    }else browser.history.replaceState(state,'',url);
   },
-  dispose(){browser.removeEventListener('popstate',pop,true);if(owns())browser.history.replaceState(boundary!.base,'',boundary!.url);layers.length=0;callbacks.length=0;boundary=null;},
+  dispose(){browser.removeEventListener('popstate',pop,true);browser.removeEventListener('hashchange',hash,true);if(owns())browser.history.replaceState(boundary!.base,'',boundary!.url);layers.length=0;callbacks.length=0;boundary=null;},
  };
 }

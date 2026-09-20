@@ -745,6 +745,7 @@ function WorkspaceContent({
     setEditingId(id);
     if (kind === 'task') {
       const t = tasks.find((t) => t.id === id)!;
+      setDetail(null);
       setCreate('task');
       setNewTitle(t.title);setNewColor(t.color??null);setNewCategory(categoryOf(t));
       setNewBody(t.definition);
@@ -1392,7 +1393,7 @@ function WorkspaceContent({
         }}
       >
         <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right" showCloseButton={!projectDetail}>
-          <SheetHeader className={`px-7 pt-9 pb-5 border-b ${projectDetail?'project-flow-sheet-header':''}`}>
+          <SheetHeader className={`px-7 pt-9 pb-5 border-b ${projectDetail?'project-flow-sheet-header':taskDetail?'task-detail-header':''}`}>
             {projectDetail&&<SheetClose className="project-detail-back" disabled={busy||hasPending} aria-label="프로젝트 목록으로 돌아가기"><ChevronLeft size={22}/></SheetClose>}
             <SheetTitle className="text-xl leading-relaxed">
               {taskDetail?.title ??
@@ -1412,6 +1413,7 @@ function WorkspaceContent({
                       ? '일정 · 시간과 연결 업무'
                       : ''}
             </SheetDescription>
+            {taskDetail&&<button type="button" className="task-edit-button" disabled={busy||hasPending} onClick={()=>openEdit('task',taskDetail.id)}><Pencil size={18}/><span>할 일 수정</span><ChevronRight size={18}/></button>}
           </SheetHeader>
           <div className="sheet-body">
             {taskDetail && (
@@ -1527,10 +1529,7 @@ function WorkspaceContent({
                     <Crosshair size={15} />
                     {taskDetail.laserDate === TODAY ? '오늘 Laser 해제' : '오늘의 Goal Laser로'}
                   </button>
-                  <button className="secondary-button" onClick={() => openEdit('task', taskDetail.id)}>
-                    <Pencil size={14} />
-                    수정
-                  </button>
+
                 </div>
                 <h3>완료 기준</h3>
                 <p className="definition">{taskDetail.definition}</p>
@@ -1744,11 +1743,11 @@ function WorkspaceContent({
           }
         }}
       >
-        <DialogContent className={`orbit-create-dialog ${create === 'event' ? 'event-create-dialog' : ''}`}>
+        <DialogContent className={`orbit-create-dialog ${create === 'event' ? 'event-create-dialog' : create==='task'?'task-create-dialog':''}`}>
           <DialogHeader>
             <DialogTitle>
               {editingId
-                ? '내용 수정'
+                ? create==='task'?'할 일 수정':create==='event'?'일정 수정':'내용 수정'
                 : create === 'task'
                   ? '새 할 일'
                   : create === 'project'
@@ -1771,15 +1770,15 @@ function WorkspaceContent({
             <label className="form-label" htmlFor="new-title">
               {create === 'task' ? '무엇을 끝내야 하나요?' : '제목'}
             </label>
-            <input
+            {create==='task'?<textarea className="form-field task-title-input" id="new-title" required maxLength={160} rows={3} value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="예: 가맹 제안서 초안 완성"/>:<input
               className="form-field"
               id="new-title"
               required
               maxLength={160}
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder={create === 'task' ? '예: 가맹 제안서 초안 완성' : '제목을 입력하세요'}
-            />
+              placeholder="제목을 입력하세요"
+            />}
             {create !== 'project' && create !== 'event' && (
               <>
                 <label className="form-label">연결 프로젝트</label>
@@ -1968,6 +1967,7 @@ function WorkspaceContent({
               <details className="event-attachments"><summary><Plus size={15}/>파일 첨부{eventUploads.ready.length ? ` · ${eventUploads.ready.length}개` : ' (선택)'}</summary><AttachmentInput scope={attachmentDraft} disabled={demo || busy} /></details>
             )}
             <div className="create-form-footer">
+            {create==='task'&&<button type="button" className="secondary-button task-edit-cancel" disabled={busy||hasPending} onClick={()=>setDiscardCreateConfirm(true)}>취소</button>}
             {create==='event'&&<p className="form-hint event-sync-hint"><CalendarDays size={14}/>연결된 Google 캘린더에도 반영됩니다.</p>}
             <button
               type="submit"

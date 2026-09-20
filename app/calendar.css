@@ -160,3 +160,12 @@
 .item-color-choice>span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;color:#101828}
 .item-color-picker .item-color-auto{gap:6px;padding-inline:10px;font-size:.875rem}
 .item-color-auto>span{width:14px;height:14px;border-radius:50%}
+
+/* Keep task editing discoverable without scrolling through coaching controls. */
+.task-detail-header .task-edit-button{display:flex;align-items:center;gap:9px;width:100%;min-height:46px;padding:11px 14px;margin-top:12px;border:1px solid color-mix(in srgb,var(--primary) 45%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--primary) 12%,var(--card));color:var(--foreground);font-weight:600;text-align:left}
+.task-edit-button>svg:last-child{margin-left:auto}
+.task-edit-button:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.task-edit-button:disabled{opacity:.5}
+.task-create-dialog .task-title-input{min-height:96px;line-height:1.65;resize:vertical;white-space:pre-wrap;overflow-wrap:anywhere}
+.task-create-dialog .create-form-footer{display:grid;grid-template-columns:minmax(72px,1fr) minmax(0,2fr);gap:10px;border-top:1px solid var(--border);padding:12px 0 8px;bottom:0}
+.task-create-dialog .create-form-footer button{min-height:48px;justify-content:center;border-radius:12px}
