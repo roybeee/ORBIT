@@ -1,5 +1,6 @@
 'use client';
 import {useMemo} from 'react';
+import {TimeBudget} from './time-budget';
 import {PersonalGalaxy} from './personal-galaxy';
 import {ArrowUpRight,ArrowRight,Target,CalendarDays,Check,CheckCheck,Clock3,Flag,FolderKanban,Heart,Play,Sparkles,BookOpen,AlertCircle,Orbit,Plus} from 'lucide-react';
 import {Progress} from '@/components/ui/progress';
@@ -10,10 +11,10 @@ import {formatTime,durationText,type WorkspaceData,type View} from '@/lib/orbit/
 import {koreanDate,addDays} from '@/lib/orbit/dates';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 type Open=(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;
-type Props={data:WorkspaceData;now:Date;busy:boolean;demo:boolean;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;navigate:(view:View)=>void;onOpen:Open;onGoals:()=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onCoachSettings:()=>void};
+type Props={data:WorkspaceData;now:Date;busy:boolean;demo:boolean;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;navigate:(view:View)=>void;onOpen:Open;onGoals:()=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onCoachSettings:()=>void;onTimeSettings:()=>void};
 const energyLabels={low:'여유롭게',normal:'평소처럼',high:'집중해서',unknown:'컨디션 미확인'};
 const metricStatus={'unknown':'수치 확인 필요','behind':'경로 점검','on-track':'기준 페이스 유지','confirm':'달성 확인 필요','achieved':'달성','paused':'보류'};
-export function WorkspaceDashboard({data,now,busy,demo,perform,navigate,onOpen,onGoals,onCreate,onAsk,onCalendar,onProposal,onCoachSettings}:Props){
+export function WorkspaceDashboard({data,now,busy,demo,perform,navigate,onOpen,onGoals,onCreate,onAsk,onCalendar,onProposal,onCoachSettings,onTimeSettings}:Props){
   const d=useMemo(()=>workspaceDashboard(data,now),[data,now]),disabled=busy||demo;
   const primary=d.chief.primary,next=d.active??(primary.taskId?data.tasks.find(t=>t.id===primary.taskId):undefined),canStart=next&&questReadiness(data,next,d.today).canStart;
   const max=Math.max(1,...d.week.map(day=>day.count)),weekTotal=d.week.reduce((sum,day)=>sum+day.count,0);
@@ -37,7 +38,7 @@ export function WorkspaceDashboard({data,now,busy,demo,perform,navigate,onOpen,o
       <button onClick={()=>document.getElementById('dashboard-attention')?.scrollIntoView({behavior:'smooth',block:'start'})}><span><AlertCircle size={17}/>확인할 업무</span><strong>{d.attention.length}<small>개</small></strong><p>기한 경과·선행 대기·재확인 <ArrowRight size={14}/></p></button>
     </div>
     <div className="wd-grid">
-      <section className="wd-panel wd-time" aria-labelledby="dashboard-time"><div className="wd-panel-head"><h2 id="dashboard-time">오늘의 여유</h2><Clock3 size={18}/></div><strong className="wd-time-value">{durationText(d.chief.capacity)}</strong><p>지금부터 업무 종료까지<br/>일정·돌봄·여유분을 제외한 시간</p><div className="wd-time-demand"><span>아직 배치하지 않은 마감·집중 업무</span><strong>{durationText(d.chief.demand)}</strong></div>{d.chief.overloaded&&<div className="wd-load-notice">남은 시간에 맞춰 범위를 조정해 보세요.</div>}<button className="text-button" onClick={()=>onCalendar(d.today)}>시간 배치 확인 <ArrowUpRight size={14}/></button></section>
+      <TimeBudget state={d.chief} className="wd-panel" disabled={demo} onCalendar={()=>onCalendar(d.today)} onSettings={onTimeSettings} onTask={id=>onOpen({kind:'task',id})} onAdjust={()=>onAsk(`오늘 일정에 없는 할 일 예상 ${d.chief.demand}분, 쓸 수 있는 시간 ${d.chief.capacity}분에 맞춰 우선순위·보류·위임을 제안해 줘. 변경 전 승인을 받도록 해 줘.`)} />
       <section className="wd-panel wd-goals" aria-labelledby="dashboard-goals"><div className="wd-panel-head"><h2 id="dashboard-goals">목표의 현재 위치</h2><button className="text-button" onClick={()=>navigate('goals')}>전체 목표 <ArrowUpRight size={14}/></button></div>
         {goalRows.length?goalRows.map(({goal,done,total,pace})=>{const p=goal.progress,dated=p&&p.updatedOn<=d.today,ratio=dated&&p.target!==p.baseline?Math.max(0,Math.min(100,100*(p.current-p.baseline)/(p.target-p.baseline))):0;return <button className="wd-goal-row" key={goal.id} onClick={()=>navigate('goals')}><div className="wd-goal-meta"><span>{domainLabels[goal.domain??'work']}</span><span className={'wd-pace '+pace.status}>{goal.status==='paused'?'보류':metricStatus[pace.status]}</span></div><h3>{goal.sentence}</h3><div className="wd-goal-numbers"><span>{dated?`${p.current} / ${p.target} ${p.unit}`:'성과 수치 미확인'}</span><span>퀘스트 {done}/{total}</span></div><Progress value={ratio} aria-label={goal.sentence+' 마지막 기록 수치 진척'}/><small>{dated?`${p.updatedOn} 마지막 기록`:'현재 위치를 직접 확인해 주세요.'}{goal.deadline?' · '+goal.deadline+' 목표':''}</small></button>}):<div className="wd-empty"><Target size={26}/><p>원하는 변화부터 하나 정해볼까요?</p><button className="secondary-button" onClick={onGoals}><Plus size={15}/>첫 목표 만들기</button></div>}
         <p className="wd-footnote">성과는 직접 기록한 수치입니다. 퀘스트 완료율과 구분해 확인합니다.</p>

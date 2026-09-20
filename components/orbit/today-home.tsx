@@ -7,14 +7,17 @@ import {workspaceDashboard} from '@/lib/orbit/dashboard';
 import {protectedEvents} from '@/lib/orbit/allocation-policy';
 import {addDays} from '@/lib/orbit/dates';
 import {questReadiness} from '@/lib/orbit/pacemaker';
+import {TimeBudget} from './time-budget';
 import {Progress} from '@/components/ui/progress';
 import {formatTime,type WorkspaceData,type View} from '@/lib/orbit/model';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 
-type Props={data:WorkspaceData;now:Date;busy:boolean;demo:boolean;pendingAI:number|null;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;navigate:(view:View)=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onReview:()=>void};
-export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,onCreate,onAsk,onCalendar,onProposal,onReview}:Props){
+type Props={data:WorkspaceData;now:Date;busy:boolean;demo:boolean;pendingAI:number|null;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;navigate:(view:View)=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onReview:()=>void;onTimeSettings:()=>void};
+export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,onCreate,onAsk,onCalendar,onProposal,onReview,onTimeSettings}:Props){
  const d=useMemo(()=>workspaceDashboard(data,now),[data,now]);
  const primary=d.chief.primary,next=d.active??(primary.taskId?data.tasks.find(t=>t.id===primary.taskId):undefined);
+ const loadSignal=primary.key===`load:${d.today}`;
+ const timeCard=<TimeBudget state={d.chief} embedded={loadSignal} disabled={demo} onCalendar={()=>onCalendar(d.today)} onSettings={onTimeSettings} onTask={id=>onOpen({kind:'task',id})} onAdjust={()=>onAsk(`오늘 일정에 없는 할 일 예상 ${d.chief.demand}분, 쓸 수 있는 시간 ${d.chief.capacity}분을 기준으로 오늘 할 일을 조정해 줘. 반드시 할 일, 미룰 일, 위임할 일을 구분하고 변경 전 승인할 수 있게 제안해 줘.`)}/>;
  const ready=next?questReadiness(data,next,d.today):null;
  const plans=data.proposals.filter(p=>p.items.some(i=>i.state==='pending')).sort((a,b)=>a.date.localeCompare(b.date));
  const minutes=Number(new Intl.DateTimeFormat('en-GB',{timeZone:data.preferences.timeZone,hour:'2-digit',hourCycle:'h23'}).format(now))*60+Number(new Intl.DateTimeFormat('en-GB',{timeZone:data.preferences.timeZone,minute:'2-digit'}).format(now));
@@ -26,17 +29,18 @@ export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,
  const weekMax=Math.max(1,...d.week.map(day=>day.count)),weekTotal=d.week.reduce((sum,day)=>sum+day.count,0);
  return <div className="today-home mission-dashboard">
   <div className="mission-overview">
-  <section className="today-next mission-hero" aria-labelledby="today-next-title">
+  <section className={`today-next mission-hero ${loadSignal?'has-time-budget':''}`} aria-labelledby="today-next-title">
    <img className="mission-hero-art" src={illustrationTheme(screenIllustration(data.preferences,'today')).image} width="1536" height="864" alt="" fetchPriority="high"/>
    <div className="mission-copy">
-   <span className="today-eyebrow"><Orbit size={16}/> TODAY’S MISSION</span><p className="mission-intro">{d.active?'몰입의 궤도를 이어가세요':'오늘, 한 걸음 더 멀리'}</p>
+   <span className="today-eyebrow"><Orbit size={16}/> TODAY’S MISSION</span>{!loadSignal&&<p className="mission-intro">{d.active?'몰입의 궤도를 이어가세요':'오늘, 한 걸음 더 멀리'}</p>}
    <h2 id="today-next-title">{next?.title??primary.title}</h2>
-   <p className="mission-reason">{primary.reason}</p>
+   {loadSignal?timeCard:<p className="mission-reason">{primary.reason}</p>}
    {next&&<div className="today-meta"><span>{data.projects.find(p=>p.id===next.projectId)?.name??'개인'}</span><span><Clock3 size={15}/>{next.duration}분</span></div>}
-   <div className="today-actions">
+   {!loadSignal&&<div className="today-actions">
     {next?<button className="primary-button" disabled={busy||demo||(!d.active&&!ready?.canStart)} onClick={async()=>{if(d.active||await perform({type:'task.start',id:next.id},'집중을 시작했습니다.'))onOpen({kind:'task',id:next.id})}}><Play size={17}/>{d.active?'이어서 하기':'집중 시작'}</button>:primary.kind==='care'&&primary.routineId?<button className="primary-button" disabled={busy||demo} onClick={()=>void perform({type:'care.check',id:primary.routineId!,checked:true},'오늘의 실천을 기록했습니다.')}><Check size={17}/>실천 완료</button>:<button className="primary-button" disabled={demo} onClick={()=>onAsk(primary.ask)}>Orbit과 정리하기<ArrowRight size={17}/></button>}
     {next&&<button className="text-button" onClick={()=>onOpen({kind:'task',id:next.id})}>내용 보기</button>}
    </div>
+   }
    {next&&!ready?.canStart&&!d.active&&<p className="form-hint">{ready?.reason}</p>}
    </div>
   </section>
@@ -49,6 +53,7 @@ export function TodayHome({data,now,busy,demo,pendingAI,perform,onOpen,navigate,
    </div>
   </section>
   </div>
+  {!loadSignal&&timeCard}
   <div className="mission-stats" aria-label="오늘의 현황">
    <button onClick={()=>navigate('projects')}><span className="mission-stat-icon violet"><Orbit size={20}/></span><span>진행 중 프로젝트<strong>{d.projects.length}<small>개</small></strong></span><ArrowUpRight size={18}/></button>
    <button onClick={()=>navigate('review')}><span className="mission-stat-icon mint"><CheckCheck size={20}/></span><span>오늘 완료<strong>{d.completed.length}<small>개</small></strong></span><ArrowUpRight size={18}/></button>

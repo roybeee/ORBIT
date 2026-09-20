@@ -94,6 +94,22 @@ test('remaining capacity uses local time, workdays and excludes already schedule
  const weekend=chiefOfStaff(fixture(),new Date('2026-09-12T01:00:00Z'));assert.equal(weekend.capacity,0);assert.ok(!weekend.signals.some(s=>s.kind==='task'));
  const data=fixture({tasks:[task('ready',{due:today,duration:180})],events:[{id:'focus',title:'reserved',taskId:'ready',date:today,start:660,end:840,kind:'focus'}]});assert.equal(chiefOfStaff(data,now).demand,0);
 });
+test('time explanation reconciles overlap and rounding with the displayed available minutes',()=>{
+ const data=fixture({events:[{id:'a',title:'a',date:today,start:600,end:660,kind:'meeting'},{id:'b',title:'b',date:today,start:630,end:690,kind:'meeting'}]});
+ data.preferences={...data.preferences,workStart:540,workEnd:1080,bufferFraction:.25,travelMinutes:0};
+ const result=chiefOfStaff(data,now),b=result.timeBudget;
+ assert.equal(b.phase,'open');assert.equal(b.windowMinutes,480);assert.equal(b.occupiedMinutes,150);
+ assert.equal(result.capacity,248);assert.equal(b.bufferMinutes,82);
+ assert.equal(b.windowMinutes-b.occupiedMinutes-b.bufferMinutes,result.capacity);
+});
+test('time card distinguishes non-working hours and identifies the actual unscheduled workload',()=>{
+ const data=fixture({tasks:[task('overdue',{due:'2026-09-07',duration:45}),task('today',{focusDate:today,duration:60}),task('scheduled',{due:today,duration:90}),task('finished',{due:today,status:'done'}),task('later')],events:[{id:'e',title:'scheduled',taskId:'scheduled',date:today,start:900,end:990,kind:'focus'}]});
+ const state=chiefOfStaff(data,now);assert.equal(state.demand,105);
+ assert.deepEqual(state.timeBudget.tasks.map(t=>[t.id,t.minutes,t.overdue]).sort(),[['overdue',45,true],['today',60,false]]);
+ assert.equal(chiefOfStaff(data,new Date('2026-09-07T23:00:00Z')).timeBudget.phase,'before');
+ const ended=chiefOfStaff(data,new Date('2026-09-08T14:00:00Z'));assert.equal(ended.timeBudget.phase,'ended');assert.equal(ended.timeBudget.windowMinutes,0);assert.equal(ended.timeBudget.bufferMinutes,0);
+ const off=chiefOfStaff(data,new Date('2026-09-12T01:00:00Z'));assert.equal(off.timeBudget.phase,'off');assert.equal(off.timeBudget.windowMinutes,0);assert.equal(off.timeBudget.occupiedMinutes,0);
+});
 test('paused goals cannot generate work or approve a previously prepared item',()=>{
  let data=applyAction(fixture(),{type:'proposal.generate',date:today,energy:'normal'},now);
  const item=data.proposals[0].items[0];assert.ok(item);
