@@ -16,7 +16,7 @@ function assertWorkspaceNavigation(html){
  const nav=html.match(/<nav class="mobile-nav" aria-label="주요 화면">([\s\S]*?)<\/nav>/)?.[1];
  assert.ok(nav,'the workspace must expose primary navigation');
  const buttons=[...nav.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)];
- assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','대화','일정','업무','기록']);
+ assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','일정','대화','프로젝트','기록']);
  assert.equal(buttons.filter(([,attrs])=>attrs.includes('aria-current="page"')).length,1);
  assert.match(buttons[0][1],/aria-current="page"/);
 }

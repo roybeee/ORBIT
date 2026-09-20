@@ -236,9 +236,9 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
 };
 const primaryNavigation: {id:View;label:string;icon:typeof Sun;children:View[]}[] = [
  {id:'today',label:'오늘',icon:Sun,children:['today','dashboard','review','proposal','voice','sound','monthly','learning']},
- {id:'agent',label:'대화',icon:MessagesSquare,children:['agent','aside','automation']},
  {id:'calendar',label:'일정',icon:CalendarDays,children:['calendar']},
- {id:'projects',label:'업무',icon:FolderKanban,children:['projects','tasks','goals','portfolio','signals','meetings','followup','experiments','contacts']},
+ {id:'agent',label:'대화',icon:MessagesSquare,children:['agent','aside','automation']},
+ {id:'projects',label:'프로젝트',icon:FolderKanban,children:['projects','tasks','goals','portfolio','signals','meetings','followup','experiments','contacts']},
  {id:'wiki',label:'기록',icon:BookOpen,children:['wiki','knowledge','understanding','data','backup']},
 ];
 function primaryView(view:View){return primaryNavigation.find(n=>n.children.includes(view))??primaryNavigation[0];}
