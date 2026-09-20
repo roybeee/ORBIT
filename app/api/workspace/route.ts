@@ -1,7 +1,8 @@
 import {startPlanningAction} from '@/lib/orbit/brief/start';
 import {getChatGPTUser} from '@/app/chatgpt-auth';
 import {getDatabase} from '@/db/storage';
-import {readWorkspace,writeCommand,RevisionConflict} from '@/db/repository';
+import {writeCommand,RevisionConflict} from '@/db/repository';
+import {workspaceWithRequestedPreferences} from '@/db/requested-preferences';
 import {commandSchema} from '@/lib/orbit/validation';
 import {DomainError} from '@/lib/orbit/reducer';
 import {env} from 'cloudflare:workers';
@@ -14,7 +15,7 @@ const response=(body:unknown,status=200)=>Response.json(body,{status,headers:{'C
 export async function GET(request:Request){
  const user=await getChatGPTUser();if(!user)return response({error:'로그인이 필요합니다.',code:'AUTH'},401);
  const expected=request.headers.get('x-orbit-owner');if(expected&&expected!==user.id)return response({error:'로그인 계정이 변경되었습니다. 이전 계정의 입력은 임시 보관함에 유지됩니다.',code:'SESSION_CHANGED'},409);
- try{return response(await readWorkspace(getDatabase(),user.id))}catch{console.error('Orbit workspace read unavailable');return response({error:'저장된 내용을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',code:'STORAGE'},503)}
+ try{return response(await workspaceWithRequestedPreferences(getDatabase(),user.id))}catch{console.error('Orbit workspace read unavailable');return response({error:'저장된 내용을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',code:'STORAGE'},503)}
 }
 export async function POST(request:Request){
  const user=await getChatGPTUser();if(!user)return response({error:'로그인이 필요합니다.',code:'AUTH'},401);
