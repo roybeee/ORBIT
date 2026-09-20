@@ -1,17 +1,21 @@
 import {normalize,projectTerms} from '../classify.ts';
 import type {Project} from '../model.ts';
+import {AgentError} from '../agent/errors.ts';
+const formatError=(message:string)=>new AgentError(message,'PLAUD_FORMAT',502);
 
 // Parse the documented MCP JSON response, never execute instructions in recording data.
 export function mcpData(result:any):any {
- if(result?.isError)throw new Error('Plaud 조회 실패');
+ if(result?.isError)throw formatError('Plaud 조회 실패');
  if(result?.structuredContent)return result.structuredContent;
  if(!result?.content)return result;
  for(const block of result.content){if(block.type!=='text')continue;const text=String(block.text??'');
   try{return JSON.parse(text)}catch{}
-  const wrapped=text.match(/<untrusted-user-data-([a-zA-Z0-9-]+)[^>]*>\s*([\s\S]*?)\s*<\/untrusted-user-data-\1>/);
+  // The preamble mentions the same opening tag. Only the actual block starts
+  // with JSON; matching the first tag would include the preamble in the JSON.
+  const wrapped=text.match(/<untrusted-user-data-([a-zA-Z0-9-]+)[^>]*>\s*(?=[{\[])([\s\S]*?)\s*<\/untrusted-user-data-\1>/);
   if(wrapped){try{return JSON.parse(wrapped[2])}catch{}}
  }
- throw new Error('Plaud 응답 형식을 확인하지 못했습니다.');
+ throw formatError('Plaud 응답 형식을 확인하지 못했습니다. 저장된 회의는 유지되며 수집을 다시 시도합니다.');
 }
 export interface Recording {id:string;title:string;started:string;duration:number;transcript:string;summary:string;pending:boolean}
 const stamp=(ms:unknown)=>{const s=Math.max(0,Math.floor(Number(ms)/1000));return Number.isFinite(s)?`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`:'시간 미확인'};
