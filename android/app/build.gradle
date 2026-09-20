@@ -10,8 +10,8 @@ if (originUri.scheme != 'https' || !originUri.host || originUri.userInfo ||
     (originUri.port != -1 && originUri.port != 443)) {
     throw new GradleException('orbitOrigin must be a plain HTTPS origin, without credentials, path, query, or custom port.')
 }
-def orbitVersionCode = providers.gradleProperty('orbitVersionCode').getOrElse('2').toInteger()
-def orbitVersionName = providers.gradleProperty('orbitVersionName').getOrElse('0.1.1')
+def orbitVersionCode = providers.gradleProperty('orbitVersionCode').getOrElse('5').toInteger()
+def orbitVersionName = providers.gradleProperty('orbitVersionName').getOrElse('0.1.4')
 if (orbitVersionCode < 1 || orbitVersionCode > 2100000000) {
     throw new GradleException('orbitVersionCode must be between 1 and 2100000000.')
 }
@@ -68,6 +68,17 @@ android {
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
             }
+        }
+    }
+
+    // Direct installation uses the stable production package, alongside .debug.
+    // CI produces an unsigned artifact; sign-direct.sh applies the backed-up key.
+    buildTypes {
+        direct {
+            initWith release
+            signingConfig null
+            debuggable false
+            matchingFallbacks = ['release']
         }
     }
 

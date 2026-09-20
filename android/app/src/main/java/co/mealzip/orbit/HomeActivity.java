@@ -33,16 +33,7 @@ public final class HomeActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         registerShortcuts();
-        render();
-        if (getIntent().getBooleanExtra(LAUNCH_ERROR, false)) {
-            showLaunchError();
-        } else if (state == null && !getIntent().getBooleanExtra(SHOW_INBOX, false)) {
-            if (Intent.ACTION_VIEW.equals(getIntent().getAction())) {
-                openOrbit(getIntent().getDataString());
-            } else if (getPreferences(MODE_PRIVATE).getBoolean("opened", false)) {
-                openOrbit(BuildConfig.ORBIT_START_URL);
-            }
-        }
+        routeLaunchIntent();
     }
 
     @Override protected void onResume() { super.onResume(); if (page != null) render(); }
@@ -50,12 +41,28 @@ public final class HomeActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        render();
-        if (intent.getBooleanExtra(LAUNCH_ERROR, false)) showLaunchError();
+        routeLaunchIntent();
+    }
+
+    private void routeLaunchIntent() {
+        Intent intent = getIntent();
+        if (intent.getBooleanExtra(LAUNCH_ERROR, false)) {
+            render();
+            showLaunchError();
+        } else if (intent.getBooleanExtra(SHOW_INBOX, false)) {
+            render();
+        } else {
+            // First install, subsequent launches and launcher shortcuts use the same path.
+            // Do not inflate the welcome page or leave it behind the browser on Back.
+            String destination = Intent.ACTION_VIEW.equals(intent.getAction())
+                    ? intent.getDataString() : BuildConfig.ORBIT_ORIGIN + "/#today";
+            if (openOrbit(destination)) finish();
+        }
     }
 
     private void showLaunchError() {
-        getIntent().removeExtra(LAUNCH_ERROR);
+        // Keep recovery mode through rotation; only an explicit retry may relaunch.
+        getIntent().putExtra(LAUNCH_ERROR, true);
         getPreferences(MODE_PRIVATE).edit().putBoolean("opened", false).apply();
         new AlertDialog.Builder(this).setTitle("ORBIT을 열지 못했습니다")
                 .setMessage("Chrome 또는 삼성 인터넷이 사용 설정되어 있는지 확인한 뒤 다시 시도해 주세요. 주소를 복사해 브라우저에서 직접 열 수도 있습니다.")
@@ -164,12 +171,14 @@ public final class HomeActivity extends Activity {
                 .setNegativeButton("닫기",null).setPositiveButton("ORBIT 열기",(d,w)->openOrbit(BuildConfig.ORBIT_START_URL)).show();
     }
 
-    private void openOrbit(String requested) {
+    private boolean openOrbit(String requested) {
         try {
             startActivity(new Intent(this, OrbitActivity.class).setData(Uri.parse(OrbitUrlPolicy.sanitize(requested, BuildConfig.ORBIT_ORIGIN))));
-            getPreferences(MODE_PRIVATE).edit().putBoolean("opened",true).apply();
+            return true;
         } catch (ActivityNotFoundException | SecurityException e) {
+            render();
             showLaunchError();
+            return false;
         }
     }
 }

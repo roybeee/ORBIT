@@ -163,6 +163,63 @@ public class OrbitLaunchTest {
         }
     }
 
+    @Test public void firstLaunchOpensTodayWithoutWelcomeScreenOrPreference() {
+        try (var controller = Robolectric.buildActivity(HomeActivity.class,
+                new Intent(context(), HomeActivity.class).setAction(Intent.ACTION_MAIN))) {
+            HomeActivity home = controller.setup().get();
+            Intent launched = shadowOf(home).getNextStartedActivity();
+            assertEquals(new ComponentName(home, OrbitActivity.class), launched.getComponent());
+            assertEquals(BuildConfig.ORBIT_ORIGIN + "/#today", launched.getDataString());
+            assertTrue(home.isFinishing());
+            assertNull(findButton(home.getWindow().getDecorView(), "ORBIT 열기  →"));
+            assertNull(shadowOf(home).getNextStartedActivity());
+        }
+    }
+
+    @Test public void explicitInboxDoesNotAutomaticallyLaunchWorkspace() {
+        try (var controller = Robolectric.buildActivity(HomeActivity.class,
+                new Intent(context(), HomeActivity.class).putExtra(HomeActivity.SHOW_INBOX, true))) {
+            HomeActivity home = controller.setup().get();
+            assertNull(shadowOf(home).getNextStartedActivity());
+            assertFalse(home.isFinishing());
+            assertNotNull(button(home.getWindow().getDecorView(), "첨부하는 방법"));
+        }
+    }
+
+    @Test public void warmDeepLinkPreservesDestinationAndFinishesLauncher() {
+        try (var controller = Robolectric.buildActivity(HomeActivity.class,
+                new Intent(context(), HomeActivity.class).putExtra(HomeActivity.SHOW_INBOX, true))) {
+            HomeActivity home = controller.setup().get();
+            home.onNewIntent(new Intent(home, HomeActivity.class).setAction(Intent.ACTION_VIEW)
+                    .setData(Uri.parse(BuildConfig.ORBIT_ORIGIN + "/#calendar")));
+            assertEquals(BuildConfig.ORBIT_ORIGIN + "/#calendar",
+                    shadowOf(home).getNextStartedActivity().getDataString());
+            assertTrue(home.isFinishing());
+        }
+    }
+
+    @Test public void warmLauncherOpensTodayEvenAfterInbox() {
+        try (var controller = Robolectric.buildActivity(HomeActivity.class,
+                new Intent(context(), HomeActivity.class).putExtra(HomeActivity.SHOW_INBOX, true))) {
+            HomeActivity home = controller.setup().get();
+            home.onNewIntent(new Intent(home, HomeActivity.class).setAction(Intent.ACTION_MAIN));
+            assertEquals(BuildConfig.ORBIT_ORIGIN + "/#today",
+                    shadowOf(home).getNextStartedActivity().getDataString());
+            assertTrue(home.isFinishing());
+        }
+    }
+
+    @Test public void recoveryRecreationDoesNotAutomaticallyRetry() {
+        try (var controller = Robolectric.buildActivity(HomeActivity.class,
+                new Intent(context(), HomeActivity.class).putExtra(HomeActivity.LAUNCH_ERROR, true))) {
+            controller.setup();
+            assertNull(shadowOf(controller.get()).getNextStartedActivity());
+            controller.recreate();
+            assertNull(shadowOf(controller.get()).getNextStartedActivity());
+            assertFalse(controller.get().isFinishing());
+        }
+    }
+
     @Implements(ManageDataLauncherActivity.class)
     public static class FailingSettings {
         @Implementation protected static void addSiteSettingsShortcut(Context context, String provider) {

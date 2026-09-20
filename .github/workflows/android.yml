@@ -56,7 +56,7 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - name: Test, lint, and build installable beta
-        run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleDirect
       - name: Check APK signature
         run: "$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose app/build/outputs/apk/debug/app-debug.apk"
       - name: Upload beta APK and checks
@@ -66,6 +66,7 @@ jobs:
           name: ORBIT-android-beta-${{ github.sha }}
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/direct/*-unsigned.apk
             android/app/build/reports/
             android/app/build/test-results/
           retention-days: 14
