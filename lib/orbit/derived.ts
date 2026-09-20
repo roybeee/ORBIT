@@ -1,3 +1,4 @@
+import {executionSamples} from './execution-history.ts';
 import type { WorkspaceData, Habit, Task, DailyReview } from './model.ts';
 import { addDays } from './dates.ts';
 export function focusIds(data: WorkspaceData, date: string) {
@@ -39,19 +40,19 @@ export function weeklyStats(data: WorkspaceData, endDate: string): WeeklyStats {
   const reviews: DailyReview[] = data.reviews.filter((r) => inRange(r.date) && r.stats);
   const planned = reviews.reduce((s, r) => s + (r.stats?.planned ?? 0), 0);
   const done = reviews.reduce((s, r) => s + (r.stats?.done ?? 0), 0);
-  const ratios = data.tasks
-    .filter((t) => t.outcome === 'done' && inRange(t.completedOn) && t.actualMinutes && t.duration)
-    .map((t) => t.actualMinutes! / t.duration)
-    .sort((a, b) => a - b);
+  const samples=executionSamples(data,from,endDate).rows;
+  const ratios = samples.filter(r=>r.outcome==='done'&&r.actual!==null&&r.actual>0&&r.estimate>0).map(r=>r.actual!/r.estimate).sort((a,b)=>a-b);
   const median = ratios.length
     ? ratios.length % 2
       ? ratios[(ratios.length - 1) / 2]
       : (ratios[ratios.length / 2 - 1] + ratios[ratios.length / 2]) / 2
     : null;
   const reasons = new Map<NonNullable<Task['outcomeReason']>, number>();
-  for (const t of data.tasks)
-    if (t.outcomeReason && t.outcome !== 'done' && inRange(t.completedOn ?? t.due))
-      reasons.set(t.outcomeReason, (reasons.get(t.outcomeReason) ?? 0) + 1);
+  for (const r of samples)
+    if (r.reason && r.outcome !== 'done') {
+      const reason=r.reason as NonNullable<Task['outcomeReason']>;
+      reasons.set(reason,(reasons.get(reason)??0)+1);
+    }
   return {
     from,
     to: endDate,

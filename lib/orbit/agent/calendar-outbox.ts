@@ -24,9 +24,13 @@ export async function calendarDeliveryStatus(db:Database,owner:string){
 }
 
 // One bounded delivery at a time; receipts persist across disconnects and app restarts.
-export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,eventId?:string){
- const row=await db.prepare("SELECT state_json FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.automatic')=1 AND (json_extract(state_json,'$.status') IN ('pending','uncertain','publishing') OR (?<>'' AND json_extract(state_json,'$.status')='verified')) AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)<=? AND (?='' OR event_id=?) ORDER BY COALESCE(json_extract(state_json,'$.attemptedAt'),'') LIMIT 1")
-  .bind(owner,eventId??'',Date.now(),eventId??'',eventId??'').first<{state_json:string}>();
+export async function hasCalendarDeliveryWork(db:Database,owner:string){
+ const row=await db.prepare("SELECT event_id FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.automatic')=1 AND json_extract(state_json,'$.status') IN ('pending','uncertain','publishing') AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)<=? AND (json_extract(state_json,'$.status')<>'uncertain' OR COALESCE(json_extract(state_json,'$.attemptedAt'),'')<=?) LIMIT 1").bind(owner,Date.now(),new Date(Date.now()-60000).toISOString()).first();
+ return !!row;
+}
+export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,eventId?:string,respectBackoff=false){
+ const row=await db.prepare("SELECT state_json FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.automatic')=1 AND (json_extract(state_json,'$.status') IN ('pending','uncertain','publishing') OR (?<>'' AND json_extract(state_json,'$.status')='verified')) AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)<=? AND (?='' OR event_id=?) AND (?<>'' OR json_extract(state_json,'$.status')<>'uncertain' OR COALESCE(json_extract(state_json,'$.attemptedAt'),'')<=?) ORDER BY COALESCE(json_extract(state_json,'$.attemptedAt'),'') LIMIT 1")
+  .bind(owner,eventId??'',Date.now(),eventId??'',eventId??'',eventId??'',respectBackoff?new Date(Date.now()-60000).toISOString():'9999').first<{state_json:string}>();
  if(!row)return calendarDeliveryStatus(db,owner);
  const state=JSON.parse(row.state_json) as CalendarDelivery;
  const snapshot=await readWorkspace(db,owner);

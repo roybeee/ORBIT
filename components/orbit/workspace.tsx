@@ -1,4 +1,5 @@
 'use client';
+import {questReadiness} from '@/lib/orbit/pacemaker';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import {afterPopupClose,replacePopupRoute,pushPopupRoute} from '@/components/ui/use-popup-history';
@@ -41,6 +42,7 @@ import {
   Search,
   Check,
   Pause,
+  Play,
   MessageSquare,
   Link2,
   FileText,
@@ -92,6 +94,7 @@ import { NoteLibrary } from '@/components/orbit/note-library';
 import { NoteDetail } from '@/components/orbit/note-detail';
 import { InstallRootHint } from '@/components/orbit/install-app';
 import {WorkspaceDashboard} from './dashboard';
+import type {WorkOrder} from '@/lib/orbit/agent/orders-schema';
 import {TodayHome} from './today-home';
 import {CalendarSyncStatus} from './calendar-sync';
 import {CalendarAgenda} from './calendar-agenda';
@@ -304,6 +307,7 @@ function WorkspaceContent({
   const TODAY = demo ? '2026-09-06' : todayInZone(preferences.timeZone, clock),
     TOMORROW = addDays(TODAY, 1);
   const [view, setView] = useState<View>('today');
+  const [homeOrders,setHomeOrders]=useState<WorkOrder[]>([]);
   const [pendingAI,setPendingAI]=useState<number|null>(null);
   const [dataEditing, setDataEditing] = useState(false);
   const [demoDataTrash, setDemoDataTrash] = useState<TrashRecord[]>([]);
@@ -626,6 +630,7 @@ function WorkspaceContent({
                 cognition: newCognition === 'auto' ? undefined : newCognition,
               } as Task,
               TODAY,
+              data.executionHistory,
             ),
           },
         )
@@ -634,6 +639,7 @@ function WorkspaceContent({
     event.preventDefault();
     if (!newTitle.trim()) return;
     if (create === 'event' && !editingId && eventUploads.busy) return;
+    const startAfterSave=create==='task'&&(event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-start')==='true';
     const id = editingId ?? (createId.current ||= crypto.randomUUID());
     let action: WorkspaceAction;
     if (create === 'task') {
@@ -739,6 +745,7 @@ function WorkspaceContent({
       if(create==='project'&&!editingId){navigate('projects');setDetail({kind:'project',id});}
       if(!editingId&&create)clearDraft(ownerId,'form',create);
       setCreate(null);
+      if(startAfterSave){if(await perform({type:'task.start',id},'저장하고 집중을 시작했습니다.'))setDetail({kind:'task',id});}
     }
   };
   const openEdit = (kind: 'task' | 'project' | 'note' | 'event', id: string, loadedNote?: Note) => {
@@ -1106,6 +1113,7 @@ function WorkspaceContent({
               <AgentWorkspace
                 visible={view==='agent'}
                 onPendingCount={setPendingAI}
+                onOrdersChange={setHomeOrders}
                 ownerId={ownerId}
                 perform={perform}
                 onOpenRecord={setDetail}
@@ -1132,7 +1140,7 @@ function WorkspaceContent({
           {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
-          {loaded&&view==='today'&&<TodayHome onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} pendingAI={pendingAI} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}}/>}
+          {loaded&&view==='today'&&<TodayHome orders={homeOrders} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} pendingAI={pendingAI} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">
@@ -1455,6 +1463,7 @@ function WorkspaceContent({
                 {taskDetail.status!=='done'&&<button className="secondary-button full-width task-schedule-entry" disabled={busy||hasPending} onClick={()=>openTaskSchedule(taskDetail.id,view==='calendar'?calendarDate:TODAY)}>시간 배정하기 <ArrowRight size={17}/></button>}
                 <FocusSession
                   task={taskDetail}
+                  startReason={questReadiness(data,taskDetail,TODAY).canStart ? undefined : questReadiness(data,taskDetail,TODAY).reason}
                   busy={busy}
                   demo={demo}
                   onStart={() =>
@@ -1469,7 +1478,7 @@ function WorkspaceContent({
                   compact
                   checks={coachTask(taskDetail, {
                     ...coachContext,
-                    factor: calibrationFactor(tasks, taskDetail, TODAY),
+                    factor: calibrationFactor(tasks, taskDetail, TODAY,data.executionHistory),
                   })}
                 />
                 <label className="form-label">진행 상태</label>
@@ -1852,7 +1861,7 @@ function WorkspaceContent({
             )}
             {(create==='task'||create==='event')&&<><label className="form-label">카테고리</label><Choice value={newCategory} onChange={v=>setNewCategory(v as CalendarCategory)} label="카테고리" items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><ItemColorPicker value={newColor} onChange={setNewColor} disabled={busy||hasPending} defaultColor={(create==='event'&&tasks.find(t=>t.id===events.find(e=>e.id===editingId)?.taskId)?.color)||categoryColor(newCategory,preferences,create==='task'||!!events.find(e=>e.id===editingId)?.taskId?'task':'event')}/></>}
             {create === 'task' && (
-              <>
+              <details className="task-advanced"><summary>추가 설정 · 우선순위와 대기 조건</summary>
                 <div className="field-grid">
                   <div>
                     <label className="form-label">사분면</label>
@@ -1915,7 +1924,7 @@ function WorkspaceContent({
                   value={newCheckDate}
                   onChange={(e) => setNewCheckDate(e.target.value)}
                 />
-              </>
+              </details>
             )}
             {create !== 'event' && (
               <>
@@ -1968,6 +1977,7 @@ function WorkspaceContent({
               <details className="event-attachments"><summary><Plus size={15}/>파일 첨부{eventUploads.ready.length ? ` · ${eventUploads.ready.length}개` : ' (선택)'}</summary><AttachmentInput scope={attachmentDraft} disabled={demo || busy} /></details>
             )}
             <div className="create-form-footer">
+            {create==='task'&&!editingId&&<button type="submit" data-start="true" className="secondary-button" disabled={busy||hasPending||!loaded||!!newBlocker.trim()||(projects.find(p=>p.id===taskProject)?.status??'active')!=='active'}><Play size={16}/>추가하고 시작</button>}
             {create==='task'&&<button type="button" className="secondary-button task-edit-cancel" disabled={busy||hasPending} onClick={()=>setDiscardCreateConfirm(true)}>취소</button>}
             {create==='event'&&<p className="form-hint event-sync-hint"><CalendarDays size={14}/>연결된 Google 캘린더에도 반영됩니다.</p>}
             <button

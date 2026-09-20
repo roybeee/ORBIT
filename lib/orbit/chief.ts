@@ -49,9 +49,10 @@ export function chiefOfStaff(data: WorkspaceData, now = new Date()) {
   const goalActive = (id:string) => goalAllowsWork(data,id)&&allocationAllowsWork(data,id,today);
   const protectedNow=protectedEvents(data,today).find(e=>e.start<=minute&&e.end>minute);
   const ready = data.tasks.filter(t => workEligibility(data,t,today).allowed);
+  const chosen=(id:string)=>data.projects.some(p=>p.nextTaskId===id);
   const ranked = ready.sort((a,b) => {
     const score = (t: typeof a) => (projectGoal(t.projectId) ? 25 : 0) + (projectGoal(t.projectId)?.pace.status === 'behind' ? 25 : 0) + (t.due <= today ? 20 : 0) + (t.must ? 10 : 0) + t.impact * 3 + (t.focusDate === today ? 10 : 0);
-    return score(b) - score(a) || a.due.localeCompare(b.due) || a.id.localeCompare(b.id);
+    return Number(chosen(b.id))-Number(chosen(a.id)) || score(b) - score(a) || a.due.localeCompare(b.due) || a.id.localeCompare(b.id);
   });
   // Union of occupied intervals: overlapping meetings must not inflate load.
   const workDay=data.preferences.workDays.includes(new Date(today+'T12:00:00Z').getUTCDay());

@@ -7,7 +7,7 @@ const uuid = z.string().uuid();
 const identity = { id: uuid, bridgeId: uuid, runId: uuid };
 const operation=z.object({kind:z.enum(['send','payment','delete','submit']),destination:z.string().trim().min(3).max(1000),target:z.string().trim().min(2).max(500),content:z.string().trim().min(2).max(8000),amountKrw:z.number().int().positive().max(1000000000).optional()}).strict().refine(o=>o.kind!=='payment'||o.amountKrw!==undefined,'결제 금액이 필요합니다.');
 export const asideInput = z.discriminatedUnion('action', [
-  z.object({action:z.literal('enqueue'),id:uuid,title:z.string().trim().min(1).max(160),instruction:z.string().trim().min(10).max(12000),workflow:z.string().max(50),projectId:z.string().max(100),parentOrderId:uuid.optional(),operation:operation.optional()}).strict(),
+  z.object({action:z.literal('enqueue'),id:uuid,title:z.string().trim().min(1).max(160),instruction:z.string().trim().min(10).max(22000),workflow:z.string().max(50),projectId:z.string().max(100),parentOrderId:uuid.optional(),operation:operation.optional()}).strict(),
   z.object({action:z.literal('approve'),id:uuid,digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
   z.object({action:z.literal('claim'),id:uuid,bridgeId:uuid,account:z.string().trim().min(1).max(150)}).strict(),
   z.object({action:z.literal('report'),...identity,seq:z.number().int().min(1).max(2147483647),status:z.enum(['running','needs_review','needs_attention']),progress:z.string().max(1000),result:z.string().max(30000)}).strict(),

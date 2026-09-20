@@ -10,7 +10,8 @@ export function workspaceDashboard(data:WorkspaceData,now:Date){
   const today=todayInZone(data.preferences.timeZone,now),chief=chiefOfStaff(data,now);
   const goals=goalDashboard(data,today),activeGoals=goals.filter(g=>goalIsActive(data,g.goal.id));
   const focus=focusIds(data,today),active=data.tasks.find(t=>t.startedAt&&t.status!=='done');
-  const ranked=(a:Task,b:Task)=>Number(focus.has(b.id))-Number(focus.has(a.id))||a.due.localeCompare(b.due)||b.impact-a.impact||a.id.localeCompare(b.id);
+  const chosen=(id:string)=>data.projects.some(p=>p.nextTaskId===id);
+  const ranked=(a:Task,b:Task)=>Number(chosen(b.id))-Number(chosen(a.id))||Number(focus.has(b.id))-Number(focus.has(a.id))||a.due.localeCompare(b.due)||b.impact-a.impact||a.id.localeCompare(b.id);
   const open=data.tasks.filter(t=>t.status!=='done');
   const ready=open.filter(t=>questReadiness(data,t,today).canStart).sort(ranked);
   const attention=open.filter(t=>{

@@ -116,8 +116,7 @@ export function coachTask(draft: TaskDraft, ctx: CoachContext): CoachCheck[] {
         id: 'estimate',
         level: 'info',
         title: `최근 같은 종류의 일은 예상의 ${ctx.factor}배 걸렸습니다`,
-        detail: `${draft.duration}분 → ${suggested}분을 권합니다. 제안 엔진은 자동으로 보정합니다.`,
-        fix: { label: `${suggested}분으로`, patch: { duration: suggested } },
+        detail: `예상 ${draft.duration}분은 그대로 기록하고, 일정 제안에서 ${suggested}분으로 한 번 보정합니다.`,
       });
   }
   if ((draft.duration ?? 0) > 240)

@@ -96,7 +96,7 @@ export function ReviewWizard({
     planned.map(({ task, source }) => ({
       taskId: task.id,
       title: task.title,
-      estimate: task.duration,
+      estimate: task.outcomeEstimateMinutes ?? task.duration,
       outcome: task.outcomeOn === reviewDate ? task.outcome : task.completedOn === reviewDate ? 'done' : undefined,
       actual: task.outcomeOn === reviewDate && task.actualMinutes !== undefined ? String(task.actualMinutes) : '',
       reason: task.outcomeOn===reviewDate?task.outcomeReason??'other':'other',
@@ -128,7 +128,7 @@ export function ReviewWizard({
   const dirty=useRef(false);
   const [conflict,setConflict]=useState<any>(null);
   const savedSleep=useRef<number|undefined>(undefined);
-  const hydrate=(d:any)=>{setItems(current=>current.map(i=>({...i,...d.items.find((v:any)=>v.taskId===i.taskId)})));setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);savedSleep.current=d.savedSleep;};
+  const hydrate=(d:any)=>{setItems(current=>[...d.items,...current.filter(i=>!d.items.some((v:any)=>v.taskId===i.taskId))]);setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);savedSleep.current=d.savedSleep;};
   // Saved detail rows are fetched once; every setState below happens after the network round trip.
   useEffect(() => {
     const draft=!demo&&readDraft<any>(ownerId,'review',reviewDate);
@@ -140,19 +140,10 @@ export function ReviewWizard({
       .then((r: { detail: ReviewDetail | null }) => {
         if(!active)return;if(!r.detail){setDraftError('저장된 회고 상세를 확인하지 못했습니다. 다시 열어 주세요.');return;}
         const d = r.detail; savedSleep.current=d.energy.sleepMinutes;
-        setItems((current) =>
-          current.map((i) => {
-            const saved = d.items.find((x) => x.taskId === i.taskId);
-            return saved
-              ? {
-                  ...i,
-                  outcome: saved.outcome,
-                  actual: saved.actualMinutes ? String(saved.actualMinutes) : i.actual,
-                  reason: saved.reason ?? i.reason,
-                }
-              : i;
-          }),
-        );
+        setItems(current => [
+          ...d.items.map(saved => ({taskId:saved.taskId,title:saved.title,estimate:saved.estimateMinutes,outcome:saved.outcome,actual:saved.actualMinutes === undefined ? '' : String(saved.actualMinutes),reason:saved.reason ?? 'other' as const,source:'저장된 회고'})),
+          ...current.filter(i=>!d.items.some(saved=>saved.taskId===i.taskId)),
+        ]);
         const fb: Record<string, FeedbackDraft> = {};
         for (const f of d.feedback)
           if (f.taskId)

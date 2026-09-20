@@ -6,7 +6,7 @@ import {calibrationEvidence,calibrate} from '@/lib/orbit/planner';
 import {executionSamples} from '@/lib/orbit/phase4';
 import {addDays} from '@/lib/orbit/dates';
 export function LearningPanel({data,today,busy,perform,onOpen}:{data:WorkspaceData;today:string;busy:boolean;perform:(a:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(id:string)=>void}){
- const [selected,setSelected]=useState('');const target=data.tasks.find(t=>t.id===selected)??data.tasks.find(t=>t.status!=='done')??data.tasks[0],e=target?calibrationEvidence(data.tasks,target,today):null;
+ const [selected,setSelected]=useState('');const target=data.tasks.find(t=>t.id===selected)??data.tasks.find(t=>t.status!=='done')??data.tasks[0],e=target?calibrationEvidence(data.tasks,target,today,data.executionHistory):null;
  const since=addDays(today,-30),plans=data.proposals.filter(p=>p.date>=since&&p.date<=today),samples=executionSamples(data,since,today),approved=plans.flatMap(p=>p.items.filter(i=>i.state==='approved').map(i=>({date:p.date,task:data.tasks.find(t=>t.id===i.taskId)}))),measured=approved.map(p=>samples.rows.find(r=>r.taskId===p.task?.id&&r.date===p.date)).filter(Boolean),done=measured.filter(p=>p?.outcome==='done').length;
  const friction=samples.rows.filter(t=>t.reason==='time'&&t.outcome!=='done');const groups=[...new Set(samples.rows.map(r=>r.buffer).filter((x):x is number=>x!==null))].sort().map(buffer=>{const rows=samples.rows.filter(r=>r.buffer===buffer);return {buffer,count:rows.length,done:rows.filter(r=>r.outcome==='done').length,time:rows.filter(r=>r.reason==='time').length}});
  const recommended=Math.min(.5,Math.round((data.preferences.bufferFraction+.1)*10)/10);

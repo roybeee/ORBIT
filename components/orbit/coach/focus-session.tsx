@@ -18,7 +18,7 @@ import { focusElapsedSeconds, formatFocusClock } from '@/lib/orbit/focus-clock';
 import { needsFeedback, handoffLike } from '@/lib/orbit/coach';
 export interface RecordInput {
   outcome: Outcome;
-  actualMinutes: number;
+  actualMinutes?: number;
   reason?: OutcomeReason;
   rule?: string;
   ruleKind?: ImprovementKind;
@@ -29,6 +29,7 @@ export function FocusSession({
   task,
   busy,
   demo,
+  startReason,
   onStart,
   onStop,
   onRecord,
@@ -36,6 +37,7 @@ export function FocusSession({
   task: Task;
   busy: boolean;
   demo?: boolean;
+  startReason?: string;
   onStart: () => Promise<boolean> | void;
   onStop: () => Promise<boolean> | void;
   onRecord: (input: RecordInput) => Promise<boolean> | void;
@@ -74,7 +76,7 @@ export function FocusSession({
               <Pause size={16} /> 일시정지
             </button>
           ) : (
-            <button className="primary-button" disabled={busy || demo} onClick={() => void onStart()}>
+            <button className="primary-button" disabled={busy || demo || !!startReason} title={startReason} onClick={() => void onStart()}>
               <Play size={16} /> {tracked ? '이어서 집중' : '집중 시작'}
             </button>
           ))}
@@ -118,7 +120,7 @@ export function RecordDialog({
 }) {
   const [outcome, setOutcome] = useState<Outcome>('done');
   const measured = !!task.startedAt || task.actualMinutes !== undefined;
-  const [actual, setActual] = useState(String(measured ? prefill : task.duration));
+  const [actual, setActual] = useState(measured ? String(prefill) : '');
   const [timeEdited, setTimeEdited] = useState(false);
   useEffect(() => {
     if (measured && !timeEdited) setActual(String(prefill));
@@ -127,10 +129,10 @@ export function RecordDialog({
   const [handoff, setHandoff] = useState(false);
   const [rule, setRule] = useState('');
   const [ruleKind, setRuleKind] = useState<ImprovementKind>('estimate');
-  const actualMinutes = Number(actual);
-  const validTime = actual.trim() !== '' && Number.isInteger(actualMinutes) && actualMinutes >= 0 && actualMinutes <= 1440;
-  const askFeedback = needsFeedback(outcome, task.duration, actualMinutes);
-  const ratio = task.duration ? Math.round((actualMinutes / task.duration) * 100) / 100 : 1;
+  const actualMinutes = actual.trim() === '' ? undefined : Number(actual);
+  const validTime = actualMinutes === undefined || (Number.isInteger(actualMinutes) && actualMinutes >= 0 && actualMinutes <= 1440);
+  const askFeedback = outcome !== 'done' || (actualMinutes !== undefined && needsFeedback(outcome, task.duration, actualMinutes));
+  const ratio = task.duration && actualMinutes !== undefined ? Math.round((actualMinutes / task.duration) * 100) / 100 : 1;
   return (
     <Dialog
       open
@@ -194,7 +196,7 @@ export function RecordDialog({
                 min={0}
                 max={1440}
                 step={1}
-                required
+                placeholder="미측정 · 비워둘 수 있어요"
                 inputMode="numeric"
                 disabled={busy}
                 className="form-field"
@@ -202,7 +204,7 @@ export function RecordDialog({
                 onChange={(e) => { setTimeEdited(true); setActual(e.target.value); }}
               />
               <p className="form-hint">
-                {measured && !timeEdited ? '측정한 시간을 자동으로 입력했어요. 1분 단위로 반올림합니다.' : `예상 ${task.duration}분 · 실제 걸린 시간으로 수정할 수 있어요.`}
+                {measured && !timeEdited ? '측정한 시간을 자동으로 입력했어요. 1분 단위로 반올림합니다.' : `예상 ${task.duration}분 · 실제 시간을 모르면 비워두세요. 시간 보정 표본에서 제외합니다.`}
               </p>
             </div>
             {outcome !== 'done' && (

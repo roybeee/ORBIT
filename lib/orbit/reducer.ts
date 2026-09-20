@@ -154,7 +154,7 @@ export function applyAction(
     earliestStart:date<today?0:planningFloor(date,data.preferences.timeZone,now),
     dominoProjectId: data.dominoProjectId,
     projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
-    calibration: (t: Task) => calibrationFactor(data.tasks, t, date),
+    calibration: (t: Task) => calibrationFactor(data.tasks, t, date, data.executionHistory),
   });
   const finishSession = (t: Task) => {
     if (!t.startedAt) return;
@@ -440,6 +440,7 @@ export function applyAction(
         'category',
         'color',
         'actualMinutes',
+        'outcomeEstimateMinutes',
         'outcome',
         'outcomeReason',
         'outcomeOn',
@@ -480,10 +481,20 @@ export function applyAction(
     }
     case 'task.status': {
       const t = task(action.id);
+      if (action.status === 'done' || action.status === 'waiting') finishSession(t);
       t.status = action.status;
       t.completedOn = action.status === 'done' ? today : undefined;
-      if (action.status === 'done') finishSession(t);
-      if (action.status !== 'done') delete t.outcome;
+      if (action.status === 'done') {
+        t.outcome = 'done';
+        t.outcomeOn = today;
+        t.outcomeEstimateMinutes ??= t.duration;
+        delete t.outcomeReason;
+      } else {
+        delete t.outcome;
+        delete t.outcomeOn;
+        delete t.outcomeReason;
+      }
+      if (action.status === 'waiting') { t.focus = false; delete t.focusDate; delete t.laserDate; }
       if (action.status === 'doing' || action.status === 'todo') { delete t.blocker; delete t.checkDate; }
       break;
     }
@@ -541,7 +552,7 @@ export function applyAction(
       const t = task(action.id);
       finishSession(t);
       if (action.actualMinutes !== undefined) t.actualMinutes = action.actualMinutes;
-      t.outcomeEstimateMinutes = t.duration;
+      t.outcomeEstimateMinutes ??= t.duration;
       t.outcome = action.outcome;
       t.outcomeOn = today;
       if (action.outcome === 'done') {
@@ -550,7 +561,8 @@ export function applyAction(
         delete t.outcomeReason;
       } else {
         t.outcomeReason = action.reason ?? 'other';
-        if (action.outcome === 'partial' && t.status === 'todo') t.status = 'doing';
+        delete t.completedOn;
+        if (t.status === 'done' || (action.outcome === 'partial' && t.status === 'todo')) t.status = action.outcome === 'partial' ? 'doing' : 'todo';
       }
       if (action.rule?.trim())
         addImprovement(data, {
@@ -687,8 +699,14 @@ export function applyAction(
         for (const item of detail.items) {
           const t = data.tasks.find((x) => x.id === item.taskId);
           if (!t) continue;
+          if (action.review.date < today) {
+            const prior = [...data.executionHistory ?? []].reverse().find(r => r.taskId === t.id && r.date === action.review.date);
+            data.executionHistory = [...data.executionHistory ?? [], {id:`execution:${crypto.randomUUID()}`,taskId:t.id,title:item.title,projectId:prior?.projectId ?? t.projectId,date:action.review.date,at:now.toISOString(),due:prior?.due ?? t.due,outcome:item.outcome,reason:item.reason ?? '',estimate:prior?.estimate ?? item.estimateMinutes,actual:item.actualMinutes ?? null,impact:prior?.impact ?? t.impact,buffer:prior?.buffer ?? null}].slice(-1200);
+            continue;
+          }
           finishSession(t);
           if (item.actualMinutes !== undefined) t.actualMinutes = item.actualMinutes;
+          t.outcomeEstimateMinutes ??= item.estimateMinutes || t.duration;
           t.outcome = item.outcome;
           t.outcomeOn = action.review.date;
           if (item.outcome === 'done') {
@@ -699,7 +717,8 @@ export function applyAction(
             delete t.outcomeReason;
           } else {
             t.outcomeReason = item.reason ?? 'other';
-            if (item.outcome === 'partial' && t.status === 'todo') t.status = 'doing';
+            delete t.completedOn;
+            if (t.status === 'done' || (item.outcome === 'partial' && t.status === 'todo')) t.status = item.outcome === 'partial' ? 'doing' : 'todo';
           }
         }
         for (const fb of detail.feedback)
@@ -729,14 +748,14 @@ export function applyAction(
           partial: detail.items.filter((i) => i.outcome === 'partial').length,
           skipped: detail.items.filter((i) => i.outcome === 'skipped').length,
           laserMinutes:
-            laserItem?.actualMinutes ?? (laserItem?.outcome === 'done' ? laserItem.estimateMinutes : 0),
+            laserItem?.actualMinutes ?? 0,
           executionRate: detail.items.length ? Math.round((done / detail.items.length) * 100) : 0,
         };
       }
       data.reviews = replace(data.reviews, {
         ...action.review,
         id: action.review.date,
-        completedIds: data.tasks
+        completedIds: detail ? detail.items.filter(i=>i.outcome==='done').map(i=>i.taskId) : data.tasks
           .filter((t) => t.completedOn === action.review.date && t.status === 'done')
           .map((t) => t.id),
         updatedAt: now.toISOString(),

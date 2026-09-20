@@ -459,3 +459,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 /* Meeting memory uses the current Orbit surface and contrast tokens. */
 .plaud-panel{margin-bottom:1.25rem;padding:1rem;border:1px solid var(--border);border-radius:16px;background:var(--card);color:var(--foreground)}
 .plaud-panel-heading{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}.plaud-panel-heading>div{flex:1;min-width:180px}.plaud-panel strong{font-size:1rem}.plaud-panel p,.plaud-panel-actions,.answer-feedback p{font-size:.875rem;line-height:1.7;margin:.4rem 0}.plaud-panel-actions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}.plaud-details article{border-top:1px solid var(--border);padding:1rem 0}.plaud-details small{font-size:.8125rem}.plaud-details label,.answer-feedback label{display:block;font-size:.875rem;line-height:1.6}.plaud-details form{display:grid;gap:.75rem;margin-top:.75rem}.answer-feedback{margin-top:.75rem}.answer-feedback form{display:grid;gap:.6rem;border:1px solid var(--border);padding:.8rem;border-radius:12px}.plaud-panel [role=alert]{color:#e87972}.plaud-panel select,.answer-feedback select{max-width:100%;width:100%}
+
+/* Keep the next executable action ahead of passive metrics. */
+.mission-overview.execution-overview{grid-template-columns:minmax(0,1fr)}
+.execution-overview .mission-hero{min-height:240px}
+@media(max-width:767px){.execution-overview .mission-hero{min-height:220px}.execution-overview .mission-copy{padding-block:20px}}

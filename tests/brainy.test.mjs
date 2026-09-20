@@ -434,7 +434,9 @@ test('the task coach checks the definition, quadrant, cognition, estimate and si
   assert.ok(ids(empty).includes('definition:warn'));
   assert.ok(ids(empty).includes('quadrant:info'));
   assert.deepEqual(empty.find((c) => c.id === 'quadrant').fix.patch, { quadrant: 'B' });
-  assert.deepEqual(empty.find((c) => c.id === 'estimate').fix.patch, { duration: 90 });
+  assert.equal(empty.find((c) => c.id === 'estimate').fix, undefined);
+  assert.match(empty.find((c) => c.id === 'estimate').detail, /90분으로 한 번 보정/);
+  assert.equal(draft.duration, 60);
   assert.ok(ids(empty).includes('rules:info'));
   assert.ok(ids(empty).includes('goal:info'));
   const handoff = coachTask(

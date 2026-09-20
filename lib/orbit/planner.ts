@@ -1,3 +1,5 @@
+import {executionSamples} from './execution-history.ts';
+import type {ExecutionRecord} from './phase4-schema.ts';
 import {workEligibility,type WorkContext} from './work-policy.ts';
 import {planningEvents} from './allocation-policy.ts';
 import {
@@ -46,29 +48,20 @@ const median = (values: number[]) => {
 };
 // PAFI improvement: median(actual / estimate) of recent completed work of the same kind.
 // Falls back from project+cognition to cognition to everything; needs five samples to act.
-export function calibrationEvidence(tasks: Task[], task: Task, date: string) {
+export function calibrationEvidence(tasks: Task[], task: Task, date: string, history:ExecutionRecord[] = []) {
   const since = addDays(date, -30);
-  const samples = tasks.filter(
-    (t) =>
-      t.id !== task.id &&
-      t.outcome === 'done' &&
-      typeof t.actualMinutes === 'number' &&
-      t.actualMinutes > 0 &&
-      t.duration > 0 &&
-      (t.completedOn ?? '') >= since && (t.completedOn ?? '') <= date,
-  );
-  const ratios = (list: Task[]) => list.map((t) => t.actualMinutes! / (t.outcomeEstimateMinutes??t.duration));
+  const samples = executionSamples({tasks,executionHistory:history},since,date).rows
+    .filter(r=>r.taskId!==task.id&&r.outcome==='done'&&r.actual!==null&&r.actual>0&&r.estimate>0);
+  const ratios = (list: typeof samples) => list.map(r=>r.actual! / r.estimate);
   const cognition = taskCognition(task);
-  const tiers = [
-    samples.filter((t) => t.projectId === task.projectId && taskCognition(t) === cognition),
-    samples.filter((t) => taskCognition(t) === cognition),
-    samples,
-  ];
+  const sameCognition=(r:ExecutionRecord)=>{const original=tasks.find(t=>t.id===r.taskId);return !!original&&taskCognition(original)===cognition;};
+  const tiers = [samples.filter(r=>r.projectId===task.projectId&&sameCognition(r)), samples.filter(sameCognition), samples];
+  const evidence=(rows:typeof samples)=>rows.map(r=>({id:r.taskId,title:r.title,date:r.date,estimate:r.estimate,actual:r.actual!}));
   for (const [index,tier] of tiers.entries())
-    if (tier.length >= 5) return {factor:Math.round(Math.min(2, Math.max(0.5, median(ratios(tier)))) * 100) / 100,tier:['같은 프로젝트·인지 유형','같은 인지 유형','전체 완료 업무'][index],samples:tier.map(t=>({id:t.id,title:t.title,date:t.completedOn,estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes!})),sufficient:true};
-  return {factor:1,tier:'표본 부족',samples:samples.map(t=>({id:t.id,title:t.title,date:t.completedOn,estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes!})),sufficient:false};
+    if (tier.length >= 5) return {factor:Math.round(Math.min(2, Math.max(0.5, median(ratios(tier)))) * 100) / 100,tier:['같은 프로젝트·인지 유형','같은 인지 유형','전체 완료 업무'][index],samples:evidence(tier),sufficient:true};
+  return {factor:1,tier:'표본 부족',samples:evidence(samples),sufficient:false};
 }
-export const calibrationFactor=(tasks:Task[],task:Task,date:string)=>calibrationEvidence(tasks,task,date).factor;
+export const calibrationFactor=(tasks:Task[],task:Task,date:string,history:ExecutionRecord[] = [])=>calibrationEvidence(tasks,task,date,history).factor;
 export const calibrate = (duration: number, factor: number) =>
   Math.min(480, Math.max(5, Math.round((duration * factor) / 5) * 5));
 export interface PlannerOptions {

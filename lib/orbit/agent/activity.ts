@@ -25,19 +25,20 @@ export function activityCategory(text:string){
 const hash=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const sessionSchema=z.object({id:z.string().min(1).max(250),source:z.string().max(100).nullish(),title:z.string().nullish(),preview:z.string().nullish(),last_active:z.union([z.string(),z.number()]).nullish(),started_at:z.union([z.string(),z.number()]).nullish(),ended_at:z.union([z.string(),z.number()]).nullish(),parent_session_id:z.string().nullish(),message_count:z.number().int().nonnegative().optional()});
 type Session=z.infer<typeof sessionSchema>;
-interface Cursor {connection?:string;offset:number;pending:Session[];lastSync?:string;lastError?:string;cycles?:number;turns?:number;enabled?:boolean;omissions?:number}
+interface Cursor {connection?:string;offset:number;pending:Session[];lastSync?:string;lastError?:string;cycles?:number;turns?:number;enabled?:boolean;omissions?:number;quarantine?:{id:string;signature:string;reason:string;retryAt:number}[]}
+const sessionSignature=(s:Session)=>JSON.stringify([s.last_active,s.message_count,s.ended_at,s.title]);
 const defaults=():Cursor=>({offset:0,pending:[],enabled:true});
 export async function activityStatus(db:Database,owner:string){
  const r=await db.prepare('SELECT state_json FROM orbit_activity_sync WHERE owner_id=?').bind(owner).first<{state_json:string}>();
  const state:Cursor=r?JSON.parse(r.state_json):defaults();
  const count=await db.prepare('SELECT COUNT(*) AS sessions,COALESCE(SUM(message_offset),0) AS messages FROM orbit_activity_sessions WHERE owner_id=?').bind(owner).first<{sessions:number;messages:number}>();
- return {enabled:state.enabled!==false,lastSync:state.lastSync??null,lastError:state.lastError??'',pending:state.pending.length,cycles:state.cycles??0,...count,coverage:'연결된 Hermes 프로필의 API에 노출된 세션과 하위 에이전트 기록. 숨김·보관 세션과 첨부파일 원본은 제외됩니다.'};
+  return {enabled:state.enabled!==false,lastSync:state.lastSync??null,lastError:state.lastError??'',pending:state.pending.length,cycles:state.cycles??0,quarantined:state.quarantine?.length??0,...count,coverage:'연결된 Hermes 프로필의 API에 노출된 세션과 하위 에이전트 기록. 숨김·보관 세션과 첨부파일 원본은 제외됩니다.'};
 }
 export async function syncActivity(db:Database,owner:string,env:Runtime){
  await db.prepare('INSERT OR IGNORE INTO orbit_activity_sync(owner_id,state_json,lease_until) VALUES(?,?,0)').bind(owner,JSON.stringify(defaults())).run();
  const lease=Date.now()+55000,lock=await db.prepare('UPDATE orbit_activity_sync SET lease_until=? WHERE owner_id=? AND lease_until<?').bind(lease,owner,Date.now()).run();
  if(lock.meta?.changes!==1)return {busy:true};
- let state:Cursor=defaults();
+ let state:Cursor=defaults(),sessionAttempt:Session|undefined;
  try{
   const stored=await db.prepare('SELECT state_json FROM orbit_activity_sync WHERE owner_id=?').bind(owner).first<{state_json:string}>();state=JSON.parse(stored!.state_json);
   if(state.enabled===false)return {disabled:true};
@@ -54,6 +55,7 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
    const parsed=z.array(sessionSchema).safeParse(page.data);if(!parsed.success||page.object!=='list')throw new AgentError('Hermes 세션 목록 형식을 확인하지 못했습니다.','HERMES_FORMAT',502);
    state.pending=parsed.data;state.offset=page.has_more===true?state.offset+20:0;if(!state.offset)state.cycles=(state.cycles??0)+1;
   }
+  state.pending=state.pending.filter(s=>!state.quarantine?.some(q=>q.id===s.id&&q.signature===sessionSignature(s)&&q.retryAt>Date.now()));
   // Skip an entire unchanged page in one tick; do not spend two minutes per unchanged session.
   for(let i=0;i<40&&state.pending.length;i++){
    const candidate=state.pending[0],key=await hash(connection+'\n'+candidate.id);
@@ -63,6 +65,7 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
   }
   let session=state.pending[0];
   if(session){
+   sessionAttempt=session;
    let id=await hash(connection+'\n'+session.id),old=await db.prepare('SELECT * FROM orbit_activity_sessions WHERE owner_id=? AND id=?').bind(owner,id).first<{message_offset:number;signature:string;project_id:string|null;category:string;manual:number;summary:string}>();
    let signature=JSON.stringify([session.last_active,session.message_count,session.ended_at,session.title]);
    if(old?.signature===signature){state.pending.shift();}
@@ -100,13 +103,19 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
     const meta={aliasSessionId:alias,source:String(session.source??'hermes'),parentSessionId:session.parent_session_id??null,resolvedSessionId:resolved,startedAt:session.started_at??null,endedAt:session.ended_at??null,matched:match?.matched??[],notice:'AI 답변은 검증된 사실과 구분해 검토하세요. 첨부파일은 원문 메시지에 포함된 설명만 보관합니다.'};
     const statements=[db.prepare('INSERT INTO orbit_activity_sessions(owner_id,id,connection_id,session_id,source,title,project_id,category,manual,summary,metadata_json,message_offset,signature,updated_at) VALUES(?,?,?,?,?,?,?,?,0,?,?,?,?,?) ON CONFLICT(owner_id,id) DO UPDATE SET source=excluded.source,title=excluded.title,project_id=CASE WHEN manual=1 THEN project_id ELSE excluded.project_id END,category=CASE WHEN manual=1 THEN category ELSE excluded.category END,summary=excluded.summary,metadata_json=excluded.metadata_json,message_offset=excluded.message_offset,signature=excluded.signature,updated_at=excluded.updated_at').bind(owner,id,connection,session.id,meta.source,title,project,category,summary,JSON.stringify(meta),next,more?'':signature,now)];
     for(const m of messages)statements.push(db.prepare('INSERT INTO orbit_activity_messages(owner_id,connection_id,session_id,id,record_id,role,content,tool_name,tool_calls,timestamp) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,connection_id,session_id,id) DO UPDATE SET record_id=excluded.record_id,content=excluded.content,tool_name=excluded.tool_name,tool_calls=excluded.tool_calls').bind(owner,connection,resolved,m.id,id,m.role,m.content,m.tool,m.tools,m.at));
-    await db.batch(statements);if(!more)state.pending.shift();else state.pending[0]=session;
+    await db.batch(statements);state.quarantine=state.quarantine?.filter(q=>q.id!==alias&&q.id!==session.id);if(!more)state.pending.shift();else state.pending[0]=session;
    }
   }
-  state.lastSync=new Date().toISOString();state.lastError='';
-  await recordSource(db,owner,'hermes_activity',{state:state.pending.length||state.offset?'partial':'ok',detail:'Hermes 채널 기록 수집 중 · 숨김/보관 세션 및 첨부 원본 제외'});
+  state.lastSync=new Date().toISOString();state.lastError=state.quarantine?.length?`형식 확인이 필요한 대화 ${state.quarantine.length}개는 분리해 재확인합니다. 나머지 기록은 계속 수집합니다.`:'';
+  await recordSource(db,owner,'hermes_activity',{state:state.pending.length||state.offset||state.quarantine?.length?'partial':'ok',detail:state.lastError||'Hermes 채널 기록 수집 중 · 숨김/보관 세션 및 첨부 원본 제외'});
   return {synced:true,pending:state.pending.length};
- }catch(e){state.lastError=e instanceof AgentError?e.message:'Hermes 기록 수집 실패 · 저장된 위치에서 다시 시도합니다.';await recordSource(db,owner,'hermes_activity',{state:'error',detail:state.lastError});throw e;}
+ }catch(e){
+  if(sessionAttempt&&e instanceof AgentError&&e.code==='HERMES_FORMAT'){
+   state.quarantine=[...(state.quarantine??[]).filter(q=>q.id!==sessionAttempt!.id),{id:sessionAttempt.id,signature:sessionSignature(sessionAttempt),reason:e.message,retryAt:Date.now()+15*60000}].slice(-100);
+   state.pending=state.pending.filter(s=>s.id!==sessionAttempt!.id);
+  }
+  state.lastError=e instanceof AgentError?e.message:'Hermes 기록 수집 실패 · 저장된 위치에서 다시 시도합니다.';await recordSource(db,owner,'hermes_activity',{state:'error',detail:state.lastError});throw e;
+ }
  finally{await db.prepare('UPDATE orbit_activity_sync SET state_json=?,lease_until=0 WHERE owner_id=? AND lease_until=?').bind(JSON.stringify(state),owner,lease).run();}
 }
 export async function listActivity(db:Database,owner:string,options:{query?:string;source?:string;project?:string;offset?:number}={}){

@@ -20,6 +20,8 @@ export type OrderStatus='queued'|'submitting'|'running'|'waiting_for_approval'|'
 export interface WorkOrder {
  id:string;title:string;instruction:string;projectId:string|null;taskIds:string[];conversationId:string|null;
  eventIds?:string[];
+ parentOrderId?:string;
+ review?:'accepted'|'needs_work';
  mode?:'native'|'research'|'workflow';
  workflow?:{phase:'hermes'|'aside';step:number;asideJobId?:string;receipts:{jobId:string;result:string;status:string}[];runIds:string[]};
  canResume?:boolean;

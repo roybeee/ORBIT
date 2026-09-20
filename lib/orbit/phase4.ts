@@ -1,3 +1,4 @@
+import {executionSamples} from './execution-history.ts';
 import type {WorkspaceData} from './model.ts';
 import type {MonthlyReport,ExecutionRecord,Contact} from './phase4-schema.ts';
 import {questReadiness} from './pacemaker.ts';
@@ -28,8 +29,4 @@ export function morningScript(data:WorkspaceData,date:string){
  return `${date} 아침 브리핑입니다. ${tasks.length?`승인한 결과물은 ${tasks.slice(0,3).map(t=>t!.title).join(', ')}입니다.`:'오늘 승인한 실행 계획은 아직 없습니다.'} ${first?`첫 행동 후보는 ${first.title}입니다. 완료 기준은 ${first.definition||'실행 전 정해 주세요'}.`:'첫 행동을 정하려면 업무를 등록해 주세요.'} ${meetings.length?`오늘 회의 ${meetings.length}개, 첫 회의는 ${Math.floor(meetings[0].start/60)}시 ${meetings[0].start%60}분 ${meetings[0].title}입니다.`:'등록된 오늘 회의가 없습니다.'} ${due.length?`회신을 확인할 약속은 ${due.length}개입니다.`:''} ${data.reviews.find(r=>r.date===addDays(date,-1))?.energy==='low'?'어제 에너지가 낮았습니다. 회복 시간을 먼저 지키세요.':''} 최신 일정과 자료 수집 상태를 확인하고 시작하세요.`.slice(0,600);
 }
 
-export function executionSamples(data:WorkspaceData,from:string,through:string){
- const records=(data.executionHistory??[]).filter(r=>r.date>=from&&r.date<=through).sort((a,b)=>a.at.localeCompare(b.at));
- const legacy:ExecutionRecord[]=data.tasks.filter(t=>t.outcome&&t.outcomeOn&&t.outcomeOn>=from&&t.outcomeOn<=through&&!records.some(r=>r.taskId===t.id&&r.date===t.outcomeOn)).map(t=>({id:'legacy:'+t.id,taskId:t.id,title:t.title,projectId:t.projectId,date:t.outcomeOn!,at:t.outcomeOn!+'T00:00:00Z',due:t.due,outcome:t.outcome!,reason:t.outcomeReason??'',estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes??null,impact:t.impact,buffer:null}));
- const latest=new Map<string,ExecutionRecord>();for(const r of [...records,...legacy])latest.set(r.taskId+':'+r.date,r);return {records,legacy,rows:[...latest.values()]};
-}
+export {executionSamples} from './execution-history.ts';
