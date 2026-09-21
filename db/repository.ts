@@ -53,6 +53,38 @@ interface ProjectRelationRow {
   entity_type:ProjectRelation['entityType'];entity_id:string;project_id:string;source_provider:string;
   source_id:string|null;source_date:string|null;resolution:ProjectRelation['resolution'];evidence_json:string;
 }
+type EventRelationRow=Pick<ProjectRelationRow,'entity_type'|'entity_id'|'project_id'|'source_provider'|'source_id'|'source_date'>;
+function googleEventSourceId(event:{id:string;date:string}){
+  const prefix='google:',suffix=`:${event.date}`;
+  return event.id.startsWith(prefix)&&event.id.endsWith(suffix)?event.id.slice(prefix.length,-suffix.length):null;
+}
+function matchEventRelations(events:WorkspaceData['events'],relations:EventRelationRow[]){
+  const matches=new Map<string,WorkspaceData['events'][number]>(),byEntity=new Map(events.map(event=>[event.id,event]));
+  const currentBySource=new Map<string,WorkspaceData['events']>();
+  const relationsBySource=new Map<string,EventRelationRow[]>();
+  for(const event of events){
+    const sourceId=googleEventSourceId(event);
+    if(sourceId===null)continue;
+    const key=`google_calendar\0${sourceId}`,values=currentBySource.get(key)??[];
+    values.push(event);currentBySource.set(key,values);
+  }
+  for(const relation of relations){
+    if(relation.source_id){
+      const key=`${relation.source_provider}\0${relation.source_id}`,values=relationsBySource.get(key)??[];
+      values.push(relation);relationsBySource.set(key,values);
+    }
+    const exact=byEntity.get(relation.entity_id);
+    if(exact)matches.set(relation.entity_id,exact);
+  }
+  // Google singleEvents IDs identify one native instance. Date changes preserve that ID.
+  // Only use it as a fallback when both the current event and canonical relation are unique;
+  // multi-day slices or duplicate historical rows must not spread a project to another slice.
+  for(const [key,candidates] of currentBySource){
+    const sourceRelations=relationsBySource.get(key);
+    if(candidates.length===1&&sourceRelations?.length===1)matches.set(sourceRelations[0].entity_id,candidates[0]);
+  }
+  return matches;
+}
 export async function upsertProjectRelation(db:Database,ownerId:string,relation:ProjectRelation){
   const now=new Date().toISOString();
   const workspace=await db.prepare("SELECT 1 AS found FROM orbit_workspaces WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(state_json,'$.projects') WHERE json_extract(value,'$.id')=?)").bind(ownerId,relation.projectId).first<{found:number}>();
@@ -82,17 +114,22 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
       ...data.events.filter((e) => !e.id.startsWith('google:')),
       ...JSON.parse(external.events_json),
     ];
-  const {results:relations}=await db.prepare("SELECT entity_id,project_id FROM orbit_project_relations WHERE owner_id=? AND entity_type='event'").bind(ownerId).all<{entity_id:string;project_id:string}>();
-  const linked=new Map(relations.map(row=>[row.entity_id,row.project_id]));
+  const {results:relations}=await db.prepare("SELECT entity_type,entity_id,project_id,source_provider,source_id,source_date FROM orbit_project_relations WHERE owner_id=? AND entity_type='event'").bind(ownerId).all<EventRelationRow>();
+  const matched=matchEventRelations(data.events,relations),linked=new Map<string,string>();
+  for(const relation of relations){
+    const event=matched.get(relation.entity_id);
+    if(event)linked.set(event.id,relation.project_id);
+  }
   data.events=data.events.map(event=>linked.has(event.id)?{...event,projectId:linked.get(event.id)}:event);
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
 }
 export async function projectTimeline(db:Database,ownerId:string,projectId:string):Promise<Record<string,unknown>[]>{
-  const snapshot=await readWorkspace(db,ownerId),{results}=await db.prepare('SELECT entity_type,entity_id,source_id,source_date FROM orbit_project_relations WHERE owner_id=? AND project_id=? ORDER BY source_date DESC,entity_type,entity_id').bind(ownerId,projectId).all<{entity_type:string;entity_id:string;source_id:string|null;source_date:string|null}>();
-  const timeline:Record<string,unknown>[]=[];
+  const snapshot=await readWorkspace(db,ownerId),{results}=await db.prepare('SELECT entity_type,entity_id,project_id,source_provider,source_id,source_date FROM orbit_project_relations WHERE owner_id=? ORDER BY source_date DESC,entity_type,entity_id').bind(ownerId).all<EventRelationRow>();
+  const eventMatches=matchEventRelations(snapshot.data.events,results.filter(row=>row.entity_type==='event')),timeline:Record<string,unknown>[]=[];
   for(const row of results){
-    if(row.entity_type==='event'){const value=snapshot.data.events.find(item=>item.id===row.entity_id);if(value)timeline.push({...value,kind:'event',sourceId:row.source_id,sourceDate:row.source_date});continue;}
+    if(row.project_id!==projectId)continue;
+    if(row.entity_type==='event'){const value=eventMatches.get(row.entity_id);if(value)timeline.push({...value,kind:'event',sourceId:row.source_id,sourceDate:row.source_date});continue;}
     if(row.entity_type==='task'){const value=snapshot.data.tasks.find(item=>item.id===row.entity_id);if(value)timeline.push({...value,kind:'task',sourceId:row.source_id,sourceDate:row.source_date});continue;}
     const value=snapshot.data.notes.find(item=>item.id===row.entity_id);if(value)timeline.push({...value,kind:row.entity_type,sourceId:row.source_id,sourceDate:row.source_date});
   }
