@@ -67,7 +67,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from 'sonner';
-import { focusIds } from '@/lib/orbit/derived';
+import { focusIds, projectOpenItems } from '@/lib/orbit/derived';
 import { NoteLibrary } from '@/components/orbit/note-library';
 import { NoteDetail } from '@/components/orbit/note-detail';
 import { InstallBanner, InstallSettings, InstallRootHint } from '@/components/orbit/install-app';
@@ -89,6 +89,7 @@ import { WikiLibrary, WikiRelated } from '@/components/orbit/wiki/wiki-library';
 import { GraphView } from '@/components/orbit/graph/graph-view';
 import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
 import { ProjectStatusControl } from '@/components/orbit/project-status-control';
+import { EventReviewCard } from '@/components/orbit/event-review-card';
 import { addDays, todayInZone, koreanDate, weekDates, weekday } from '@/lib/orbit/dates';
 import type { Preferences } from '@/lib/orbit/model';
 import type { WorkspaceAction } from '@/lib/orbit/validation';
@@ -1087,6 +1088,13 @@ function WorkspaceContent({
               </button>
             ) : null}
           </div>
+          {loaded && (data.eventReviews ?? []).some(review => review.state === 'pending') && (
+            <section className="event-review-queue" aria-label="일정 종료 검토">
+              {(data.eventReviews ?? []).filter(review => review.state === 'pending').map(review => (
+                <EventReviewCard key={review.id} review={review} busy={busy} onResolve={action => void perform(action, action.decision === 'defer' ? '다시 확인할 시각을 저장했습니다.' : '일정 검토를 반영했습니다.')} />
+              ))}
+            </section>
+          )}
           {!loaded && (
             <section className="load-state" role="status">
               <RefreshCw size={22} />
@@ -2023,20 +2031,24 @@ function WorkspaceContent({
                   <span>등록 업무 완료율</span>
                   <strong>{progress(projectDetail.id)}%</strong>
                 </div>
-                <h3>다음 행동</h3>
-                {tasks
-                  .filter((t) => t.projectId === projectDetail.id)
-                  .map((t) => (
-                    <button
-                      className="link-card"
-                      key={t.id}
-                      onClick={() => setDetail({ kind: 'task', id: t.id })}
-                    >
-                      <CheckCheck size={16} />
-                      <span style={{ flex: 1 }}>{t.title}</span>
-                      <Status status={t.status} />
-                    </button>
-                  ))}
+                <div className="detail-keyvalue">
+                  <span>미완료 항목</span>
+                  <strong>{projectOpenItems(data, projectDetail.id).length}개</strong>
+                </div>
+                <h3>미완료 항목</h3>
+                {projectOpenItems(data, projectDetail.id).map((item) => (
+                  <button
+                    className="link-card"
+                    key={`${item.entityType}:${item.id}`}
+                    onClick={() => setDetail({ kind: item.entityType, id: item.id })}
+                  >
+                    {item.entityType === 'event' ? <CalendarDays size={16} /> : <CheckCheck size={16} />}
+                    <span className="item-type">{item.entityType === 'event' ? '일정' : '할 일'}</span>
+                    <span style={{ flex: 1 }}>{item.title}</span>
+                    <small>{item.date}{item.entityType === 'event' ? ` · ${formatTime(item.start)}–${formatTime(item.end)}` : ''}</small>
+                    {item.entityType === 'event' ? <span className="status-badge">{item.status === 'review' ? '검토 필요' : '예정'}</span> : <Status status={item.status} />}
+                  </button>
+                ))}
                 <h3>회의록과 지식</h3>
                 {notes
                   .filter((n) => n.projectId === projectDetail.id)

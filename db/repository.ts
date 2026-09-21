@@ -9,6 +9,7 @@ import {
   type Note,
   type NoteRevision,
   type ReviewDetail,
+  type EventReview,
   type WorkspaceData,
   type WorkspaceSnapshot,
 } from '../lib/orbit/model.ts';
@@ -53,6 +54,10 @@ interface ProjectRelationRow {
   entity_type:ProjectRelation['entityType'];entity_id:string;project_id:string;source_provider:string;
   source_id:string|null;source_date:string|null;resolution:ProjectRelation['resolution'];evidence_json:string;
 }
+interface EventReviewRow {review_id:string;event_id:string;project_id:string;title:string;date:string;start:number;end:number;state:EventReview['state'];requested_at:string;resolved_at:string|null;follow_up_at:string|null;next_task_id:string|null}
+const reviewFromRow=(row:EventReviewRow):EventReview=>({id:row.review_id,eventId:row.event_id,projectId:row.project_id,title:row.title,date:row.date,start:row.start,end:row.end,state:row.state,requestedAt:row.requested_at,...(row.resolved_at?{resolvedAt:row.resolved_at}:{}),...(row.follow_up_at?{followUpAt:row.follow_up_at}:{}),...(row.next_task_id?{nextTaskId:row.next_task_id}:{})});
+function localClock(timeZone:string,now:Date){const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now).map(part=>[part.type,part.value]));return {date:`${p.year}-${p.month}-${p.day}`,minute:Number(p.hour)*60+Number(p.minute)}}
+function zonedEnd(date:string,minute:number,timeZone:string){const target=Date.parse(`${date}T00:00:00Z`)+minute*60000;let utc=target;for(let i=0;i<4;i++){const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc)).map(part=>[part.type,part.value]));const local=Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);if(local===target)return new Date(utc).toISOString();utc+=target-local}throw new DomainError('일정 종료 시각을 확인할 수 없습니다.')}
 type EventRelationRow=Pick<ProjectRelationRow,'entity_type'|'entity_id'|'project_id'|'source_provider'|'source_id'|'source_date'>;
 function googleEventSourceId(event:{id:string;date:string}){
   const prefix='google:',suffix=`:${event.date}`;
@@ -85,13 +90,23 @@ function matchEventRelations(events:WorkspaceData['events'],relations:EventRelat
   }
   return matches;
 }
-export async function upsertProjectRelation(db:Database,ownerId:string,relation:ProjectRelation){
-  const now=new Date().toISOString();
-  const workspace=await db.prepare("SELECT 1 AS found FROM orbit_workspaces WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(state_json,'$.projects') WHERE json_extract(value,'$.id')=?)").bind(ownerId,relation.projectId).first<{found:number}>();
-  if(!workspace)throw new DomainError('연결할 project가 이 owner의 워크스페이스에 없습니다.');
-  await db.prepare(`INSERT INTO orbit_project_relations(owner_id,entity_type,entity_id,project_id,source_provider,source_id,source_date,resolution,evidence_json,created_at,updated_at)
+export async function upsertProjectRelation(db:Database,ownerId:string,relation:ProjectRelation,now=new Date()){
+  const timestamp=now.toISOString();
+  const row=await db.prepare("SELECT revision,state_json,updated_at FROM orbit_workspaces WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(state_json,'$.projects') WHERE json_extract(value,'$.id')=?)").bind(ownerId,relation.projectId).first<Row>();
+  if(!row)throw new DomainError('연결할 project가 이 owner의 워크스페이스에 없습니다.');
+  const statements=[db.prepare(`INSERT INTO orbit_project_relations(owner_id,entity_type,entity_id,project_id,source_provider,source_id,source_date,resolution,evidence_json,created_at,updated_at)
  VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,entity_type,entity_id) DO UPDATE SET project_id=excluded.project_id,source_provider=excluded.source_provider,source_id=excluded.source_id,source_date=excluded.source_date,resolution=excluded.resolution,evidence_json=excluded.evidence_json,updated_at=excluded.updated_at`)
-    .bind(ownerId,relation.entityType,relation.entityId,relation.projectId,relation.sourceProvider,relation.sourceId,relation.sourceDate,relation.resolution,JSON.stringify(relation.evidence),now,now).run();
+    .bind(ownerId,relation.entityType,relation.entityId,relation.projectId,relation.sourceProvider,relation.sourceId,relation.sourceDate,relation.resolution,JSON.stringify(relation.evidence),timestamp,timestamp)];
+  const data=JSON.parse(row.state_json) as WorkspaceData,linked=data.projects.find(project=>project.id===relation.projectId),today=localClock(data.preferences.timeZone,now).date;
+  if(relation.entityType==='event'&&relation.sourceDate&&relation.sourceDate>=today&&linked?.status==='completed'){
+    linked.status='active';
+    if(linked.statusHistory?.at(-1)?.status!=='active')linked.statusHistory=[...(linked.statusHistory??[]),{status:'active' as const,changedOn:today}].slice(-100);
+    const mutation=crypto.randomUUID();
+    statements.push(db.prepare('UPDATE orbit_workspaces SET revision=revision+1,state_json=?,mutation_id=?,updated_at=? WHERE owner_id=? AND revision=?').bind(JSON.stringify(data),mutation,timestamp,ownerId,row.revision));
+  }
+  const result=await db.batch(statements);
+  if(result[0]?.meta?.changes!==1)throw new RevisionConflict('프로젝트 일정 연결을 저장하지 못했습니다. 다시 동기화해 주세요.');
+  if(statements.length>1&&result[1]?.meta?.changes!==1)throw new RevisionConflict('일정 연결 중 프로젝트가 변경됐습니다. 다시 동기화해 주세요.');
 }
 export async function readProjectRelation(db:Database,ownerId:string,entityType:ProjectRelation['entityType'],entityId:string):Promise<ProjectRelation|null>{
   const row=await db.prepare('SELECT entity_type,entity_id,project_id,source_provider,source_id,source_date,resolution,evidence_json FROM orbit_project_relations WHERE owner_id=? AND entity_type=? AND entity_id=?').bind(ownerId,entityType,entityId).first<ProjectRelationRow>();
@@ -99,7 +114,7 @@ export async function readProjectRelation(db:Database,ownerId:string,entityType:
 }
 export class RevisionConflict extends Error {}
 export class NoteNotFound extends Error {}
-export async function readWorkspace(db: Database, ownerId: string): Promise<WorkspaceSnapshot> {
+export async function readWorkspace(db: Database, ownerId: string, now = new Date()): Promise<WorkspaceSnapshot> {
   const row = await db
     .prepare('SELECT revision, state_json, updated_at FROM orbit_workspaces WHERE owner_id = ?')
     .bind(ownerId)
@@ -115,12 +130,30 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
       ...JSON.parse(external.events_json),
     ];
   const {results:relations}=await db.prepare("SELECT entity_type,entity_id,project_id,source_provider,source_id,source_date FROM orbit_project_relations WHERE owner_id=? AND entity_type='event'").bind(ownerId).all<EventRelationRow>();
-  const matched=matchEventRelations(data.events,relations),linked=new Map<string,string>();
+  const matched=matchEventRelations(data.events,relations),linked=new Map<string,string>(),canonical=new Map<string,string>();
   for(const relation of relations){
     const event=matched.get(relation.entity_id);
-    if(event)linked.set(event.id,relation.project_id);
+    if(event){linked.set(event.id,relation.project_id);canonical.set(event.id,relation.entity_id)}
   }
   data.events=data.events.map(event=>linked.has(event.id)?{...event,projectId:linked.get(event.id)}:event);
+  const {results:storedReviews}=await db.prepare('SELECT review_id,event_id,project_id,title,date,start,end,state,requested_at,resolved_at,follow_up_at,next_task_id FROM orbit_event_reviews WHERE owner_id=? ORDER BY requested_at,review_id').bind(ownerId).all<EventReviewRow>();
+  const byId=new Map(storedReviews.map(review=>[review.review_id,review])),active=new Set<string>(),clock=localClock(data.preferences.timeZone,now),timestamp=now.toISOString();
+  for(const event of data.events){
+    if(!event.projectId||event.id.startsWith('approved:'))continue;
+    const reviewId=canonical.get(event.id)??event.id;active.add(reviewId);
+    const ended=event.date<clock.date||(event.date===clock.date&&event.end<=clock.minute),endAt=zonedEnd(event.date,event.end,data.preferences.timeZone),stored=byId.get(reviewId);
+    if(!stored&&ended){
+      await db.prepare("INSERT OR IGNORE INTO orbit_event_reviews(owner_id,review_id,event_id,project_id,title,date,start,end,state,requested_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'pending',?,?)").bind(ownerId,reviewId,event.id,event.projectId,event.title,event.date,event.start,event.end,timestamp,timestamp).run();
+    }else if(stored){
+      let state=stored.state,followUp=stored.follow_up_at;
+      if(state==='pending'&&!ended){state='deferred';followUp=endAt}
+      else if(state==='deferred'&&ended&&followUp&&Date.parse(followUp)<=now.getTime()){state='pending';followUp=null}
+      await db.prepare("UPDATE orbit_event_reviews SET event_id=?,project_id=?,title=?,date=?,start=?,end=?,state=?,follow_up_at=?,updated_at=? WHERE owner_id=? AND review_id=? AND state NOT IN ('completed','cancelled')").bind(event.id,event.projectId,event.title,event.date,event.start,event.end,state,followUp,timestamp,ownerId,reviewId).run();
+    }
+  }
+  for(const review of storedReviews)if(!active.has(review.review_id)&&(review.state==='pending'||review.state==='deferred'))await db.prepare("UPDATE orbit_event_reviews SET state='cancelled',updated_at=? WHERE owner_id=? AND review_id=? AND state IN ('pending','deferred')").bind(timestamp,ownerId,review.review_id).run();
+  const {results:reviews}=await db.prepare('SELECT review_id,event_id,project_id,title,date,start,end,state,requested_at,resolved_at,follow_up_at,next_task_id FROM orbit_event_reviews WHERE owner_id=? ORDER BY requested_at,review_id').bind(ownerId).all<EventReviewRow>();
+  data.eventReviews=reviews.map(reviewFromRow);
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
 }
@@ -295,9 +328,9 @@ export async function writeCommand(
   if (existing) {
     if (existing.action_hash !== hash)
       throw new RevisionConflict('같은 요청 번호에 다른 변경이 들어왔습니다. 새로 시도해 주세요.');
-    return readWorkspace(db, ownerId);
+    return readWorkspace(db, ownerId, now);
   }
-  const current = await readWorkspace(db, ownerId);
+  const current = await readWorkspace(db, ownerId, now);
   if (current.revision !== command.expectedRevision)
     throw new RevisionConflict(
       '다른 기기에서 내용이 변경됐습니다. 최신 내용을 불러온 뒤 다시 적용해 주세요.',
@@ -330,6 +363,8 @@ export async function writeCommand(
       throw new RevisionConflict('기록이 변경됐습니다. 작성 중인 내용을 보관하고 최신 내용을 확인해 주세요.');
   }
   const next = applyAction(working, action, now);
+  const resolvedEventReview=action.type==='event.review'?next.eventReviews?.find(review=>review.id===action.reviewId):undefined;
+  delete next.eventReviews;
   next.events = next.events.filter((e) => !e.id.startsWith('google:'));
   const timestamp = now.toISOString(),
     revision = current.revision + 1;
@@ -428,6 +463,9 @@ export async function writeCommand(
         )
         .bind(timestamp, ownerId, action.id, ...gateValues),
     );
+  if(action.type==='event.review'&&resolvedEventReview)
+    statements.push(db.prepare(`UPDATE orbit_event_reviews SET state=?,resolved_at=?,follow_up_at=?,next_task_id=?,updated_at=? WHERE owner_id=? AND review_id=? AND state='pending' AND ${gate}`)
+      .bind(resolvedEventReview.state,resolvedEventReview.resolvedAt??null,resolvedEventReview.followUpAt??null,resolvedEventReview.nextTaskId??null,timestamp,ownerId,resolvedEventReview.id,...gateValues));
   if ((action.type === 'review.saveGenerate' || action.type === 'review.save') && action.detail)
     statements.push(
       db
@@ -454,5 +492,5 @@ export async function writeCommand(
         '다른 기기에서 먼저 저장했습니다. 최신 내용을 불러온 뒤 다시 적용해 주세요.',
       );
   }
-  return readWorkspace(db, ownerId);
+  return readWorkspace(db, ownerId, now);
 }

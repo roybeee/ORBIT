@@ -111,18 +111,19 @@ export function applyAction(
     t.actualMinutes = (t.actualMinutes ?? 0) + elapsedMinutes(t.startedAt, now);
     delete t.startedAt;
   };
+  const reopenProject = (destination: Project | undefined) => {
+    if (destination?.status !== 'completed') return;
+    destination.status = 'active';
+    if (destination.statusHistory?.at(-1)?.status !== 'active')
+      destination.statusHistory = [...(destination.statusHistory ?? []), { status: 'active' as const, changedOn: today }].slice(-100);
+  };
   const reopenProjectsWithNewIncompleteTasks = () => {
     for (const t of data.tasks) {
       if (t.status === 'done') continue;
       const previous = current.tasks.find((item) => item.id === t.id);
       if (previous && previous.projectId === t.projectId && previous.status !== 'done') continue;
       const destination = data.projects.find((p) => p.id === t.projectId);
-      if (destination?.status !== 'completed') continue;
-      destination.status = 'active';
-      destination.statusHistory = [
-        ...(destination.statusHistory ?? []),
-        { status: 'active' as const, changedOn: today },
-      ].slice(-100);
+      reopenProject(destination);
     }
   };
   const assertFocusRoom = (t: Task, date: string) => {
@@ -475,6 +476,9 @@ export function applyAction(
       if (data.events.some((x) => x.id !== e.id && x.date === e.date && overlaps(x, e)))
         fail('같은 시간에 다른 일정이 있습니다.');
       data.events = replace(data.events, e);
+      const localTime=new Intl.DateTimeFormat('en-GB',{timeZone:data.preferences.timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
+      const minute=Number(localTime.find(part=>part.type==='hour')?.value??0)*60+Number(localTime.find(part=>part.type==='minute')?.value??0);
+      if(e.projectId&&(e.date>today||(e.date===today&&e.end>minute)))reopenProject(data.projects.find(p=>p.id===e.projectId));
       break;
     }
     case 'event.attach': {
@@ -485,6 +489,23 @@ export function applyAction(
       if (action.id.startsWith('google:')) fail('Google 일정은 원본 캘린더에서 삭제해 주세요.');
       if (action.id.startsWith('approved:')) fail('집중 시간은 제안 화면에서 승인을 취소해 주세요.');
       data.events = data.events.filter((e) => e.id !== action.id);
+      break;
+    }
+    case 'event.review': {
+      const review=data.eventReviews?.find(item=>item.id===action.reviewId)??fail('검토할 일정을 찾을 수 없습니다.');
+      if(review.state!=='pending')fail('이미 처리했거나 아직 검토할 수 없는 일정입니다.');
+      if(action.decision==='defer'){
+        if(Date.parse(action.followUpAt)<=now.getTime())fail('다시 확인할 시각은 현재보다 늦어야 합니다.');
+        review.state='deferred';review.followUpAt=action.followUpAt;delete review.resolvedAt;
+        break;
+      }
+      review.state='completed';review.resolvedAt=now.toISOString();delete review.followUpAt;
+      if(action.decision==='next'){
+        const id=`followup:${review.id}`.slice(0,100);
+        if(!data.tasks.some(item=>item.id===id))data.tasks.push({id,title:action.title,projectId:review.projectId,status:'todo',duration:30,due:action.due,impact:3,focus:false,definition:`${review.title} 후속 조치`});
+        review.nextTaskId=id;
+        reopenProject(data.projects.find(project=>project.id===review.projectId));
+      }
       break;
     }
     case 'review.save':

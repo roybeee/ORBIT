@@ -8,6 +8,20 @@ export function focusIds(data: WorkspaceData, date: string) {
       .map((e) => e.taskId!),
   ]);
 }
+export type ProjectOpenItem =
+  | { entityType: 'task'; id: string; title: string; date: string; status: Task['status']; task: Task }
+  | { entityType: 'event'; id: string; title: string; date: string; start: number; end: number; status: 'open' | 'review'; event: WorkspaceData['events'][number] };
+export function projectOpenItems(data: WorkspaceData, projectId: string): ProjectOpenItem[] {
+  const reviewByEvent = new Map((data.eventReviews ?? []).map(review => [review.eventId, review]));
+  return [
+    ...data.tasks.filter(task => task.projectId === projectId && task.status !== 'done').map(task => ({entityType:'task' as const,id:task.id,title:task.title,date:task.due,status:task.status,task})),
+    ...data.events.filter(event => event.projectId === projectId).flatMap(event => {
+      const review=reviewByEvent.get(event.id);
+      if(review?.state==='completed'||review?.state==='cancelled')return [];
+      return [{entityType:'event' as const,id:event.id,title:event.title,date:event.date,start:event.start,end:event.end,status:review?.state==='pending'?'review' as const:'open' as const,event}];
+    }),
+  ].sort((a,b)=>a.date.localeCompare(b.date)||a.entityType.localeCompare(b.entityType)||a.id.localeCompare(b.id));
+}
 // D+ streak: consecutive checked days ending today or yesterday (today may still be open).
 export function habitStreak(habit: Habit, today: string) {
   const log = new Set(habit.log);

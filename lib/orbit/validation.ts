@@ -220,7 +220,7 @@ export const reviewDetailSchema = z
     habitChecks: z.array(id).max(3),
   })
   .strict();
-export const actionSchema = z.discriminatedUnion('type', [
+const baseActionSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('memory.upsert'),memory:z.object({id,statement:z.string().trim().min(1).max(600),kind:z.enum(['preference','constraint','strategy','reflection']),origin:z.enum(['user','records','saju']),sources:z.array(z.object({kind:z.enum(['note','task','review']),id,revision:z.number().int().positive().optional()}).strict()).max(6)}).strict().refine(m=>m.origin!=='saju'||m.kind==='reflection','사주 자료는 자기 탐색으로 보관합니다.').refine(m=>m.origin!=='records'||m.sources.length>0,'연결할 기록이 필요합니다.')}).strict(),
   z.object({type:z.literal('memory.delete'),id}).strict(),
   z.object({type:z.literal('quest.plan'),goalId:id,project:projectSchema.optional(),tasks:z.array(taskSchema.pick({id:true,title:true,projectId:true,duration:true,due:true,impact:true,definition:true,dependsOn:true,noteId:true,quadrant:true,cognition:true})).min(1).max(12).refine(tasks=>new Set(tasks.map(t=>t.id)).size===tasks.length,'같은 퀘스트가 두 번 있습니다.')}).strict(),
@@ -340,6 +340,12 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('risk.upsert'), risk: riskSchema }).strict(),
   z.object({ type: z.literal('risk.close'), id }).strict(),
 ]);
+const eventReviewActionSchema = z.discriminatedUnion('decision', [
+  z.object({ type: z.literal('event.review'), reviewId: id, decision: z.literal('complete') }).strict(),
+  z.object({ type: z.literal('event.review'), reviewId: id, decision: z.literal('next'), title, due: dateSchema }).strict(),
+  z.object({ type: z.literal('event.review'), reviewId: id, decision: z.literal('defer'), followUpAt: z.string().datetime() }).strict(),
+]);
+export const actionSchema = z.union([baseActionSchema, eventReviewActionSchema]);
 export type WorkspaceAction =
   | z.infer<typeof actionSchema>
   | { type: 'proposal.brief'; brief: DailyBrief; energy: 'low' | 'normal' | 'high' };

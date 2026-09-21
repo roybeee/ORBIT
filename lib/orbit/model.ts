@@ -148,6 +148,21 @@ export interface CalendarEvent {
   projectId?: string;
   taskId?: string;
 }
+export type EventReviewState = 'pending' | 'completed' | 'deferred' | 'cancelled';
+export interface EventReview {
+  id: string;
+  eventId: string;
+  projectId: string;
+  title: string;
+  date: string;
+  start: number;
+  end: number;
+  state: EventReviewState;
+  requestedAt: string;
+  resolvedAt?: string;
+  followUpAt?: string;
+  nextTaskId?: string;
+}
 export interface ProposalItem {
   draftTask?: Task;
   id: string;
@@ -249,6 +264,8 @@ export interface WorkspaceData {
   tasks: Task[];
   notes: Note[];
   events: CalendarEvent[];
+  /** Foreground-generated durable review queue; stored in its owner-scoped SQL table. */
+  eventReviews?: EventReview[];
   proposals: Proposal[];
   reviews: DailyReview[];
   preferences: Preferences;

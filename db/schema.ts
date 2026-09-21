@@ -65,6 +65,16 @@ export const projectRelations=sqliteTable('orbit_project_relations',{
  check('orbit_project_relation_entity_type_check',sql`${table.entityType} in ('event','task','note','meeting','document')`),
  check('orbit_project_relation_resolution_check',sql`${table.resolution} in ('explicit','alias','existing','backfill')`),
 ]);
+// Event completion is approval-driven. The owner-scoped key makes foreground sync replay-safe.
+export const eventReviews=sqliteTable('orbit_event_reviews',{
+ ownerId:text('owner_id').notNull(),reviewId:text('review_id').notNull(),eventId:text('event_id').notNull(),projectId:text('project_id').notNull(),
+ title:text('title').notNull(),date:text('date').notNull(),start:integer('start').notNull(),end:integer('end').notNull(),state:text('state').notNull().default('pending'),
+ requestedAt:text('requested_at').notNull(),resolvedAt:text('resolved_at'),followUpAt:text('follow_up_at'),nextTaskId:text('next_task_id'),updatedAt:text('updated_at').notNull(),
+},table=>[
+ primaryKey({columns:[table.ownerId,table.reviewId]}),
+ index('idx_orbit_event_review_queue').on(table.ownerId,table.state,table.followUpAt,table.requestedAt),
+ check('orbit_event_review_state_check',sql`${table.state} in ('pending','completed','deferred','cancelled')`),
+]);
 // Durable native Hermes runs: reconnecting a phone resumes the same run.
 export const hermesJobs=sqliteTable('orbit_hermes_jobs',{
  ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),turnLease:text('turn_lease').notNull(),
