@@ -1,4 +1,7 @@
-import test from 'node:test';
+import test, {beforeEach} from 'node:test';
+// Fixtures describe September 21, not the build host's wall clock. Individual
+// rollover tests can still advance their own clock; node:test restores it.
+beforeEach(t=>t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-21T03:00:00Z')}));
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createDatabase} from './sqlite-d1.mjs';
@@ -140,7 +143,7 @@ test('deleting a task removes only its unchanged owned Google reminder',()=>fixt
 
 test('midnight rollover moves the same Google task, includes old backlog, and stops after completion',t=>fixture(async db=>{
  const {queueTaskCalendarBackfill}=await import('../db/repository.ts');
- t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-21T03:00:00Z')});
+ t.mock.timers.setTime(new Date('2026-09-21T03:00:00Z').getTime());
  await taskFixture(db);await connect(db);const g=google();
  await flushCalendarOutbox(db,'a',env,'task-due:recruit');const id=g.remote.id;
  assert.equal(g.remote.start.date,'2026-09-21');
