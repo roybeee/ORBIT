@@ -4,6 +4,8 @@ import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,statSync,rmSync,existsS
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
+import {testPython} from './test-python.mjs';
+const python=testPython();
 const helper=new URL('../scripts/configure-hermes-orbit.py',import.meta.url).pathname;
 function fixture(fn){const root=mkdtempSync(join(tmpdir(),'orbit-hermes-'));try{
  const profile=join(root,'profile'),bin=join(root,'bin');mkdirSync(profile);mkdirSync(bin);
@@ -26,7 +28,12 @@ else: c['gateway']={'api_server':{'max_concurrent_runs':int(a[3])}}
 (p/'config.yaml').write_text(json.dumps(c))
 if os.environ.get('FAIL_KEY')==a[2]: print('synthetic-write-secret',file=sys.stderr); sys.exit(1)
 `,{mode:0o700});
- const run=(args=[],extra={})=>spawnSync('python3',[helper,'--profile-home',profile,...args],{env:{...process.env,PATH:bin+':'+process.env.PATH,...extra},encoding:'utf8'});
+ const run=(args=[],extra={})=>{
+  const result=spawnSync(python.executable,[helper,'--profile-home',profile,...args],{env:{...python.env,PATH:bin+':'+python.env.PATH,...extra},encoding:'utf8',timeout:30_000});
+  assert.ok(!result.error,`Python setup process failed: ${result.error?.code}`);
+  assert.equal(result.signal,null,'Python setup process must not be killed');
+  return result;
+ };
  const read=()=>JSON.parse(readFileSync(join(profile,'config.yaml'),'utf8'));
  fn({root,profile,bin,initial,config,secret,run,read});
 }finally{rmSync(root,{recursive:true,force:true})}}
