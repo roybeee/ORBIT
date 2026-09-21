@@ -64,9 +64,9 @@ function googleEventSourceId(event:{id:string;date:string}){
   return event.id.startsWith(prefix)&&event.id.endsWith(suffix)?event.id.slice(prefix.length,-suffix.length):null;
 }
 async function eventReviewId(canonicalEventId:string){
-  // Keep existing short IDs stable for replay/migration compatibility. Only external IDs
-  // that exceed the shared action-ID contract are replaced by a bounded internal key.
-  if(canonicalEventId.length<=100)return canonicalEventId;
+  // Keep existing ordinary short IDs stable for replay/migration compatibility. The
+  // generated namespace is reserved so a crafted short event cannot alias a hash key.
+  if(canonicalEventId.length<=100&&!canonicalEventId.startsWith('event-review:'))return canonicalEventId;
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonicalEventId));
   return `event-review:${Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')}`;
 }

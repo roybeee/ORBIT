@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, {after} from 'node:test';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {createServer} from 'vite';
 import {fileURLToPath} from 'node:url';
 import {createDatabase} from './sqlite-d1.mjs';
@@ -126,6 +126,21 @@ test('maximum Google IDs remain distinct, replay exactly once, and preserve shor
   assert.ok(longReviews.every(review=>review.id.startsWith('event-review:')&&review.id.length<=100));
   assert.deepEqual(second.data.eventReviews.map(review=>review.id),first.data.eventReviews.map(review=>review.id),'review IDs are deterministic across reads');
   assert.equal(shortReview.id,shortReview.eventId,'existing short review IDs remain replay-compatible');
+ }finally{db.close()}
+});
+
+test('the generated review namespace cannot alias a deliberately matching short event ID',async()=>{
+ const db=createDatabase();try{
+  let state=await seeded(db);
+  const nativeId='c'.repeat(1024),externalId=`google:${nativeId}:${event.date}`;
+  const matchingShortId=`event-review:${createHash('sha256').update(externalId).digest('hex')}`;
+  state=await writeCommand(db,'alice',command(state.revision,{type:'event.upsert',event:{...event,id:matchingShortId,title:'내부 namespace와 같은 짧은 일정'}}),beforeEnd);
+  await db.prepare('INSERT INTO orbit_calendar_cache(owner_id,events_json,time_zone,range_start,range_end,updated_at) VALUES(?,?,?,?,?,?)').bind('alice',JSON.stringify([{...event,id:externalId,title:'최대 길이 외부 일정',projectId:undefined}]),'Asia/Seoul','2026-09-15','2026-10-15',afterEnd.toISOString()).run();
+  await upsertProjectRelation(db,'alice',{entityType:'event',entityId:externalId,projectId:project.id,sourceProvider:'google_calendar',sourceId:nativeId,sourceDate:event.date,resolution:'explicit',evidence:['fixture']},beforeEnd);
+  state=await readWorkspace(db,'alice',afterEnd);
+  assert.equal(state.data.eventReviews.length,2,'reserved namespace events and long external events need separate reviews');
+  assert.equal(new Set(state.data.eventReviews.map(review=>review.id)).size,2);
+  assert.deepEqual(new Set(state.data.eventReviews.map(review=>review.eventId)),new Set([matchingShortId,externalId]));
  }finally{db.close()}
 });
 
