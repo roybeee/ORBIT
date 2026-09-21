@@ -1,3 +1,4 @@
+import {eventScopes} from './event-details.ts';
 import {calendarCategories,calendarPalette} from './calendar-categories.ts';
 import {phase4Actions} from './phase4-schema.ts';
 import { z } from 'zod';
@@ -40,6 +41,8 @@ export const projectSchema = z
   .strict();
 export const taskSchema = z
   .object({
+    description:z.string().max(20000).optional(),
+    scope:z.enum(eventScopes).optional(),
     color:z.string().refine(v=>calendarPalette.some(p=>p[0]===v)).nullable().optional(),
     category:z.enum(calendarCategories).optional(),
     id,
@@ -139,6 +142,10 @@ export const noteSchema = z
   .strict();
 export const eventSchema = z
   .object({
+    description:z.string().max(20000).optional(),
+    scope:z.enum(eventScopes).optional(),
+    projectAutoLink:z.boolean().optional(),
+    projectLink:z.object({method:z.enum(['keyword','related']),matched:z.array(z.string().max(160)).max(4)}).strict().optional(),
     color:z.string().refine(v=>calendarPalette.some(p=>p[0]===v)).nullable().optional(),
     category:z.enum(calendarCategories).optional(),
     id,
@@ -257,7 +264,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('care.delete'), id }).strict(),
   z.object({ type: z.literal('care.check'), id, checked: z.boolean() }).strict(),
   z.object({type:z.literal('wiki.import'),project:projectSchema,notes:z.array(noteSchema).min(1).max(100).refine(list=>new Set(list.map(n=>n.id)).size===list.length)}).strict(),
-  z.object({type:z.literal('task.schedule'),taskId:id,eventId:z.string().uuid(),date:dateSchema,start:minute,minutes:z.number().int().min(5).max(480),resolveWaiting:z.boolean().optional()}).strict(),
+  z.object({type:z.literal('task.schedule'),taskId:id,eventId:z.string().uuid(),date:dateSchema,start:minute,minutes:z.number().int().min(5).max(480),color:z.string().refine(v=>calendarPalette.some(p=>p[0]===v)).nullable().optional(),resolveWaiting:z.boolean().optional(),overlapConfirmation:z.string().max(1000000).optional()}).strict(),
   z.object({ type: z.literal('project.upsert'), project: projectSchema }).strict(),
   z.object({type:z.literal('project.manage'),id,status:projectStatus,due:dateSchema.optional(),priority:z.number().int().min(1).max(5),goalId:id.nullable(),result:z.string().max(4000)}).strict(),
   z.object({type:z.literal('project.milestone.upsert'),id,milestone:milestoneSchema}).strict(),
@@ -343,7 +350,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z
-    .object({ type: z.literal('event.upsert'), event: eventSchema, attachmentIds: attachmentIds.optional() })
+    .object({ type: z.literal('event.upsert'), event: eventSchema, overlapConfirmation:z.string().max(1000000).optional(), attachmentIds: attachmentIds.optional() })
     .strict(),
   z.object({ type: z.literal('event.delete'), id }).strict(),
   z.object({ type: z.literal('event.attach'), id, attachmentIds }).strict(),
@@ -354,7 +361,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('proposal.replan.prepare'),date:dateSchema}).strict(),
   z.object({type:z.literal('proposal.replan.apply'),date:dateSchema,basis:z.string().max(100000),choice:z.union([z.literal(0),z.literal(1)])}).strict(),
   z.object({ type: z.literal('proposal.generate'), date: dateSchema, energy }).strict(),
-  z.object({ type: z.literal('proposal.approve'), date: dateSchema, itemId: id }).strict(),
+  z.object({ type: z.literal('proposal.approve'), date: dateSchema, itemId: id, overlapConfirmation:z.string().max(1000000).optional() }).strict(),
   z
     .object({
       type: z.literal('proposal.defer'),

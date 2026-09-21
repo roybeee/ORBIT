@@ -11,7 +11,7 @@ export function taskAfterWaiting(task:Task,resolve=false):Task{
 export function scheduleBusyEvents(data:WorkspaceData,date:string):CalendarEvent[]{
  return planningEvents([...data.events,...careEvents(data,date),...protectedEvents(data,date)].filter(e=>e.date===date),date,data.preferences);
 }
-export function taskScheduleProblem(data:WorkspaceData,input:TaskTime,now=new Date()):string|null{
+export function taskScheduleProblem(data:WorkspaceData,input:TaskTime,now=new Date(),reviewOverlap=false):string|null{
  const {date,start,minutes,taskId}=input;
  if(!validDate(date))return '배정할 날짜를 선택해 주세요.';
  if(!Number.isInteger(start)||start<0||start>=1440)return '시작 시간을 선택해 주세요.';
@@ -22,6 +22,7 @@ export function taskScheduleProblem(data:WorkspaceData,input:TaskTime,now=new Da
  const eligible=workEligibility(data,taskAfterWaiting(task,input.resolveWaiting),date);
  if(!eligible.allowed)return eligible.reason;
  if(data.events.some(e=>e.date===date&&(e.taskId===taskId||e.google?.orbitEventId==='task-due:'+taskId&&!e.allDay)))return '이미 이날 배정된 시간이 있어요. 일정에서 확인하거나 다른 날짜를 선택해 주세요.';
+ if(reviewOverlap)return null;
  const conflict=scheduleBusyEvents(data,date).find(e=>e.start<start+minutes&&e.end>start);
  return conflict?`‘${conflict.title}’ 시간과 겹쳐요. 다른 시간을 골라 주세요.`:null;
 }

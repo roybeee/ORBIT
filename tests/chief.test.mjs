@@ -64,13 +64,13 @@ test('Seoul midnight rolls over check-in and care completion; original workspace
  const next=chiefOfStaff(data,new Date('2026-09-08T15:01:00Z'));assert.equal(next.today,'2026-09-09');assert.equal(next.checkin,undefined);
  assert.equal(chiefOfStaff(emptyWorkspace(),now).primary.kind,'checkin');
 });
-test('care blocks protect proposal placement and late changes cannot be approved over them',()=>{
+test('care blocks protect proposal placement and late conflicts require explicit overlap approval',()=>{
  let data=fixture({careRoutines:[{...routine,start:540,minutes:120}],preferences:{...emptyWorkspace().preferences,laserMinutes:30}});
  data=applyAction(data,{type:'proposal.generate',date:today,energy:'normal'},now);
  assert.ok(data.proposals[0].items.every(i=>i.start>=660||i.end<=540));
  const item=data.proposals[0].items[0];assert.ok(item);
  data.careRoutines=[{...routine,start:item.start,minutes:30}];
- assert.throws(()=>applyAction(data,{type:'proposal.approve',date:today,itemId:item.id},now),/돌봄/);
+ assert.throws(()=>applyAction(data,{type:'proposal.approve',date:today,itemId:item.id},now),/겹치는 일정/);
  assert.equal(data.events.length,0);
 });
 test('routine history survives edits, unknown goals are rejected and measurements are finite',()=>{

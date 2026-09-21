@@ -1,0 +1,1 @@
+ALTER TABLE `orbit_agent_actions` ADD `guard_json` text DEFAULT '{}' NOT NULL;

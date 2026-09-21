@@ -81,8 +81,9 @@ test('storage measurement excludes external cache and stored bodies, counts UTF-
  assert.equal(workspaceUsage(d).bytes,new TextEncoder().encode(JSON.stringify(persistedWorkspace(d))).length);
  assert.ok(workspaceUsage(d).bytes<10000);assert.equal(d.notes[0].body.length,20000);
 });
-test('restore preview rejects oversized merged data before offering confirmation',()=>{
+test('restore preview accepts merged data larger than the former aggregate cap',()=>{
  const current=data();current.tasks=Array.from({length:1600},(_,i)=>({...task,id:'large'+i,title:'한'.repeat(160)}));
  const source=data();const payload={format:'orbit-backup/v2',capturedAt:now.toISOString(),data:source,noteHistory:[],reviewDetails:[]};
- assert.throws(()=>previewRestore(current,payload,[{category:'tasks',id:'t'}]),/저장 한도/);
+ const plan=previewRestore(current,payload,[{category:'tasks',id:'t'}]);
+ assert.ok(plan.usage.bytes>950000);assert.equal(plan.next.tasks.length,1601);assert.deepEqual(plan.next.tasks.slice(0,1600),current.tasks);
 });

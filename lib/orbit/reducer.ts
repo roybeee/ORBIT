@@ -1,4 +1,4 @@
-import {WORKSPACE_LIMIT_BYTES,workspaceUsage} from './storage-usage.ts';
+import {registrationOverlap} from './overlap-review.ts';
 import {workEligibility} from './work-policy.ts';
 import {reconcileProjectWork} from './project-management.ts';
 import {reorderProjectSlots} from './project-order.ts';
@@ -12,6 +12,7 @@ import {activeAllocation,protectedEvents,weeklyCapacity,portfolioBasis,operating
 import {questReadiness,memorySignature} from './pacemaker.ts';
 import { wikiMatches, wikiLinks } from './wiki/relations.ts';
 import { automaticProject, normalize } from './classify.ts';
+import {linkEventProject} from './project-context.ts';
 import { planFromBrief } from './brief/planning.ts';
 import type { WorkspaceData, Task, Proposal, Improvement, Project } from './model.ts';
 import type { WorkspaceAction } from './validation.ts';
@@ -437,6 +438,8 @@ export function applyAction(
       t.noteCitation = old?.noteId === t.noteId ? old?.noteCitation : undefined;
       // Execution history survives edits that omit it (agent proposals send full records).
       for (const key of [
+        'description',
+        'scope',
         'category',
         'color',
         'actualMinutes',
@@ -466,6 +469,10 @@ export function applyAction(
       for (const e of data.events.filter((e) => e.taskId === t.id)) {
         e.title = t.title;
         e.projectId = t.projectId;
+        if(t.description!==undefined)e.description = t.description;
+        if(t.scope!==undefined)e.scope = t.scope;
+        if(t.category!==undefined)e.category = t.category;
+        if(t.color!==undefined)e.color = t.color;
       }
       break;
     }
@@ -663,20 +670,25 @@ export function applyAction(
       break;
     case 'task.schedule': {
       if(data.events.some(e=>e.id===action.eventId))fail('이미 저장된 일정입니다. 최신 일정을 확인해 주세요.');
-      const problem=taskScheduleProblem(data,action,now);if(problem)fail(problem);
+      const problem=taskScheduleProblem(data,action,now,true);if(problem)fail(problem);
+      const review=registrationOverlap(data,action);if(review&&action.overlapConfirmation!==review.confirmation)fail('겹치는 일정이 있습니다. 현재 충돌 내용을 확인하고 등록을 승인해 주세요.');
       const task=data.tasks.find(t=>t.id===action.taskId)!;
+      if(action.color!==undefined){
+        task.color=action.color;
+        for(const linked of data.events.filter(e=>e.taskId===task.id&&!e.google))linked.color=action.color;
+      }
       if(action.resolveWaiting)Object.assign(task,taskAfterWaiting(task,true));
-      data.events.push({id:action.eventId,taskId:task.id,projectId:task.projectId,title:task.title,category:categoryOf(task),date:action.date,start:action.start,end:action.start+action.minutes,kind:'focus'});
+      data.events.push({id:action.eventId,taskId:task.id,projectId:task.projectId,title:task.title,description:task.description,scope:task.scope,color:task.color,category:categoryOf(task),date:action.date,start:action.start,end:action.start+action.minutes,kind:'focus'});
       break;
     }
     case 'event.upsert': {
       const e = action.event;
       if (e.id.startsWith('google:')) fail('Google 일정은 원본 캘린더에서 수정해 주세요.');
       if (e.id.startsWith('approved:')) fail('승인한 집중 시간은 제안 화면에서 조정해 주세요.');
-      if (data.events.some((x) => x.id !== e.id && x.google?.orbitEventId !== e.id && x.date === e.date && overlaps(x, e)))
-        fail('같은 시간에 다른 일정이 있습니다.');
+      const review=registrationOverlap(data,action);
+      if(review&&action.overlapConfirmation!==review.confirmation)fail('겹치는 일정이 있습니다. 현재 충돌 내용을 확인하고 등록을 승인해 주세요.');
       const old = data.events.find(x=>x.id===e.id);
-      data.events = replace(data.events, {...e,color:e.color===undefined?old?.color:e.color});
+      data.events = replace(data.events, linkEventProject({...e,color:e.color===undefined?old?.color:e.color,description:e.description===undefined?old?.description:e.description,scope:e.scope===undefined?old?.scope:e.scope},data));
       break;
     }
     case 'event.attach': {
@@ -818,8 +830,9 @@ export function applyAction(
       ).length;
       if (item.state !== 'approved' && count >= data.preferences.focusLimit)
         fail('이미 지정한 핵심 결과물이 있습니다. 먼저 계획을 조정해 주세요.');
-      if (item.state !== 'approved' && [...careEvents(data,p.date),...protectedEvents(data,p.date)].some(e => overlaps(e,item))) fail('등록한 돌봄·학습 시간과 겹칩니다. 제안을 다시 만들거나 루틴 시간을 조정해 주세요.');
-      const out = approveProposalItem(p, action.itemId, data.tasks, data.events);
+      const review=registrationOverlap(data,action);
+      if(review&&action.overlapConfirmation!==review.confirmation)fail('겹치는 일정이 있습니다. 현재 충돌 내용을 확인하고 등록을 승인해 주세요.');
+      const out = approveProposalItem(p, action.itemId, data.tasks, data.events,!!review);
       if (out.error) fail(out.error);
       saveProposal(out.proposal);
       data.events = out.events;
@@ -950,9 +963,5 @@ export function applyAction(
   for(const t of data.tasks){const previous=current.tasks.find(x=>x.id===t.id);if(t.outcome&&t.outcomeOn&&(!previous||previous.outcome!==t.outcome||previous.outcomeOn!==t.outcomeOn||previous.actualMinutes!==t.actualMinutes||previous.outcomeReason!==t.outcomeReason)){data.executionHistory=[...data.executionHistory??[],{id:`execution:${crypto.randomUUID()}`,taskId:t.id,title:t.title,projectId:t.projectId,date:t.outcomeOn,at:now.toISOString(),due:t.due,outcome:t.outcome,reason:t.outcomeReason??'',estimate:t.outcomeEstimateMinutes??t.duration,actual:t.actualMinutes??null,impact:t.impact,buffer:data.preferences.bufferFraction}].slice(-1200);}}
   if(!action.type.startsWith('project.')||action.type==='project.task-stage')reconcileProjectWork(data);
   validateLinks(data);
-  if (
-    workspaceUsage(data).bytes > WORKSPACE_LIMIT_BYTES
-  )
-    fail('현재 저장 용량에 가까워졌습니다. 기록을 내보내고 오래된 내용을 정리해 주세요.');
   return data;
 }

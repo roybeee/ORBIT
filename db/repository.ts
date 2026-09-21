@@ -1,6 +1,8 @@
-import {taskCalendarSource,taskCalendarDate} from '../lib/orbit/calendar-categories.ts';
+import {prepareWorkspace,decodeWorkspace,type WorkspaceChunk} from './workspace-storage.ts';
+import {googleColorTargets,googleColorQueue,alignGoogleAppearance} from '../lib/orbit/calendar-color-sync.ts';
+import {linkEventProject} from '../lib/orbit/project-context.ts';
+import {taskCalendarSource,taskCalendarDate,googleItemColor} from '../lib/orbit/calendar-categories.ts';
 import {addDays,todayInZone} from '../lib/orbit/dates.ts';
-import {WORKSPACE_LIMIT_BYTES} from '../lib/orbit/storage-usage.ts';
 import {
   attachmentGate,
   attachmentGateValues,
@@ -45,21 +47,23 @@ interface Receipt {
 export class RevisionConflict extends Error {}
 export class NoteNotFound extends Error {}
 export async function readWorkspace(db: Database, ownerId: string): Promise<WorkspaceSnapshot> {
-  const row = await db
-    .prepare('SELECT revision, state_json, updated_at FROM orbit_workspaces WHERE owner_id = ?')
-    .bind(ownerId)
-    .first<Row>();
-  const data = row ? (JSON.parse(row.state_json) as WorkspaceData) : emptyWorkspace();
-  const external = await db
-    .prepare('SELECT events_json,time_zone FROM orbit_calendar_cache WHERE owner_id=?')
-    .bind(ownerId)
-    .first<{ events_json: string; time_zone: string }>();
+  // One transaction prevents mixing a header, chunks and Google cache from
+  // different commits while another device is saving.
+  const [headers, chunks, cache] = await db.batch([
+    db.prepare('SELECT revision,state_json,updated_at FROM orbit_workspaces WHERE owner_id=?').bind(ownerId),
+    db.prepare('SELECT generation,part,content FROM orbit_workspace_chunks WHERE owner_id=? ORDER BY part').bind(ownerId),
+    db.prepare('SELECT events_json,time_zone FROM orbit_calendar_cache WHERE owner_id=?').bind(ownerId),
+  ]);
+  const row = headers.results?.[0] as Row | undefined;
+  const data = row ? decodeWorkspace(row.state_json,(chunks.results??[]) as WorkspaceChunk[]) : emptyWorkspace();
+  const external = cache.results?.[0] as {events_json:string;time_zone:string} | undefined;
   if (external?.time_zone === data.preferences.timeZone)
     data.events = [
       ...data.events.filter((e) => !e.id.startsWith('google:')),
       ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>local.id===e.google?.orbitEventId&&local.title===e.title&&local.date===e.date&&local.start===e.start&&local.end===e.end)),
     ];
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
+  data.events=data.events.map(event=>linkEventProject(event,data));
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
 }
 async function readVersion(db: Database, ownerId: string, id: string, revision: number): Promise<Note> {
@@ -218,7 +222,9 @@ export async function writeCommand(
 ): Promise<WorkspaceSnapshot> {
   const hashBytes = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(JSON.stringify(command.action)),
+    // Consent is checked before the first commit; an acknowledged business
+    // command remains the same command when recovering a lost response.
+    new TextEncoder().encode(JSON.stringify('overlapConfirmation' in command.action ? (({overlapConfirmation:_,...content})=>content)(command.action) : command.action)),
   );
   const hash = [...new Uint8Array(hashBytes)].map((v) => v.toString(16).padStart(2, '0')).join('');
   const existing = await receipt(db, ownerId, command.operationId);
@@ -256,6 +262,7 @@ export async function writeCommand(
       throw new RevisionConflict('기록이 변경됐습니다. 작성 중인 내용을 보관하고 최신 내용을 확인해 주세요.');
   }
   const next = applyAction(working, action, now);
+  if(action.type==='preferences.update')alignGoogleAppearance(working.events,working.preferences,next.preferences);
   // Trashed IDs are reserved. Imports and older screens cannot silently recreate
   // them or remove retained document history through the legacy delete endpoint.
   const managedCategories = ['projects','tasks','notes','events','goals','memories','habits','decisions','delegations'] as const;
@@ -279,8 +286,7 @@ export async function writeCommand(
     .map((n) => ({ ...n, revision: n.revision ?? 1, bodyStored: false }));
   next.schemaVersion = 3;
   next.notes = next.notes.map((n) => ({ ...n, body: '', bodyStored: true, revision: n.revision ?? 1 }));
-  if (new TextEncoder().encode(JSON.stringify(next)).byteLength > WORKSPACE_LIMIT_BYTES)
-    throw new DomainError('기록 목록의 저장 한도에 도달했습니다. 내보낸 뒤 오래된 기록을 정리해 주세요.');
+  const storage = prepareWorkspace(next);
   const attachmentIds =
     action.type === 'event.upsert' || action.type === 'event.attach' ? action.attachmentIds : undefined;
   const attachmentTarget =
@@ -297,7 +303,7 @@ export async function writeCommand(
     .bind(
       ownerId,
       revision,
-      JSON.stringify(next),
+      storage.stateJson,
       command.operationId,
       timestamp,
       ownerId,Date.now(),
@@ -309,12 +315,12 @@ export async function writeCommand(
   const gate =
     'EXISTS (SELECT 1 FROM orbit_workspaces WHERE owner_id = ? AND mutation_id = ? AND revision = ?)';
   const gateValues: SqlValue[] = [ownerId, command.operationId, revision];
-  const statements: Statement[] = [update];
+  const statements: Statement[] = [update,...storage.statements(db,ownerId,gate,gateValues)];
   // The outbox and the local event commit together. A lost response cannot lose
   // the Google write, and replaying the command cannot enqueue it twice.
   const calendarEventId = action.type === 'task.schedule' ? action.eventId : action.type === 'event.upsert' ? action.event.id
     : action.type === 'proposal.approve' ? 'approved:' + action.itemId : undefined;
-  const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.taskCategoryColors)!==JSON.stringify(next.preferences.taskCategoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories)||JSON.stringify(working.preferences.eventColors)!==JSON.stringify(next.preferences.eventColors))?next.events.filter(e=>!e.id.startsWith('google:')).map(e=>e.id):action.type==='task.upsert'?next.events.filter(e=>e.taskId===action.task.id&&!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
+  const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.taskCategoryColors)!==JSON.stringify(next.preferences.taskCategoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories)||JSON.stringify(working.preferences.eventColors)!==JSON.stringify(next.preferences.eventColors))?next.events.filter(e=>!e.id.startsWith('google:')&&googleItemColor(e,working.preferences,working.tasks.find(t=>t.id===e.taskId))!==googleItemColor(e,next.preferences,next.tasks.find(t=>t.id===e.taskId))).map(e=>e.id):action.type==='task.upsert'||action.type==='task.schedule'&&action.color!==undefined?next.events.filter(e=>e.taskId===(action.type==='task.upsert'?action.task.id:action.taskId)&&!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
   for (const calendarEventId of calendarEventIds.filter(id=>!id.startsWith('google:'))) {
     // Keep existing, explicitly exported focus blocks on their original flow.
       const state = {eventId:calendarEventId, automatic:true, status:'pending',
@@ -326,9 +332,13 @@ export async function writeCommand(
         WHERE json_extract(orbit_calendar_exports.state_json,'$.automatic')=1`)
         .bind(ownerId, calendarEventId, JSON.stringify(state), ...gateValues));
   }
+  if(action.type==='preferences.update'){
+    const targets=googleColorTargets(working.events,next.preferences,working.preferences);
+    if(targets.length)statements.push(googleColorQueue(db,ownerId,targets,gate,gateValues,timestamp));
+  }
   const taskDeliveries = next.tasks.filter(t=>{const old=working.tasks.find(o=>o.id===t.id);return !old||taskCalendarSource(old,working.preferences)!==taskCalendarSource(t,next.preferences)}).map(t=>({eventId:'task-due:'+t.id,sourceKey:taskCalendarSource(t,next.preferences)}));
   for(const old of working.tasks)if(!next.tasks.some(t=>t.id===old.id))taskDeliveries.push({eventId:'task-due:'+old.id,sourceKey:'deleted'});
-  if(taskDeliveries.length)statements.push(taskCalendarQueueStatement(db,ownerId,taskDeliveries,gate,gateValues,timestamp));
+  if(taskDeliveries.length)statements.push(...taskCalendarQueueStatements(db,ownerId,taskDeliveries,gate,gateValues,timestamp));
   // Lazy v2 migration and the first v3 edit share the winning transaction. No data in SQL migrations.
   if (legacy.length)
     statements.push(
@@ -418,17 +428,26 @@ export async function writeCommand(
   return readWorkspace(db, ownerId);
 }
 
-function taskCalendarQueueStatement(db:Database,owner:string,items:{eventId:string;sourceKey:string}[],gate:string,gateValues:SqlValue[],timestamp:string){
+function taskCalendarQueueStatements(db:Database,owner:string,items:{eventId:string;sourceKey:string}[],gate:string,gateValues:SqlValue[],timestamp:string){
  const rows=items.map(item=>({...item,automatic:true,status:'pending',fingerprint:'',leaseUntil:0,queuedAt:timestamp,message:'할 일 Google 등록 대기'}));
- return db.prepare(`INSERT INTO orbit_calendar_exports(owner_id,event_id,state_json)
+ // Memo-rich task collections can exceed a single SQLite bound-value limit.
+ const batches:string[][]=[];let batch:string[]=[],bytes=2;
+ for(const row of rows){const encoded=JSON.stringify(row),size=new TextEncoder().encode(encoded).length+1;if(batch.length&&bytes+size>512_000){batches.push(batch);batch=[];bytes=2;}batch.push(encoded);bytes+=size;}
+ if(batch.length)batches.push(batch);
+ return batches.map(batch=>db.prepare(`INSERT INTO orbit_calendar_exports(owner_id,event_id,state_json)
  SELECT ?,json_extract(value,'$.eventId'),value FROM json_each(?) WHERE ${gate}
  ON CONFLICT(owner_id,event_id) DO UPDATE SET state_json=json_set(orbit_calendar_exports.state_json,'$.status','pending','$.sourceKey',json_extract(excluded.state_json,'$.sourceKey'),'$.leaseUntil',0,'$.queuedAt',json_extract(excluded.state_json,'$.queuedAt'))
  WHERE json_extract(orbit_calendar_exports.state_json,'$.automatic')=1 AND COALESCE(json_extract(orbit_calendar_exports.state_json,'$.sourceKey'),'')<>json_extract(excluded.state_json,'$.sourceKey') AND COALESCE(json_extract(orbit_calendar_exports.state_json,'$.leaseUntil'),0)<=?`)
- .bind(owner,JSON.stringify(rows),...gateValues,Date.now());
+ .bind(owner,'['+batch.join(',')+']',...gateValues,Date.now()));
 }
 // Existing dated tasks are reconciled when the user opens a calendar range.
 export async function queueTaskCalendarBackfill(db:Database,owner:string,date:string){
  const snapshot=await readWorkspace(db,owner),from=addDays(date,-7),to=addDays(date,31),today=todayInZone(snapshot.data.preferences.timeZone);
  const items=snapshot.data.tasks.filter(t=>{const day=taskCalendarDate(t,today);return (day>=from&&day<to)||(t.status!=='done'&&t.due<today)}).map(t=>({eventId:'task-due:'+t.id,sourceKey:taskCalendarSource(t,snapshot.data.preferences,today)}));
- if(items.length)await taskCalendarQueueStatement(db,owner,items,'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=?)',[owner,snapshot.revision],new Date().toISOString()).run();
+ if(items.length)await db.batch(taskCalendarQueueStatements(db,owner,items,'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=?)',[owner,snapshot.revision],new Date().toISOString()));
+}
+
+export async function queueGoogleColorBackfill(db:Database,owner:string){
+ const snapshot=await readWorkspace(db,owner),targets=googleColorTargets(snapshot.data.events,snapshot.data.preferences);
+ if(targets.length)await googleColorQueue(db,owner,targets,'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=?)',[owner,snapshot.revision],new Date().toISOString()).run();
 }

@@ -5,11 +5,13 @@ const stop=new Set('회의 회의록 기록 기반 바탕 답변 알려줘 해�
 export function queryTerms(query:string){return [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu)??[])].map(w=>w.replace(/(에서는|으로는|에서|으로|에게|이랑|부터|까지|은|는|을|를|의|에|과|와)$/,'')).filter(w=>w.length>=2&&!stop.has(w)).slice(0,6)}
 export async function recordContext(db:Database,owner:string,query:string,projectId?:string|null){
  const terms=queryTerms(query),found=new Map<string,any>();
- for(const term of terms){const r=await searchNotes(db,owner,{query:term,kind:'all',offset:0});for(const n of r.items)found.set(n.id,n);}
+ const searches=await Promise.all(terms.map(term=>searchNotes(db,owner,{query:term,kind:'all',offset:0})));
+ for(const r of searches)for(const n of r.items)found.set(n.id,n);
  if(projectId||!terms.length){const r=await searchNotes(db,owner,{query:'',kind:'all',offset:0,...(projectId?{projectId}:{})});for(const n of r.items)found.set(n.id,n);}
  const ranked=[...found.values()].map(n=>({note:n,score:terms.reduce((s,t)=>s+([n.title,n.summary,n.searchExcerpt,...n.tags].join(' ').toLowerCase().includes(t)?1:0),0)+(n.projectId===projectId?2:0)})).sort((a,b)=>b.score-a.score||b.note.updated.localeCompare(a.note.updated)).slice(0,6);
  const sources:AgentSource[]=[],records=[];
- for(const {note:meta} of ranked){const n=await readNote(db,owner,meta.id,meta.revision??1),lower=n.body.toLowerCase(),at=terms.map(t=>lower.indexOf(t)).filter(i=>i>=0).sort((a,b)=>a-b)[0]??0,excerpt=n.body.slice(Math.max(0,at-250),Math.max(0,at-250)+3500);
+ const notes=await Promise.all(ranked.map(({note:meta})=>readNote(db,owner,meta.id,meta.revision??1)));
+ for(const n of notes){const lower=n.body.toLowerCase(),at=terms.map(t=>lower.indexOf(t)).filter(i=>i>=0).sort((a,b)=>a-b)[0]??0,excerpt=n.body.slice(Math.max(0,at-250),Math.max(0,at-250)+3500);
   const source={...noteSource(n),excerpt:excerpt.slice(0,1200),scope:'excerpt' as const,date:n.source?.date??n.updated,label:n.source?.provider==='plaud'?'Plaud 회의 원문 발췌':'기록 원문 발췌'};sources.push(source);records.push({evidenceId:source.id,title:n.title,meetingDate:n.source?.date,projectId:n.projectId,revision:n.revision,excerpt,partial:excerpt.length<n.body.length});
  }
  const feedbackRows=await db.prepare('SELECT f.* FROM orbit_answer_feedback f JOIN orbit_agent_turns t ON t.owner_id=f.owner_id AND t.id=f.turn_id WHERE f.owner_id=? ORDER BY f.updated_at DESC LIMIT 100').bind(owner).all<any>();

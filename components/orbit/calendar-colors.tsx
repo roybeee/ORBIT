@@ -5,6 +5,7 @@ import type {Preferences} from '@/lib/orbit/model';
 export function CalendarColors({preferences,disabled,onSave}:{preferences:Preferences;disabled:boolean;onSave:(p:Preferences)=>void}){
  return <details className="calendar-color-settings">
   <summary>일정·할 일 색상</summary>
+  <p className="form-hint">색상 변경은 Google Calendar에도 반영됩니다. 개별 지정 색상이 우선 적용됩니다.</p>
   <div className="calendar-color-groups">{(['event','task'] as const).map(kind=>
    <fieldset key={kind} disabled={disabled}>
     <legend>{kind==='event'?'일정':'할 일'}</legend>

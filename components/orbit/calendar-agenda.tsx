@@ -1,4 +1,5 @@
 'use client';
+import {eventScope,eventScopeLabels} from '@/lib/orbit/event-details';
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownUp, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
 import type { CalendarEvent, Project, Preferences, Task } from '@/lib/orbit/model';
@@ -280,7 +281,7 @@ export function CalendarAgenda(props: Props) {
             onClick={e => { if (session.current?.active || Date.now() < suppressClickUntil.current || saving.current) { e.preventDefault(); return; } if(openActions.current === event.id){showActions(null);return;} if(canSchedule){props.onScheduleTask!(task!.id);return;} props.onOpen(event); }}>
             {props.timelineTasks&&<span className="agenda-type-label">{task?(untimed?'할 일':'할 일 · 일정'):'일정'}{task?.status==='done'?' · 완료':''}</span>}
             <strong>{task?.title??event.title}</strong>
-            <span className="agenda-meta">{project?.name ?? (event.kind === 'focus' ? '집중 시간' : event.kind === 'break' ? '휴식' : '개인 일정')}<span>·</span>{event.allDay?categoryLabels[categoryOf(event)]:`${event.end - event.start}분 · ${categoryLabels[categoryOf(event)]}`}</span>
+            <span className="agenda-meta">{eventScopeLabels[eventScope(event)]}{project&&<><span>·</span>{project.name}</>}<span>·</span>{event.allDay?categoryLabels[categoryOf(event)]:`${event.end - event.start}분 · ${categoryLabels[categoryOf(event)]}`}</span>
             {task&&untimed&&<span className="agenda-task-status">예상 {task.duration}분 · {statusLabel[task.status]}{task.status!=='done'&&props.date&&task.due<props.date?` · 이월 (${task.due.slice(5).replace('-','/')} 마감)`:''}</span>}
             {canSchedule&&<span className="agenda-schedule-prompt"><CalendarPlus size={16}/>시간 배정<ArrowRight size={16}/></span>}
             {restriction && !canSchedule && <span className="agenda-restriction"><LockKeyhole size={12}/>{restriction}</span>}
@@ -294,7 +295,7 @@ export function CalendarAgenda(props: Props) {
     })}
     {deleting&&<div className="calendar-drag-feedback calendar-delete-feedback" role="status" aria-live="polite"><Trash2 size={20}/><div><strong>{deleting.saving?'할 일을 삭제하고 있어요':deleting.ready?'손을 놓으면 삭제됩니다':'오른쪽으로 밀어 삭제'}</strong><span>{deleting.saving?'저장 결과를 확인하고 있습니다':'왼쪽으로 되돌린 뒤 놓으면 취소'}</span></div></div>}
     {preview && <div className={`calendar-drag-feedback ${conflict ? 'has-conflict' : ''}`} role="status" aria-live="polite">
-      <ArrowDownUp size={20}/><div><strong>{formatTime(preview.event.start)} — {formatTime(preview.event.end)}</strong><span>{preview.saving ? '변경한 시간을 저장하는 중…' : conflict ? `‘${conflict.title}’ 일정과 겹쳐요 · 다른 시간으로 이동하세요` : '위로는 더 일찍 · 아래로는 더 늦게 · 놓으면 저장'}</span></div>
+      <ArrowDownUp size={20}/><div><strong>{formatTime(preview.event.start)} — {formatTime(preview.event.end)}</strong><span>{preview.saving ? '변경한 시간을 저장하는 중…' : conflict ? `‘${conflict.title}’ 일정과 겹쳐요 · 놓으면 등록 여부를 확인합니다` : '위로는 더 일찍 · 아래로는 더 늦게 · 놓으면 저장'}</span></div>
     </div>}
   </div>;
 }

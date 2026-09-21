@@ -74,7 +74,7 @@ test('steering scope survives the ASIDE handoff and the next Hermes submission',
  assert.equal(submitted.length,2);assert.match(submitted[1].input,/지난주 자료만 조회하세요. 외부 발송 금지/);
 }));
 test('a malformed activity session is isolated while the next valid session is collected',()=>fixture(async db=>{
- const hits=[];mock(url=>{if(new URL(url).pathname==='/api/sessions')return Response.json({object:'list',data:[{id:'bad',title:'오류',last_active:1,message_count:1},{id:'good',title:'정상',last_active:1,message_count:1}],has_more:false});const id=url.includes('/bad/')?'bad':'good';hits.push(id);return Response.json({object:'list',session_id:id,data:[{...(id==='good'?{id:'m1'}:{}),role:'assistant',content:'저장할 결과'}]})});
+ const hits=[];mock(url=>{if(new URL(url).pathname==='/api/sessions')return Response.json({object:'list',data:[{id:'bad',title:'오류',last_active:1,message_count:1},{id:'good',title:'정상',last_active:1,message_count:1}],has_more:false});const id=url.includes('/bad/')?'bad':'good';hits.push(id);return Response.json({object:'list',session_id:id,data:[{id:'m1',role:id==='good'?'assistant':null,content:'저장할 결과'}]})});
  await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT');
  for(let i=0;i<5;i++)await syncActivity(db,'owner',env);
  assert.equal(hits.filter(id=>id==='bad').length,1);assert.equal((await activityStatus(db,'owner')).quarantined,1);assert.equal((await listActivity(db,'owner')).items.length,1);

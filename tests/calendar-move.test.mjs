@@ -65,3 +65,8 @@ test('server also rejects a conflicting move and leaves source data unchanged',(
   assert.throws(()=>applyAction(data,eventCommand(shiftedEvent(event,48))));
   assert.equal(data.events[0].start,600);
 });
+
+test('moving an event preserves the memo and schedule classification through strict command parsing',()=>{
+ const original={...event,description:'통화 자료 확인\n다음 주 회신',scope:'work'};const command=actionSchema.parse(eventCommand(shiftedEvent(original,48)));assert.equal(command.event.description,original.description);assert.equal(command.event.scope,'work');
+ assert.equal(actionSchema.safeParse({...command,event:{...command.event,scope:'invalid'}}).success,false);
+});
