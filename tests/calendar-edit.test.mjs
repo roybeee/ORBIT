@@ -7,6 +7,8 @@ import {saveConnection} from '../lib/orbit/agent/secrets.ts';
 import {normalizeEvents} from '../lib/orbit/agent/calendar.ts';
 import {readCalendarEdit,saveCalendarEdit,calendarEditSchema} from '../lib/orbit/agent/calendar-edit.ts';
 import {AgentRequestError} from '../lib/orbit/agent/approval-feedback.ts';
+import {clientRequest} from '../lib/orbit/agent/client-request.ts';
+import {postponedCalendarEdit} from '../lib/orbit/calendar-move.ts';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')},date='2026-09-21';
 const original=()=>({id:'meeting_instance_20260921',etag:'"v1"',summary:'정안식 대표 통화 · 제주도 관련 논의',start:{dateTime:date+'T10:00:00+09:00'},end:{dateTime:date+'T10:30:00+09:00'},recurringEventId:'master',description:'원래 설명',attendees:[{email:'guest@example.test'}],extendedProperties:{private:{existing:'keep'}}});
 test('Google editing requires overlap consent, validates changing conflicts and reconciles a lost confirmed response',()=>fixture(async f=>{
@@ -45,6 +47,59 @@ async function fixture(fn){const db=createDatabase(),previous=globalThis.fetch;l
   await fn({db,id,edit,patches,get live(){return live},set live(value){live=value},set role(value){role=value},set calendarId(value){calendarId=value},set lose(value){lose=value},set race(value){race=value}});
  }finally{globalThis.fetch=previous;db.close()}
 }
+// Local HTTP/Google/SQLite fixture, not a production save. Keep the GET view intact:
+// EventPostpone.show -> postponedCalendarEdit -> clientRequest JSON -> PATCH schema.
+async function postponeTransport(f){
+ const requests=[];
+ const fetcher=async(path,options={})=>{
+  if(options.method==='GET')return Response.json(await readCalendarEdit(f.db,'owner',env,new URL(path,'http://fixture.test').searchParams.get('id')));
+  assert.equal(path,'/api/integrations/calendar/event');assert.equal(options.method,'PATCH');
+  const wire=JSON.parse(options.body);requests.push(wire);
+  const parsed=calendarEditSchema.safeParse(wire);
+  if(!parsed.success){
+   console.error('postpone PATCH schema issues:',JSON.stringify(parsed.error.issues));
+   return Response.json({error:'일정 제목과 시작·종료 날짜 및 시간을 확인해 주세요.',code:'INPUT'},{status:400});
+  }
+  return Response.json(await saveCalendarEdit(f.db,'owner',env,parsed.data));
+ };
+ return {requests,request:(path,method='GET',body)=>clientRequest(path,method,body,{fetcher})};
+}
+test('postpone complete GET view survives serialized PATCH schema and preserves occurrence metadata',()=>fixture(async f=>{
+ const transport=await postponeTransport(f);
+ const view=await transport.request('/api/integrations/calendar/event?id='+encodeURIComponent(f.id));
+ assert.equal(view.recurring,true);assert.equal(view.sourceCalendarId,'primary');
+ const input=postponedCalendarEdit({...view,operationId:randomUUID()},'2026-09-23',780,{date:'2026-09-22',minute:360});
+ const result=await transport.request('/api/integrations/calendar/event','PATCH',input);
+ assert.equal(result.event.date,'2026-09-23');assert.equal(result.event.start,780);assert.equal(result.event.end,810);
+ assert.equal(result.event.title,view.title);assert.equal(result.event.description,view.description);assert.equal(result.event.scope,view.scope);
+ assert.equal(transport.requests[0].recurring,undefined);assert.equal(transport.requests[0].sourceCalendarId,undefined);
+ assert.equal(f.live.recurringEventId,'master');assert.deepEqual(f.live.attendees,original().attendees);assert.equal(f.live.extendedProperties.private.existing,'keep');
+ await transport.request('/api/integrations/calendar/event','PATCH',input);assert.equal(f.patches.length,1);
+}));
+test('postpone non-recurring overnight GET view preserves duration across midnight',()=>fixture(async f=>{
+ f.live={...f.live,recurringEventId:undefined,start:{dateTime:date+'T23:00:00+09:00'},end:{dateTime:'2026-09-22T01:00:00+09:00'}};
+ const transport=await postponeTransport(f),view=await transport.request('/api/integrations/calendar/event?id='+encodeURIComponent(f.id));
+ assert.equal(view.recurring,false);
+ const input=postponedCalendarEdit({...view,operationId:randomUUID()},'2026-09-23',1410,{date:'2026-09-22',minute:360});
+ assert.equal(input.endDate,'2026-09-24');assert.equal(input.end,90);
+ await transport.request('/api/integrations/calendar/event','PATCH',input);
+ assert.equal(f.live.start.dateTime,'2026-09-23T14:30:00.000Z');assert.equal(f.live.end.dateTime,'2026-09-23T16:30:00.000Z');
+}));
+test('postpone all-day multi-day GET view preserves the exclusive provider end',()=>fixture(async f=>{
+ f.live={...f.live,start:{date:'2026-09-21'},end:{date:'2026-09-24'}};
+ const transport=await postponeTransport(f),view=await transport.request('/api/integrations/calendar/event?id='+encodeURIComponent(f.id));
+ const input=postponedCalendarEdit({...view,operationId:randomUUID()},'2026-09-23',780,{date:'2026-09-22',minute:360});
+ await transport.request('/api/integrations/calendar/event','PATCH',input);
+ assert.equal(f.live.start.date,'2026-09-23');assert.equal(f.live.end.date,'2026-09-26');assert.equal(f.live.description,view.description);
+}));
+test('postpone projection keeps overlap consent but does not relax strict PATCH validation',()=>fixture(async f=>{
+ const view=await readCalendarEdit(f.db,'owner',env,f.id),input=postponedCalendarEdit({...view,operationId:randomUUID(),overlapConfirmation:'existing-consent'},'2026-09-23',780,{date:'2026-09-22',minute:360});
+ assert.equal(input.overlapConfirmation,'existing-consent');assert.equal(calendarEditSchema.safeParse(input).success,true);
+ for(const extra of [{recurring:false},{sourceCalendarId:'primary'},{unexpected:true}])assert.equal(calendarEditSchema.safeParse({...input,...extra}).success,false);
+ assert.equal(calendarEditSchema.safeParse({...input,title:''}).success,false);
+ assert.equal(calendarEditSchema.safeParse({...input,end:input.start}).success,false);
+ assert.equal(f.patches.length,0);
+}));
 test('editing a Google occurrence changes its title and times while preserving unrelated fields and other events',()=>fixture(async f=>{
  const view=await readCalendarEdit(f.db,'owner',env,f.id);assert.equal(view.recurring,true);assert.equal(view.start,600);assert.equal(view.end,630);
  const result=await saveCalendarEdit(f.db,'owner',env,{...await f.edit(),title:'제주도 후속 통화',start:660,end:705});

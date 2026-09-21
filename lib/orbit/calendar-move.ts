@@ -58,6 +58,9 @@ export function postponedEvent(event: CalendarEvent, date: string, start: number
 }
 
 export function postponedCalendarEdit(edit: CalendarEdit, date: string, start: number, now: WallTime): CalendarEdit {
+  // The GET view also carries read-only metadata; PATCH accepts only edit fields.
+  const { operationId, id, calendarId, eventId, etag, timeZone, title, startDate, endDate, allDay, start: oldStart, end: oldEnd, description, scope, overlapConfirmation } = edit;
+  edit = { operationId, id, calendarId, eventId, etag, timeZone, title, startDate, endDate, allDay, start: oldStart, end: oldEnd, ...(description !== undefined ? { description } : {}), ...(scope !== undefined ? { scope } : {}), ...(overlapConfirmation !== undefined ? { overlapConfirmation } : {}) };
   validPostponedStart(date, edit.allDay ? 0 : start, now);
   if (edit.allDay) {
     const days = Math.round((Date.parse(edit.endDate + 'T00:00:00Z') - Date.parse(edit.startDate + 'T00:00:00Z')) / 86400000) + 1;
