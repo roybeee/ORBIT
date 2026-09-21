@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Database } from '../../../db/repository.ts';
+import { readWorkspace,type Database } from '../../../db/repository.ts';
 import { AgentError } from '../agent/errors.ts';
 import type { AsideJob } from './types.ts';
 
@@ -28,8 +28,7 @@ export async function changeAsideJob(db:Database,ownerId:string,input:Input):Pro
   const now=new Date().toISOString();
   if(input.action==='enqueue') {
     if(input.projectId) {
-      const row=await db.prepare('SELECT state_json FROM orbit_workspaces WHERE owner_id=?').bind(ownerId).first<{state_json:string}>();
-      const state=row?JSON.parse(row.state_json):null;
+      const {data:state}=await readWorkspace(db,ownerId);
       if(!state?.projects?.some((p:{id:string})=>p.id===input.projectId))throw new AgentError('프로젝트를 다시 선택해 주세요.','PROJECT',422);
     }
     if(input.parentOrderId){const order=await db.prepare('SELECT state_json,stop_requested FROM orbit_agent_orders WHERE owner_id=? AND id=?').bind(ownerId,input.parentOrderId).first<{state_json:string;stop_requested:number}>();if(!order||order.stop_requested||JSON.parse(order.state_json).workflow?.asideJobId!==input.id)throw new AgentError('상위 업무가 중지되었거나 연결이 바뀌었습니다.','ORDER_STATE',409);}

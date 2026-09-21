@@ -169,3 +169,13 @@
 .task-create-dialog .task-title-input{min-height:96px;line-height:1.65;resize:vertical;white-space:pre-wrap;overflow-wrap:anywhere}
 .task-create-dialog .create-form-footer{display:grid;grid-template-columns:minmax(72px,1fr) minmax(0,2fr);gap:10px;border-top:1px solid var(--border);padding:12px 0 8px;bottom:0}
 .task-create-dialog .create-form-footer button{min-height:48px;justify-content:center;border-radius:12px}
+
+.event-edit-entry{width:100%;margin-bottom:24px;justify-content:center;min-height:48px}
+.google-event-editor{padding:18px;border:1px solid var(--border);border-radius:18px;margin-bottom:24px;background:var(--card)}
+.google-event-editor h3{margin:0 0 14px;font-size:1.125rem}.google-event-editor fieldset{border:0;padding:0;margin:0;min-width:0}
+.google-event-editor .field-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.google-event-editor .field-grid>div{min-width:0}.google-event-editor input.form-field{width:100%;min-width:0;max-width:100%;font-size:1rem}
+.google-event-all-day{display:flex;align-items:center;gap:10px;min-height:48px;margin:8px 0;font-size:1rem}.google-event-all-day input{width:20px;height:20px;accent-color:var(--primary)}
+.google-event-editor .sheet-actions{flex-wrap:wrap}.google-event-editor .sheet-actions button{flex:1;min-height:46px}.google-event-editor>p[role=status]{display:flex;gap:8px;align-items:center}
+@media(max-width:380px){.google-event-editor .field-grid{grid-template-columns:1fr}}
+
+.event-memo-detail{margin:20px 0}.event-memo-text{white-space:pre-wrap;overflow-wrap:anywhere}.google-event-editor textarea.form-field{width:100%;min-height:120px;resize:vertical;font-size:1rem}

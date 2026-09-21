@@ -1,6 +1,5 @@
 import type {WorkspaceData} from './model.ts';
 
-export const WORKSPACE_LIMIT_BYTES = 950_000;
 export const jsonBytes = (value:unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
 // Bodies and external calendar cache live in separate tables. Measure the exact
@@ -16,5 +15,5 @@ export function workspaceUsage(data:WorkspaceData) {
   const sections=Object.entries(stored).filter(([,value])=>Array.isArray(value))
     .map(([key,value])=>({key,count:(value as unknown[]).length,bytes:jsonBytes(value)}))
     .sort((a,b)=>b.bytes-a.bytes);
-  return {bytes,limit:WORKSPACE_LIMIT_BYTES,ratio:bytes/WORKSPACE_LIMIT_BYTES,sections};
+  return {bytes,sections};
 }

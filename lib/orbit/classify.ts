@@ -95,6 +95,8 @@ export function scoreProject(text: string, project: Project, tasks: Task[] = [],
     if (common.length >= 2 && !GENERIC.has(common)) {
       score += common.length * common.length * term.weight * 0.35;
       matched.push(common);
+      // Unique Korean brand prefix, e.g. 올드페리 → 올드페리도넛.
+      if(term.weight>=2&&common.length>=4&&/^[가-힣]+$/.test(common)&&term.text.startsWith(common)&&tokens(text).includes(common))high=true;
     }
   }
   return { score, matched: [...new Set(matched)].sort((a, b) => b.length - a.length).slice(0, 4), high };
@@ -163,6 +165,9 @@ export function automaticProject(text: string, projects: Project[], tasks: Task[
   const ranked = suggestProject(text, projects.filter(p=>p.status!=='completed'), tasks, notes);
   const best = ranked[0];
   if (best?.confidence !== 'high') return undefined;
+  // Multiple projects sharing the same identifying words need a choice even
+  // if repeated name tokens inflate one candidate's score.
+  if(ranked.slice(1).some(p=>p.confidence==='high'&&best.matched.every(m=>p.matched.includes(m))))return undefined;
   if (ranked[1]?.confidence === 'high' && ranked[1].score * 1.5 >= best.score) return undefined;
   return best;
 }

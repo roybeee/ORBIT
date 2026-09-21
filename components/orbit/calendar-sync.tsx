@@ -36,7 +36,7 @@ export function CalendarSyncStatus({active,demo,loaded,date,timeZone,paused,work
     <button className="icon-button" aria-label="Google 일정 새로고침" title="새로고침" disabled={demo||!loaded||checking||paused||workspaceBusy} onClick={()=>void poller.current?.wake()}><RefreshCw size={16} className={checking?'animate-spin':''}/></button>
    </div>
    <details className="calendar-sync-details"><summary>동기화 상세</summary><div className="calendar-sync-copy">
-    <p>{demo?'예시 일정입니다.':checking?'변경된 일정을 확인하는 중…':paused?'시간 변경 후 자동으로 동기화합니다.':result?.connected===false?'Google 계정을 연결하면 저장한 일정도 자동 등록됩니다.':'일정을 저장하면 Google에도 등록·수정됩니다.'}</p>
+    <p>{demo?'예시 일정입니다.':checking?'변경된 일정을 확인하는 중…':paused?'시간 변경 후 자동으로 동기화합니다.':result?.connected===false?'Google 계정을 연결하면 저장한 일정도 자동 등록됩니다.':'일정과 색상 변경을 Google에도 반영합니다.'}</p>
     {lastChecked&&<p>마지막 확인 {lastChecked}</p>}
     {!!result?.delivery?.pending&&<p>Google 반영 대기 {result.delivery.pending}건</p>}
     <button className="text-button" disabled={demo||!loaded||opening} onClick={()=>void openConnections()}><Link2 size={16}/>{opening?'여는 중…':result?.connected===false?'Google 연결':'연결 관리'}</button>

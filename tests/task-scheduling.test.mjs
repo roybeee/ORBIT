@@ -11,6 +11,17 @@ const project={id:'p',name:'재무',goal:'조달 계획',due:date,priority:3,col
 const task={id:'t',title:'자금 계획',projectId:'p',due:'2026-09-07',duration:75,status:'todo',impact:3,focus:false,definition:'초안 완료',category:'work'};
 const seed=()=>({...emptyWorkspace(),projects:[{...project}],tasks:[{...task}]});
 const command=(extra={})=>actionSchema.parse({type:'task.schedule',taskId:'t',eventId:randomUUID(),date,start:570,minutes:45,...extra});
+test('scheduling color is atomic, inherited when omitted, resettable and validated',()=>{
+ const data=seed();data.tasks[0].color='#fbd75b';
+ data.events=[{id:'earlier',taskId:'t',title:task.title,date:'2026-09-20',start:570,end:615,kind:'focus',color:'#fbd75b'}];
+ assert.equal(applyAction(data,command(),now).events.at(-1).color,'#fbd75b');
+ const changed=applyAction(data,command({color:'#f83a22'}),now);
+ assert.equal(changed.tasks[0].color,'#f83a22');assert.ok(changed.events.every(e=>e.color==='#f83a22'));
+ const reset=applyAction(data,command({color:null}),now);assert.equal(reset.tasks[0].color,null);assert.ok(reset.events.every(e=>e.color===null));
+ assert.throws(()=>command({color:'#123456'}));
+ assert.throws(()=>applyAction(data,command({color:'#f83a22',start:540}),now),DomainError);
+ assert.equal(data.tasks[0].color,'#fbd75b');assert.equal(data.events.length,1);assert.equal(data.events[0].color,'#fbd75b');
+});
 test('quick scheduling replaces the untimed row with one linked timed block and preserves the original deadline and estimate',()=>{
  const before=seed(),action=command(),after=applyAction(before,action,now),event=after.events[0];
  assert.deepEqual({title:event.title,projectId:event.projectId,taskId:event.taskId,category:event.category,kind:event.kind,start:event.start,end:event.end},{title:task.title,projectId:'p',taskId:'t',category:'work',kind:'focus',start:570,end:615});

@@ -23,7 +23,7 @@ export function swipeOffset(initial: number, dx: number): number {
 
 export function moveRestriction(event: CalendarEvent): string | null {
   if (event.id.startsWith('task-due:')) return '할 일에서 날짜 변경';
-  if (event.id.startsWith('google:')) return 'Google에서 시간 변경';
+  if (event.id.startsWith('google:')) return '상세에서 일정 수정';
   if (event.id.startsWith('approved:')) return '내일 제안에서 시간 변경';
   if (event.id.startsWith('protected:')) return '보호 시간 설정에서 변경';
   if (event.start === 0 && event.end === 1440) return '종일 일정';
@@ -44,6 +44,6 @@ export function moveConflict(event: CalendarEvent, events: CalendarEvent[]): Cal
 
 // Google metadata belongs to imported records, not the strict workspace command schema.
 export function eventCommand(event: CalendarEvent) {
-  const { id, title, date, start, end, kind, projectId, taskId, category, color } = event;
-  return { type: 'event.upsert' as const, event: { id, title, date, start, end, kind, projectId, taskId, category, color } };
+  const { id, title, date, start, end, kind, projectId, taskId, category, color, description, scope, projectAutoLink, projectLink } = event;
+  return { type: 'event.upsert' as const, event: { id, title, date, start, end, kind, projectId, taskId, category, color, description, scope, projectAutoLink, projectLink } };
 }

@@ -73,7 +73,9 @@ test('read failures after several edits preserve the signature of a lost write',
 }));
 test('a delivery completed immediately before the workspace transaction retains its metadata',()=>fixture(async db=>{
  await save(db);const wrapped={prepare:sql=>db.prepare(sql),batch:async statements=>{
-  await db.prepare("UPDATE orbit_calendar_exports SET state_json=json_set(state_json,'$.calendarId','bound@example.test','$.lastSignature','verified-signature','$.status','verified') WHERE owner_id=?").bind('a').run();return db.batch(statements);
+  // Inject completion immediately before the write, not snapshot read batches.
+  if(statements.some(s=>/INSERT INTO orbit_workspaces/.test(s.sql)))await db.prepare("UPDATE orbit_calendar_exports SET state_json=json_set(state_json,'$.calendarId','bound@example.test','$.lastSignature','verified-signature','$.status','verified') WHERE owner_id=?").bind('a').run();
+  return db.batch(statements);
  }};
  await save(wrapped,{...event,title:'New local edit'});const receipt=(await calendarExports(db,'a'))[0];assert.equal(receipt.status,'pending');assert.equal(receipt.calendarId,'bound@example.test');assert.equal(receipt.lastSignature,'verified-signature');
 }));
@@ -84,6 +86,19 @@ async function taskFixture(db){
  const task={id:'recruit',title:'마케터1명 채용 제안',projectId:'hr',status:'todo',due:'2026-09-21',duration:45,impact:3,focus:false,definition:'제안 전달',category:'work'};
  await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task}});return task;
 }
+test('a color chosen during time allocation requeues the due reminder and all timed blocks, without duplicate registration',()=>fixture(async db=>{
+ const task=await taskFixture(db);await connect(db);
+ await save(db,{...event,id:'earlier-block',date:'2026-10-07',taskId:task.id,projectId:task.projectId,kind:'focus'});
+ const recipients=[];
+ for(const id of ['task-due:'+task.id,'earlier-block']){const g=google(),fetcher=globalThis.fetch;await flushCalendarOutbox(db,'a',env,id);recipients.push({id,g,fetcher});}
+ const snapshot=await readWorkspace(db,'a'),eventId=randomUUID();
+ const command={operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.schedule',taskId:task.id,eventId,date:'2026-10-08',start:600,minutes:30,color:'#fbd75b'}};
+ await writeCommand(db,'a',command);await writeCommand(db,'a',command);
+ const exports=await calendarExports(db,'a');assert.equal(exports.length,3);assert.ok(exports.every(e=>e.status==='pending'));
+ for(const {id,g,fetcher} of recipients){globalThis.fetch=fetcher;await flushCalendarOutbox(db,'a',env,id);assert.equal(g.posts,1);assert.equal(g.patches,1);assert.equal(g.remote.colorId,'5');}
+ const g=google();await flushCalendarOutbox(db,'a',env,eventId);assert.equal(g.posts,1);assert.equal(g.remote.colorId,'5');
+ const saved=await readWorkspace(db,'a');assert.equal(saved.data.tasks[0].color,'#fbd75b');assert.equal(saved.data.events.length,2);assert.ok(saved.data.events.every(e=>e.color==='#fbd75b'));
+}));
 test('quick task scheduling atomically queues one timed Google event, survives replay and keeps the due reminder separate',()=>fixture(async db=>{
  const task=await taskFixture(db),snapshot=await readWorkspace(db,'a'),eventId=randomUUID();
  const command={operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.schedule',taskId:task.id,eventId,date:'2026-10-08',start:600,minutes:30}};
@@ -202,4 +217,39 @@ test('imported event color overrides are isolated and reset to category defaults
  assert.equal(calendarItemColor({...event,id:'google:other'},snapshot.data.preferences,'event'),'#a4bdfc');
  snapshot=await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'preferences.update',preferences:{...snapshot.data.preferences,eventColors:{'google:test':null}}}});
  assert.equal(calendarItemColor({...event,id:'google:test'},snapshot.data.preferences,'event'),'#a4bdfc');
+}));
+
+test('local event memos and scope sync to Google and survive legacy edits and clear operations',()=>fixture(async db=>{
+ await connect(db);await save(db,{...event,description:'준비 사항\n샘플 발송 확인',scope:'work'});const g=google({lose:true});await flushCalendarOutbox(db,'a',env,'meeting');await flushCalendarOutbox(db,'a',env,'meeting');
+ assert.equal(g.posts,1);assert.equal(g.remote.description,'준비 사항\n샘플 발송 확인');assert.equal(g.remote.extendedProperties.private.orbitScope,'work');
+ await save(db,{...event,title:'제목만 변경'});let stored=(await readWorkspace(db,'a')).data.events[0];assert.equal(stored.description,'준비 사항\n샘플 발송 확인');assert.equal(stored.scope,'work');
+ await flushCalendarOutbox(db,'a',env,'meeting');assert.equal(g.remote.description,stored.description);
+ await save(db,{...event,description:'',scope:'other'});await flushCalendarOutbox(db,'a',env,'meeting');assert.equal(g.remote.description,'');assert.equal(g.remote.extendedProperties.private.orbitScope,'other');assert.equal(g.remote.extendedProperties.private.orbitEventId,'meeting');
+}));
+test('native sync detects a remotely changed memo before overwriting it',()=>fixture(async db=>{
+ await connect(db);await save(db,{...event,description:'처음 메모',scope:'work'});const g=google();await flushCalendarOutbox(db,'a',env,'meeting');
+ g.remote.description='Google에서 변경';g.remote.etag='"new"';await save(db,{...event,description:'로컬에서 변경',scope:'work'});assert.equal((await flushCalendarOutbox(db,'a',env,'meeting')).failed,1);assert.equal(g.remote.description,'Google에서 변경');assert.equal(g.patches,0);
+}));
+test('task memo, scope, phone category and color propagate to due reminders and timed Google blocks, including clears and lost responses',()=>fixture(async db=>{
+ const task=await taskFixture(db);await connect(db);
+ const update=async patch=>{const snapshot=await readWorkspace(db,'a');return writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task:{...task,...patch}}})};
+ await update({description:'지원자와 통화\n면접 일정 확인',scope:'other',category:'phone',color:'#fbd75b'});
+ let snapshot=await readWorkspace(db,'a');const eventId=randomUUID();
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.schedule',taskId:task.id,eventId,date:'2026-10-08',start:600,minutes:30}});
+ const recipients=[];
+ for(const id of ['task-due:'+task.id,eventId]){
+  const g=google({lose:true}),fetcher=globalThis.fetch;
+  await flushCalendarOutbox(db,'a',env,id);await flushCalendarOutbox(db,'a',env,id);
+  assert.equal(g.posts,1);assert.equal(g.remote.description,'지원자와 통화\n면접 일정 확인');assert.equal(g.remote.extendedProperties.private.orbitScope,'other');assert.equal(g.remote.colorId,'5');
+  recipients.push({id,g,fetcher});
+ }
+ // Legacy task edits omit the new fields and must preserve both fields.
+ await update({title:'채용 후속 통화',category:undefined});snapshot=await readWorkspace(db,'a');
+ assert.equal(snapshot.data.tasks[0].description,'지원자와 통화\n면접 일정 확인');assert.equal(snapshot.data.events[0].scope,'other');assert.equal(snapshot.data.events[0].category,'phone');
+ await update({title:'채용 후속 통화',description:'',scope:'personal',category:'phone',color:null});
+ snapshot=await readWorkspace(db,'a');assert.equal(snapshot.data.events[0].description,'');assert.equal(snapshot.data.events[0].scope,'personal');assert.equal(snapshot.data.events[0].color,null);
+ for(const {id,g,fetcher} of recipients){
+  globalThis.fetch=fetcher;await flushCalendarOutbox(db,'a',env,id);
+  assert.equal(g.posts,1);assert.equal(g.patches,1);assert.equal(g.remote.description,'');assert.equal(g.remote.extendedProperties.private.orbitScope,'personal');assert.equal(g.remote.colorId,'6');assert.equal(g.remote.summary,'채용 후속 통화');
+ }
 }));

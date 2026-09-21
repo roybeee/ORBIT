@@ -28,7 +28,7 @@ export async function getConversation(db:Database,owner:string,id:string){
 }
 // The project check is part of the write so a concurrent project deletion
 // cannot leave a newly assigned conversation pointing at a missing project.
-const projectGate=`(? IS NULL OR EXISTS(SELECT 1 FROM orbit_workspaces w,json_each(w.state_json,'$.projects') p WHERE w.owner_id=? AND json_extract(p.value,'$.id')=?))`;
+const projectGate=`(? IS NULL OR EXISTS(SELECT 1 FROM (SELECT w.owner_id,json_extract(p.value,'$.id') AS project_id FROM orbit_workspaces w,json_each(w.state_json,'$.projects') p UNION ALL SELECT p.owner_id,p.project_id FROM orbit_workspace_projects p JOIN orbit_workspaces w ON w.owner_id=p.owner_id WHERE json_extract(w.state_json,'$._orbitStorage')='orbit-workspace/chunks-v1') WHERE owner_id=? AND project_id=?))`;
 export async function createConversation(db:Database,owner:string,input:z.infer<typeof createConversationSchema>){
  const now=new Date().toISOString();
  await db.prepare(`INSERT INTO orbit_conversations(owner_id,id,title,project_id,revision,created_at,updated_at)

@@ -1,20 +1,12 @@
 'use client';
 import {DiscordConnection} from './discord-connection';
 import {CalendarSelection} from './calendar-controls';
-import { requestOwnerHeaders } from '@/lib/orbit/request-owner';
-import {AgentRequestError} from '@/lib/orbit/agent/approval-feedback';
 import {useState} from 'react';
 import {Check,ExternalLink,Link2,LoaderCircle,Unplug,CalendarDays,Mic,Orbit} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import type {Connection,Provider} from '@/lib/orbit/agent/types';
-export async function agentRequest(path:string,method='GET',body?:unknown){
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),path.startsWith('/api/agent/orders')?150000:path==='/api/integrations/sync'?65000:45000);
- try{
-  const response=await fetch(path,{method,signal:controller.signal,credentials:'same-origin',cache:'no-store',headers:{...requestOwnerHeaders(),...(body!==undefined?{'Content-Type':'application/json'}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});
-  let data;try{data=await response.json()}catch{throw new Error('연결이 중단됐습니다. 다시 불러오면 저장된 결과를 확인할 수 있습니다.')}
-  if(!response.ok)throw new AgentRequestError(data.error??'요청을 완료하지 못했습니다.',data.code,data.details);return data;
- }catch(error){if(controller.signal.aborted)throw new Error('연결 시간이 초과됐습니다. 다시 눌러 진행 상태를 확인해 주세요.');throw error}finally{clearTimeout(timer)}
-}
+export {clientRequest as agentRequest} from '@/lib/orbit/agent/client-request';
+import {clientRequest as agentRequest} from '@/lib/orbit/agent/client-request';
 export function Connections({connections,onClose,onChange,calendarOnly=false}:{connections:Connection[];onClose:()=>void;onChange:()=>Promise<void>;calendarOnly?:boolean}){
  const [endpoint,setEndpoint]=useState(connections.find(c=>c.provider==='hermes')?.endpoint??''),[token,setToken]=useState('');
  const [clientId,setClientId]=useState(''),[clientSecret,setClientSecret]=useState(''),[busy,setBusy]=useState<Provider|null>(null),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[active,setActive]=useState<Provider|null>(null),[authLink,setAuthLink]=useState('');

@@ -1,4 +1,6 @@
 'use client';
+import {eventScopes,eventScope,eventScopeLabels,type EventScope} from '@/lib/orbit/event-details';
+import {GoogleEventEditor} from './google-event-editor';
 import {questReadiness} from '@/lib/orbit/pacemaker';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
@@ -108,7 +110,8 @@ import {ItemColorPicker} from './item-color-picker';
 import {CalendarColors} from './calendar-colors';
 import {taskCalendarEvents,calendarCategories,categoryLabels,categoryOf,categoryColor,calendarItemColor,type CalendarCategory} from '@/lib/orbit/calendar-categories';
 import {ProjectDetailPanel} from './project-detail';
-import {eventCommand,moveConflict,moveRestriction,canEditCalendarEvent} from '@/lib/orbit/calendar-move';
+import {registrationOverlap} from '@/lib/orbit/overlap-review';
+import {eventCommand,moveRestriction,canEditCalendarEvent} from '@/lib/orbit/calendar-move';
 import type {CalendarEvent} from '@/lib/orbit/model';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {GoalDashboard} from './coach/goal-dashboard';
@@ -350,6 +353,8 @@ function WorkspaceContent({
   const [editingId, setEditingId] = useState<string | null>(null),
     [newTitle, setNewTitle] = useState(''),
     [newBody, setNewBody] = useState(''),
+    [newTaskMemo,setNewTaskMemo]=useState(''),
+    [newScope,setNewScope]=useState<EventScope>('personal'),
     [newProject, setNewProject] = useState(''),
     [newDuration, setNewDuration] = useState('45'),
     [newDate, setNewDate] = useState(TODAY),
@@ -365,7 +370,7 @@ function WorkspaceContent({
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
-  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,projectTouched]);
+  useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody&&!newTaskMemo))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,newScope,newTaskMemo,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,newScope,newTaskMemo,projectTouched]);
   const [discardCreateConfirm,setDiscardCreateConfirm]=useState(false);
   const [discardProjectConfirm,setDiscardProjectConfirm]=useState(false);
   const [calendarInteracting, setCalendarInteracting] = useState(false);
@@ -445,6 +450,11 @@ function WorkspaceContent({
     afterPopupClose(()=>{if(location.hash!==`#${v}`)pushPopupRoute(null,`#${v}`);window.scrollTo({top:0,behavior:'instant'});});
   };
   const perform = async (action: WorkspaceAction, message?: string) => {
+    const review=registrationOverlap(liveCalendar.current.data,action);
+    if(review&&(action.type==='event.upsert'||action.type==='task.schedule'||action.type==='proposal.approve')){
+      if(!window.confirm(review.message))return false;
+      action={...action,overlapConfirmation:review.confirmation};
+    }
     const ok = await mutate(action);
     if (ok && message) toast.success(message);
     return ok;
@@ -466,8 +476,6 @@ function WorkspaceContent({
       toast.error('저장 상태를 확인한 뒤 다시 옮겨 주세요.'); return false;
     }
     const target = {...saved,start:after.start,end:after.end};
-    const conflict = moveConflict(target,[...current.events,...protectedEvents(current.data,target.date)]);
-    if (conflict) { toast.error(`‘${conflict.title}’ 일정과 겹쳐 원래 시간으로 돌아왔습니다.`); return false; }
     const ok = await perform(eventCommand(target));
     if (ok) {
       setUnconfirmedCalendarMove(null);
@@ -478,7 +486,6 @@ function WorkspaceContent({
           const event=latest.events.find(e=>e.id===target.id);
           if(!event||event.start!==target.start||event.end!==target.end||event.date!==target.date){toast.error('일정이 다시 변경되어 취소할 수 없습니다.');return;}
           const original={...event,start:before.start,end:before.end};
-          if(moveConflict(original,[...latest.events,...protectedEvents(latest.data,original.date)])){toast.error('원래 시간에 다른 일정이 있어 되돌릴 수 없습니다.');return;}
           if(await perform(eventCommand(original),'원래 시간으로 되돌렸습니다.')) window.dispatchEvent(new Event('orbit:calendar-changed'));
         })();}},
       });
@@ -507,10 +514,10 @@ function WorkspaceContent({
     setEditingId(null);
     setEditingNoteRevision(undefined);
     setNewTitle('');setNewColor(null);setNewCategory(kind==='event'?'meeting':'work');
-    setNewBody('');
+    setNewBody('');setNewTaskMemo('');setNewScope(kind==='task'?'work':'personal');
     setNewProject(
       kind === 'event'
-        ? 'none'
+        ? (detail?.kind === 'project' ? detail.id : 'auto')
         : detail?.kind === 'project'
           ? detail.id
           : detail?.kind === 'note'
@@ -530,7 +537,7 @@ function WorkspaceContent({
     setProjectTouched(false);
     const restored=!demo&&readDraft<any>(ownerId,'form',kind);
     if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
-      createId.current=restored.id;setNewTitle(restored.newTitle);setNewColor(restored.newColor??null);setNewCategory(restored.newCategory??(kind==='event'?'meeting':'work'));setNewBody(restored.newBody);setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
+      createId.current=restored.id;setNewTitle(restored.newTitle);setNewColor(restored.newColor??null);setNewCategory(restored.newCategory??(kind==='event'?'meeting':'work'));setNewBody(restored.newBody);setNewScope(restored.newScope??(kind==='task'?'work':'personal'));setNewTaskMemo(restored.newTaskMemo??'');setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
     }
     if(contextProjectId&&projects.some(p=>p.id===contextProjectId)){setNewProject(contextProjectId);setProjectTouched(true);if((projects.find(p=>p.id===contextProjectId)?.status??'active')!=='active')setNewFocus(false);}
     setCreate(kind);
@@ -582,6 +589,8 @@ function WorkspaceContent({
     );
   // 자동 안분: while a new task is being written and the project was not chosen by hand, a
   // confident keyword match selects the project; the coach shows lower-confidence suggestions.
+  const eventMatch = create === 'event' && newProject === 'auto' ? automaticProject(newTitle,projects,tasks,notes) : undefined;
+  const eventCandidates = create === 'event' && newProject === 'auto' && !eventMatch ? suggestProject(newTitle,projects,tasks,notes).filter(p=>p.confidence==='high') : [];
   const draftProject = create === 'task' && !editingId ? projectDraft(newTitle, newDate) : undefined;
   const autoProject = create === 'task' && !editingId && !projectTouched && newTitle.trim()
     ? automaticProject(`${newTitle} ${newBody}`, projects, tasks, notes) : undefined;
@@ -659,6 +668,8 @@ function WorkspaceContent({
           due: newDate,
           category:newCategory,
           color:newColor,
+          description:newTaskMemo,
+          scope:newScope,
           impact: old?.impact ?? 3,
           focus: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active',
           focusDate: newFocus&&(projects.find(p=>p.id===taskProject)?.status??'active')==='active' ? (old?.focusDate ?? TODAY) : undefined,
@@ -692,6 +703,7 @@ function WorkspaceContent({
         },
       };
     } else if (create === 'event') {
+      if(eventCandidates.length){toast.error('연결할 프로젝트를 선택해 주세요.');return;}
       const [h, m] = newTime.split(':').map(Number);
       const start = h * 60 + m;
       if (!Number.isFinite(start) || start + Number(newDuration) > 1440) { toast.error('종료 시간은 같은 날 자정 이전으로 선택해 주세요.'); return; }
@@ -707,9 +719,13 @@ function WorkspaceContent({
           start,
           end: start + Number(newDuration),
           kind: old?.kind ?? 'meeting',
+          description:newBody,
+          scope:newScope,
           category:newCategory,
           color:newColor,
-          projectId: newProject === 'none' ? undefined : newProject,
+          projectId: newProject === 'none' || newProject === 'auto' ? undefined : newProject,
+          projectAutoLink: newProject === 'auto',
+          projectLink: undefined,
         },
       };
     } else {
@@ -756,7 +772,7 @@ function WorkspaceContent({
       setDetail(null);
       setCreate('task');
       setNewTitle(t.title);setNewColor(t.color??null);setNewCategory(categoryOf(t));
-      setNewBody(t.definition);
+      setNewBody(t.definition);setNewTaskMemo(t.description??'');setNewScope(eventScope(t));
       setNewProject(t.projectId);
       setNewDuration(String(t.duration));
       setNewDate(t.due);
@@ -788,7 +804,7 @@ function WorkspaceContent({
       const e = events.find((e) => e.id === id)!;
       setDetail(null);
       setCreate('event');
-      setNewTitle(e.title);setNewColor(e.color??null);setNewCategory(categoryOf(e));
+      setNewTitle(e.title);setNewBody(e.description??'');setNewScope(eventScope(e));setNewColor(e.color??null);setNewCategory(categoryOf(e));
       setNewProject(e.projectId ?? 'none');
       setNewDate(e.date);
       setNewTime(formatTime(e.start));
@@ -1230,7 +1246,7 @@ function WorkspaceContent({
           {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub onReorder={ids=>perform({type:'project.reorder',ids},'프로젝트 순서를 저장했습니다.')} data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}
 
           {loaded&&(view==='wiki'||view==='knowledge')&&<>{!demo&&<PlaudPanel projects={data.projects} onRefresh={refresh} onOpen={id=>setDetail({kind:'note',id})} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}<WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
-          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={calendarInteracting||!!scheduleTask||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
+          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={dataEditing||calendarInteracting||!!scheduleTask||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
           {loaded && view === 'calendar' && (
             <div className="calendar-two-col">
               <section className="full-card calendar-main">
@@ -1427,6 +1443,10 @@ function WorkspaceContent({
           <div className="sheet-body">
             {taskDetail && (
               <>
+                <label className="form-label">일정 구분</label><Choice value={eventScope(taskDetail)} label="할 일 일정 구분" onChange={scope=>{if(!busy&&!hasPending)void perform({type:'task.upsert',task:{...taskDetail,scope:scope as EventScope}},'할 일 구분을 저장했습니다.')}} items={eventScopes.map(value=>({value,label:eventScopeLabels[value]}))}/>
+                <label className="form-label">카테고리</label><Choice value={categoryOf(taskDetail)} label="할 일 카테고리" onChange={category=>{if(!busy&&!hasPending)void perform({type:'task.upsert',task:{...taskDetail,category:category as CalendarCategory}},'할 일 카테고리를 저장했습니다.')}} items={calendarCategories.map(value=>({value,label:categoryLabels[value]}))}/>
+                <ItemColorPicker value={taskDetail.color??null} defaultColor={categoryColor(categoryOf(taskDetail),preferences,'task')} disabled={busy||hasPending} onChange={color=>{if(!busy&&!hasPending)void perform({type:'task.upsert',task:{...taskDetail,color}},'할 일 색상을 저장했습니다.')}}/>
+                <div className="event-memo-detail"><span className="form-label">메모</span><p className="event-memo-text">{taskDetail.description||'할 일 수정에서 메모를 추가할 수 있습니다.'}</p><p className="form-hint">Google 연결 시 마감일 일정과 배정한 시간에 자동으로 반영됩니다.</p></div><CalendarEventDelivery eventId={'task-due:'+taskDetail.id} demo={demo}/>
                 <div className="detail-keyvalue">
                   <span>연결 프로젝트</span>
                   <button className="text-button" onClick={()=>setDetail({kind:'project',id:taskDetail.projectId})}>{projectById(taskDetail.projectId)?.name}<ChevronRight size={14}/></button>
@@ -1658,7 +1678,9 @@ function WorkspaceContent({
             {projectDetail && <ProjectDetailPanel key={projectDetail.id+':'+(detail?.projectIntent??'overview')} intent={detail?.projectIntent} onManage={()=>setProjectAction({id:projectDetail.id,mode:'menu'})} project={projectDetail} data={data} today={TODAY} busy={busy||hasPending||!loaded} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onCreate={openCreate} onEdit={()=>openEdit('project',projectDetail.id)} onDelete={()=>setProjectAction({id:projectDetail.id,mode:'delete'})} onChat={()=>openProjectChat(projectDetail.id)} onEditing={setDataEditing} followup={<FollowupPanel data={data} today={TODAY} busy={busy||hasPending||demo} perform={perform} initialProjectId={projectDetail.id} initialTab="delegations" onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}/>}
             {eventDetail && (
               <>
+                {eventDetail.id.startsWith('google:') ? (eventDetail.google?.orbitEventId&&events.some(e=>e.id===eventDetail.google!.orbitEventId) ? <button className="primary-button event-edit-entry" disabled={busy||hasPending} onClick={()=>{const original=events.find(e=>e.id===eventDetail.google!.orbitEventId)!;if(canEditCalendarEvent(original))openEdit('event',original.id);else{setProposalDate(original.date);setDetail(null);navigate('proposal')}}}><Pencil size={16}/>연결된 일정 수정</button> : <GoogleEventEditor key={ownerId+':'+eventDetail.id} storageKey={eventDetail.google?JSON.stringify([eventDetail.google.calendarId,eventDetail.google.eventId]):eventDetail.id} eventId={eventDetail.id} ownerId={ownerId} disabled={demo||busy||hasPending} onEditing={setDataEditing} onSaved={async event=>{await refresh();setCalendarDate(event.date);setDetail({kind:'event',id:event.id});window.dispatchEvent(new Event('orbit:calendar-changed'));toast.success('일정 수정 내용을 Google Calendar에 저장했습니다.')}}/>) : canEditCalendarEvent(eventDetail) ? <button className="primary-button event-edit-entry" disabled={busy||hasPending} onClick={()=>openEdit('event',eventDetail.id)}><Pencil size={16}/>일정 수정</button> : null}
                 <label className="form-label">카테고리</label><Choice value={preferences.eventCategories?.[eventDetail.id]??categoryOf(eventDetail)} label="일정 카테고리" onChange={v=>{if(!busy&&!hasPending)void perform(canEditCalendarEvent(eventDetail)?eventCommand({...eventDetail,category:v as CalendarCategory}):{type:'preferences.update',preferences:{...preferences,eventCategories:{...preferences.eventCategories,[eventDetail.id]:v as CalendarCategory}}},'일정 카테고리를 저장했습니다.')}} items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><ItemColorPicker value={preferences.eventColors?.[eventDetail.id]??eventDetail.color??null} defaultColor={tasks.find(t=>t.id===eventDetail.taskId)?.color??categoryColor(preferences.eventCategories?.[eventDetail.id]??categoryOf(eventDetail),preferences,eventDetail.taskId?'task':'event')} disabled={busy||hasPending} onChange={color=>{if(!busy&&!hasPending)void perform(canEditCalendarEvent(eventDetail)?eventCommand({...eventDetail,color}):{type:'preferences.update',preferences:{...preferences,eventColors:{...preferences.eventColors,[eventDetail.id]:color}}},'일정 색상을 저장했습니다.')}}/>
+                <div className="event-memo-detail"><span className="form-label">일정 구분</span><p>{eventScopeLabels[eventScope(eventDetail)]}</p><span className="form-label">메모</span><p className="event-memo-text">{eventDetail.description||'일정 수정에서 메모를 추가할 수 있습니다.'}</p></div>
                 <EventFiles
                   key={eventDetail.id}
                   eventId={eventDetail.id}
@@ -1707,7 +1729,7 @@ function WorkspaceContent({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Google Calendar에서 수정 <ArrowUpRight size={15} />
+                      Google Calendar에서 보기 <ArrowUpRight size={15} />
                     </a>
                   ) : eventDetail.id.startsWith('approved:') ? (
                     <button
@@ -1722,10 +1744,6 @@ function WorkspaceContent({
                     </button>
                   ) : (
                     <>
-                      <button className="primary-button" onClick={() => openEdit('event', eventDetail.id)}>
-                        <Pencil size={15} />
-                        일정 수정
-                      </button>
                       <button
                         className="secondary-button danger-text"
                         onClick={() =>
@@ -1846,8 +1864,12 @@ function WorkspaceContent({
                 )}
               </div>
             )}
+            {create === 'task' && <><label className="form-label">일정 구분</label><Choice value={newScope} onChange={value=>setNewScope(value as EventScope)} label="할 일 일정 구분" items={eventScopes.map(value=>({value,label:eventScopeLabels[value]}))}/><label className="form-label" htmlFor="task-memo">메모</label><textarea id="task-memo" className="form-field" rows={5} maxLength={20000} value={newTaskMemo} onChange={e=>setNewTaskMemo(e.target.value)} placeholder="통화 내용, 준비 사항 등을 적어 주세요."/><p className="form-hint">Google 연결 시 메모·구분·색상이 마감일 일정과 배정한 시간에 자동으로 반영됩니다.</p></>}
             {create === 'event' && (
               <>
+                <label className="form-label">일정 구분</label><Choice value={newScope} onChange={value=>setNewScope(value as EventScope)} label="일정 구분" items={eventScopes.map(value=>({value,label:eventScopeLabels[value]}))}/>
+                <label className="form-label" htmlFor="event-memo">메모</label><textarea id="event-memo" className="form-field" rows={5} maxLength={20000} value={newBody} onChange={e=>setNewBody(e.target.value)} placeholder="통화 내용, 준비 사항 등을 적어 주세요."/>
+                <p className="form-hint">Google 연결 시 메모도 Calendar의 설명에 반영됩니다.</p>
                 <label className="form-label" htmlFor="event-date">날짜</label>
                 <input id="event-date" type="date" className="form-field" value={newDate} required onChange={e=>setNewDate(e.target.value)}/>
                 <div className="field-grid event-time-fields">
@@ -1856,7 +1878,9 @@ function WorkspaceContent({
                 </div>
                 <p className="event-end-summary"><Clock3 size={15}/>{(()=>{const [h,m]=newTime.split(':').map(Number);const end=h*60+m+Number(newDuration);return Number.isFinite(end)?end<=1440?`${formatTime(end)}에 끝나요`:'종료 시간이 다음 날을 넘어요. 시간을 조정해 주세요.':''})()}</p>
                 <label className="form-label">프로젝트 <span className="optional-label">선택</span></label>
-                <Choice value={newProject} onChange={v=>{setProjectTouched(true);setNewProject(v)}} label="연결 프로젝트" items={[{value:'none',label:'개인 일정'},...projects.map(p=>({value:p.id,label:p.name}))]}/>
+                <Choice value={newProject} onChange={v=>{setProjectTouched(true);setNewProject(v)}} label="연결 프로젝트" items={[{value:'auto',label:'이름으로 자동 연결'},{value:'none',label:'연결 안 함'},...projects.map(p=>({value:p.id,label:p.name}))]}/>
+                {eventMatch&&<p className="muted">{projects.find(p=>p.id===eventMatch.projectId)?.name}에 연결됩니다 · {eventMatch.matched.join(', ')}</p>}
+                {!!eventCandidates.length&&<p role="status">여러 프로젝트가 일치합니다. 연결할 프로젝트를 선택해 주세요: {eventCandidates.map(c=>projects.find(p=>p.id===c.projectId)?.name).join(', ')}</p>}
               </>
             )}
             {(create==='task'||create==='event')&&<><label className="form-label">카테고리</label><Choice value={newCategory} onChange={v=>setNewCategory(v as CalendarCategory)} label="카테고리" items={calendarCategories.map(c=>({value:c,label:categoryLabels[c]}))}/><ItemColorPicker value={newColor} onChange={setNewColor} disabled={busy||hasPending} defaultColor={(create==='event'&&tasks.find(t=>t.id===events.find(e=>e.id===editingId)?.taskId)?.color)||categoryColor(newCategory,preferences,create==='task'||!!events.find(e=>e.id===editingId)?.taskId?'task':'event')}/></>}

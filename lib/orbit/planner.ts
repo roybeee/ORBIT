@@ -365,6 +365,7 @@ export function approveProposalItem(
   itemId: string,
   tasks: Task[],
   events: CalendarEvent[],
+  overlapConfirmed=false,
 ): { proposal: Proposal; events: CalendarEvent[]; error?: string } {
   const item = proposal.items.find((i) => i.id === itemId);
   const task = tasks.find((t) => t.id === item?.taskId);
@@ -376,11 +377,12 @@ export function approveProposalItem(
   // The estimate the block was planned from must still hold (calibrated and Laser blocks differ from it).
   if (task.duration !== (item.estimate ?? item.end - item.start))
     return { proposal, events, error: '업무의 예상 시간이 변경됐습니다. 최신 진척으로 다시 분석해 주세요.' };
-  if (events.some((e) => e.date === proposal.date && overlaps(e, item)))
+  if (!overlapConfirmed && events.some((e) => !e.id.startsWith('task-due:') && !(e.allDay&&e.google?.orbitEventId?.startsWith('task-due:')) && e.date === proposal.date && overlaps(e, item)))
     return { proposal, events, error: '다른 일정과 겹칩니다. 제안을 다시 생성해 주세요.' };
   const event: CalendarEvent = {
     id: `approved:${item.id}`,
     title: task.title,
+    description:task.description,scope:task.scope,category:task.category,color:task.color,
     date: proposal.date,
     start: item.start,
     end: item.end,

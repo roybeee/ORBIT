@@ -32,6 +32,8 @@ export interface Project {
   milestones?: ProjectMilestone[];
 }
 export interface Task {
+  description?: string;
+  scope?: import('./event-details').EventScope;
   color?: string | null;
   category?: import('./calendar-categories').CalendarCategory;
   id: string;
@@ -144,6 +146,10 @@ export interface NoteRevision {
   updatedAt: string;
 }
 export interface CalendarEvent {
+  description?: string;
+  scope?: import('./event-details').EventScope;
+  projectAutoLink?: boolean;
+  projectLink?: {method:'keyword'|'related';matched:string[]};
   color?: string | null;
   allDay?: boolean;
   category?: import('./calendar-categories').CalendarCategory;

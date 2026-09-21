@@ -14,7 +14,7 @@ export function CalendarEventDelivery({eventId,demo,allowManual=false}:{eventId:
   {receipt&&<small role="status">{receipt.status==='verified'?'Google 등록 완료':receipt.status==='pending'||receipt.status==='publishing'?'ORBIT 저장 완료 · Google 반영 중':receipt.status==='cancelled'?'Google 등록 중단':'ORBIT 저장 완료 · Google 반영 확인 필요'}</small>}
   {receipt?.message&&receipt.status==='uncertain'&&<p role="alert">{receipt.message}</p>}
   <button className="text-button" disabled={demo||busy||receipt?.status==='publishing'} onClick={async()=>{setBusy(true);setError('');try{setReceipt(await agentRequest('/api/integrations/calendar-exports','POST',{eventId}))}catch(e){setError(e instanceof Error?e.message:'등록 결과 확인 필요')}finally{setBusy(false)}}}>{busy?'Google 확인 중…':receipt?.status==='verified'?'등록 상태 확인':receipt?'등록 다시 확인':'Google에도 등록'}</button>
-  {receipt?.status==='verified'&&<small>ORBIT에서 삭제하거나 승인을 취소해도 Google 일정은 유지됩니다.</small>}
+  {receipt?.status==='verified'&&<small>{eventId.startsWith('task-due:')?'할 일을 삭제하면 연결된 Google 마감일 일정도 정리됩니다.':'ORBIT에서 삭제하거나 승인을 취소해도 Google 일정은 유지됩니다.'}</small>}
   {receipt?.url&&/^https:\/\/(calendar\.google\.com|www\.google\.com)\//.test(receipt.url)&&<a href={receipt.url} target="_blank" rel="noreferrer">Google에서 보기</a>}
   {error&&<p role="alert">{error}</p>}
  </div>;

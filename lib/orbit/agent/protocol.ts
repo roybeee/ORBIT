@@ -32,6 +32,7 @@ export const googleActionSchema = z
 export const agentInput = z
   .object({
     attachmentIds: fileIds.optional(),
+    retryFailed: z.boolean().optional(),
     conversationId: conversationIdSchema.optional(),
     id: z.string().uuid(),
     message: z.string().trim().min(1).max(8000),
@@ -70,6 +71,7 @@ const allowed = new Set([
   'risk.close',
 ]);
 export function parseAction(value: unknown) {
+  if(value&&typeof value==='object'&&'overlapConfirmation' in value)throw new AgentError('겹침 승인은 사용자가 별도로 확인해야 합니다.');
   const deletion=googleDeleteSchema.safeParse(value);if(deletion.success)return deletion.data;
   const dispatch=orderActionSchema.safeParse(value);
   if(dispatch.success)return dispatch.data;

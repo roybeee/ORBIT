@@ -1,3 +1,6 @@
+import {eventScope} from '../event-details.ts';
+import {deliverGoogleColor} from './calendar-color-delivery.ts';
+import type {GoogleColorTarget} from '../calendar-color-sync.ts';
 import {taskCalendarEvent,googleItemColor} from '../calendar-categories.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {readWorkspace,type Database} from '../../../db/repository.ts';
@@ -6,6 +9,8 @@ import {zonedInstant} from './calendar.ts';
 import {AgentError} from './errors.ts';
 
 export interface CalendarDelivery {
+ lastDetails?:string;attemptedDetails?:string[];
+ googleColor?:GoogleColorTarget;
  eventId:string;automatic:true;status:'pending'|'publishing'|'verified'|'uncertain'|'cancelled';
  fingerprint:string;leaseUntil:number;queuedAt:string;message?:string;
  calendarId?:string;url?:string;verifiedAt?:string;lastSignature?:string;attemptedSignatures?:string[];
@@ -13,6 +18,8 @@ export interface CalendarDelivery {
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
 const signature=(event:{summary?:string;start?:{dateTime?:string;date?:string};end?:{dateTime?:string;date?:string}})=>
  JSON.stringify([event.summary??'',event.start?.date??Date.parse(event.start?.dateTime??''),event.end?.date??Date.parse(event.end?.dateTime??'')]);
+
+const detailsSignature=(event:{description?:string;extendedProperties?:{private?:Record<string,string>}})=>JSON.stringify([event.description??'',event.extendedProperties?.private?.orbitScope??'']);
 
 export async function calendarDeliveryStatus(db:Database,owner:string){
  const {results}=await db.prepare("SELECT state_json FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.automatic')=1").bind(owner).all<{state_json:string}>();
@@ -33,10 +40,13 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   .bind(owner,eventId??'',Date.now(),eventId??'',eventId??'',eventId??'',respectBackoff?new Date(Date.now()-60000).toISOString():'9999').first<{state_json:string}>();
  if(!row)return calendarDeliveryStatus(db,owner);
  const state=JSON.parse(row.state_json) as CalendarDelivery;
+ if(state.googleColor){await deliverGoogleColor(db,owner,env,row.state_json);return calendarDeliveryStatus(db,owner)}
  const snapshot=await readWorkspace(db,owner);
  const taskId=state.eventId.startsWith('task-due:')?state.eventId.slice(9):undefined;
  const task=taskId?snapshot.data.tasks.find(t=>t.id===taskId):undefined;
- const event=task?taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone)):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
+ let event=task?taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone)):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
+ const linkedTask=event?.taskId?snapshot.data.tasks.find(t=>t.id===event!.taskId):undefined;
+ if(event&&linkedTask)event={...event,description:linkedTask.description??event.description,scope:linkedTask.scope??event.scope,category:linkedTask.category??event.category};
  if(!event&&!taskId){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
    .bind(JSON.stringify({...state,status:'cancelled',leaseUntil:0,message:'Orbit에서 삭제되어 등록을 중단했습니다.'}),owner,state.eventId,row.state_json).run();return calendarDeliveryStatus(db,owner);}
  state.status='publishing';state.leaseUntil=Date.now()+60000;
@@ -55,9 +65,9 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   state.calendarId=calendar.data.id;
   const actionId=await digest(owner+'\0'+state.eventId),googleId='orbit'+actionId;
   const base='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(state.calendarId!)+'/events';
-  const payload=event?{summary:event.title,...(event.allDay?{start:{date:event.date},end:{date:addDays(event.date,1)},transparency:'transparent'}:{start:{dateTime:zonedInstant(event.date,event.start,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone},end:{dateTime:zonedInstant(event.date,event.end,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone}}),colorId:googleItemColor(event,snapshot.data.preferences,snapshot.data.tasks.find(t=>t.id===event.taskId))}:null;
+  const payload=event?{summary:event.title,description:event.description,extendedProperties:{private:{orbitScope:eventScope(event)} as Record<string,string>},...(event.allDay?{start:{date:event.date},end:{date:addDays(event.date,1)},transparency:'transparent'}:{start:{dateTime:zonedInstant(event.date,event.start,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone},end:{dateTime:zonedInstant(event.date,event.end,snapshot.data.preferences.timeZone),timeZone:snapshot.data.preferences.timeZone}}),colorId:googleItemColor(event,snapshot.data.preferences,snapshot.data.tasks.find(t=>t.id===event.taskId))}:null;
   state.fingerprint=await digest(payload?signature(payload):'deleted');
-  const previousSignatures=[state.lastSignature,...(state.attemptedSignatures??[])];
+  const previousSignatures=[state.lastSignature,...(state.attemptedSignatures??[])],previousDetails=[state.lastDetails,...(state.attemptedDetails??[])];
   // Persist the target before the first remote mutation, including lost ACKs.
   const bound=JSON.stringify(state);
   const boundResult=await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?').bind(bound,owner,state.eventId,lease).run();
@@ -65,6 +75,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   lease=bound;
   const beforeMutation=async()=>{
    if(state.leaseUntil<Date.now()+6500)throw new AgentError('전송 시간이 지나 자동으로 다시 확인합니다.','BUSY',409);
+   if(payload)state.attemptedDetails=[...new Set([detailsSignature(payload),...(state.attemptedDetails??[])])].slice(0,3);
    state.attemptedSignatures=[...new Set([payload?signature(payload):'deleted',...(state.attemptedSignatures??[])])].slice(0,3);
    const next=JSON.stringify(state);
    const result=await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?').bind(next,owner,state.eventId,lease).run();
@@ -73,6 +84,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   };
   const current=await fetchJson(base+'/'+googleId,{headers},6000);
   let remote=current.data;
+  if(payload){payload.description=event?.description??remote.description??(task?'Orbit 프로젝트 할 일 · 날짜 기준, 시간 미지정':'Orbit에서 등록한 일정');payload.extendedProperties.private={...remote.extendedProperties?.private,...payload.extendedProperties.private};}
   if(!payload){
    if(current.response.ok&&current.data.status!=='cancelled'){
     if(current.data.extendedProperties?.private?.orbitAction!==actionId||current.data.extendedProperties?.private?.orbitEventId!==state.eventId||!current.data.etag||!previousSignatures.includes(signature(current.data)))throw new AgentError('Google에서 변경한 할 일입니다. 삭제 전 확인이 필요합니다.','CONFLICT',409);
@@ -87,9 +99,10 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
    if(remote.extendedProperties?.private?.orbitAction!==actionId||remote.extendedProperties?.private?.orbitEventId!==state.eventId)
     throw new AgentError('Google 일정의 연결 정보를 확인할 수 없습니다.','CONFLICT',409);
    if(remote.status==='cancelled')throw new AgentError('Google에서 삭제된 일정입니다. 새 일정으로 등록해 주세요.','CONFLICT',409);
-   if(signature(remote)!==signature(payload)||remote.colorId!==payload.colorId){
+   if(signature(remote)!==signature(payload)||remote.colorId!==payload.colorId||detailsSignature(remote)!==detailsSignature(payload)){
     if(!previousSignatures.includes(signature(remote))||!remote.etag)
      throw new AgentError('Google에서 일정이 변경되었습니다. 양쪽 내용을 확인한 뒤 조정해 주세요.','CONFLICT',409);
+    if(state.lastDetails!==undefined&&!previousDetails.includes(detailsSignature(remote)))throw new AgentError('Google에서 메모나 일정 구분이 변경되었습니다. 양쪽 내용을 확인한 뒤 조정해 주세요.','CONFLICT',409);
     await beforeMutation();
     const patched=await fetchJson(base+'/'+googleId+'?sendUpdates=none',{method:'PATCH',headers:{...headers,'Content-Type':'application/json','If-Match':remote.etag},body:JSON.stringify(payload)},6000);
     if(!patched.response.ok)throw new AgentError(patched.response.status===412?'Google 일정이 변경되어 덮어쓰지 않았습니다.':'Google 수정 반영을 확인하지 못했습니다. 자동으로 다시 확인합니다.','CALENDAR',502);
@@ -98,12 +111,12 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   }else if(current.response.status===404){
    if(state.verifiedAt)throw new AgentError('Google에서 기존 일정을 찾을 수 없습니다. 새 일정으로 등록해 주세요.','CONFLICT',409);
    await beforeMutation();
-   const created=await fetchJson(base+'?sendUpdates=none',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...payload,id:googleId,description:task?'Orbit 프로젝트 할 일 · 날짜 기준, 시간 미지정':'Orbit에서 등록한 일정',extendedProperties:{private:{orbitAction:actionId,orbitEventId:state.eventId}},reminders:{useDefault:true}})},6000);
+   const created=await fetchJson(base+'?sendUpdates=none',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...payload,id:googleId,extendedProperties:{private:{...payload.extendedProperties.private,orbitAction:actionId,orbitEventId:state.eventId}},reminders:{useDefault:true}})},6000);
    if(!created.response.ok)throw new AgentError('Google 등록 결과를 확인하지 못했습니다. 중복 없이 다시 확인합니다.','CALENDAR',502);
    remote=created.data;
   }else throw new AgentError(current.response.status===410?'Google에서 삭제된 일정입니다. 새 일정으로 등록해 주세요.':'Google 일정 확인에 실패했습니다. 연결 상태를 확인해 주세요.','CALENDAR',502);
-  if(signature(remote)!==signature(payload))throw new AgentError('Google 응답을 확인하지 못했습니다. 자동으로 다시 확인합니다.','CALENDAR',502);
-  state.status='verified';state.lastSignature=signature(payload);state.verifiedAt=new Date().toISOString();
+  if(signature(remote)!==signature(payload)||remote.colorId!==payload.colorId||detailsSignature(remote)!==detailsSignature(payload))throw new AgentError('Google 응답을 확인하지 못했습니다. 자동으로 다시 확인합니다.','CALENDAR',502);
+  state.status='verified';state.lastSignature=signature(payload);state.lastDetails=detailsSignature(payload);state.verifiedAt=new Date().toISOString();
   state.url=typeof remote.htmlLink==='string'?remote.htmlLink:state.url;
   state.message='Google 기본 캘린더에 등록됨';
  }catch(error){state.status='uncertain';state.message=error instanceof AgentError?error.message:'Google 응답을 확인하지 못했습니다. 자동으로 다시 확인합니다.';}

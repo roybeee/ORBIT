@@ -9,6 +9,7 @@ import {researchInstructions,researchRead,researchManifest,type ResearchState} f
 import {AgentError} from './errors.ts';
 import {parseResearchResponse} from './research-response.ts';
 import {orderReferences} from './order-references.ts';
+import {configuredOrderTools,assertOrderToolCapabilities} from './order-tool-preflight.ts';
 import {orderActionSchema,orderActive,orderStatusLabel,type DispatchAction,type WorkOrder,type orderInput} from './orders-schema.ts';
 import type {z} from 'zod';
 
@@ -35,7 +36,7 @@ export async function orderCapabilities(db:Database,owner:string,env:Runtime){
  const config=await hermesConfig(db,owner,env),caps=await hermesRequest(config,'/v1/capabilities');
  const supported=caps.object==='hermes.api_server.capabilities'&&caps.features?.run_submission===true&&caps.features?.run_status===true&&caps.features?.run_stop===true&&caps.features?.runs_idempotency?.durable===true&&caps.features.runs_idempotency.enabled!==false&&caps.features.runs_idempotency.supported!==false;
  let tools:string[]=[],discoveryError='';
- try{const result=await hermesRequest(config,'/v1/toolsets');if(!Array.isArray(result.data))throw new Error('format');tools=[...new Set<string>(result.data.filter((v:any)=>v.enabled===true&&v.configured===true).flatMap((v:any)=>Array.isArray(v.tools)?v.tools.filter((t:unknown)=>typeof t==='string'):[]))].sort();}
+ try{tools=configuredOrderTools(await hermesRequest(config,'/v1/toolsets'));}
  catch{discoveryError='실행 도구 목록을 확인하지 못했습니다. 실제 사용 가능 여부는 Hermes가 실행 시 확인합니다.'}
  const connected=await connections(db,owner,env);
  return {orbitReads:{wiki:true,plaud:connected.some(c=>c.provider==='plaud'&&c.connected)},supported,retentionSeconds:Number.isFinite(caps.features?.runs_idempotency?.retention_seconds)?Math.max(0,Math.min(86400,Number(caps.features.runs_idempotency.retention_seconds))):0,steer:caps.features?.run_steer===true,approval:caps.features?.run_approval_response===true&&caps.features?.approval_events===true,delegation:tools.includes('delegate_task'),tools,discoveryError};
@@ -51,6 +52,7 @@ export async function dispatchOrder(db:Database,owner:string,id:string,order:Dis
  if(existing){const s=decode(existing);if(JSON.stringify({title:s.title,instruction:s.instruction,projectId:s.projectId,taskIds:s.taskIds,eventIds:s.eventIds??[],mode:s.mode??'native',conversationId:s.conversationId})!==JSON.stringify({title:order.title,instruction:order.instruction,projectId:order.projectId,taskIds:order.taskIds,eventIds:order.eventIds??[],mode,conversationId:conversationId??null}))throw new AgentError('같은 지시 번호에 다른 내용이 있습니다.','CONFLICT',409);return advanceOrder(db,owner,id,env,{action:'poll',id});}
  const config=await hermesConfig(db,owner,env),caps=await orderCapabilities(db,owner,env);
  if(!caps.supported||caps.retentionSeconds<120)throw new AgentError('Hermes의 실행·조회·중지·중복 방지 기능을 업데이트해 주세요.','HERMES_VERSION',422);
+ assertOrderToolCapabilities(mode,order.instruction,caps);
  if(conversationId)await getConversation(db,owner,conversationId);
  const {data,project,tasks,events}=await validateOrder(db,owner,order),now=new Date().toISOString();
  const snapshot={at:now,timeZone:data.preferences.timeZone,project,tasks,events,goal:data.goals?.find(g=>g.id===project?.goalId)??null,...(rework?{rework}: {})};

@@ -7,6 +7,17 @@ import {createDatabase} from './sqlite-d1.mjs';
 register('./cloudflare-loader.mjs',import.meta.url);
 const db=createDatabase();
 globalThis.__orbitCloudflareEnv={DB:db};
+// Built-route tests run background jobs too. Never let a fixture hostname reach
+// the network: simulate only the expected Hermes admission/status protocol.
+globalThis.fetch=async(input,init={})=>{
+ const url=new URL(typeof input==='string'?input:input.url??String(input));
+ if(url.origin==='https://hermes.example.com'){
+  if(url.pathname==='/v1/runs'&&init.method==='POST')return Response.json({run_id:'fixture_run_'+randomUUID().replaceAll('-',''),status:'started'});
+  const match=url.pathname.match(/^\/v1\/runs\/(fixture_run_[a-f0-9]+)$/);
+  if(match)return Response.json({object:'hermes.run',run_id:match[1],status:'running'});
+ }
+ throw new Error('External network is disabled in built HTTP tests');
+};
 const {default:worker}=await import('../dist/server/index.js');
 after(()=>db.close());
 const identity=(id='owner-a')=>({'oai-authenticated-user-id':id,'oai-authenticated-user-email':id+'@example.test','oai-authenticated-user-full-name':'Test%20Owner','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
@@ -255,3 +266,22 @@ test('production mobile project menu resets the individual translate property af
  assert.match(mobile,/(?:inset:auto 0(?:px)? 0(?:px)?(?:;|$)|left:0(?:px)?(?:;|$))/);
  assert.match(mobile,/(?:^|;)width:100%(?:;|$)/);
 });
+
+test('exact delivery receipts are private, owner scoped and independent of conversation pagination',async()=>{
+ const {beginTurn,finishTurn}=await import('../lib/orbit/agent/repository.ts');const ids=[];
+ for(let i=0;i<32;i++){const id=randomUUID();ids.push(id);const turn=await beginTurn(db,'receipt-owner',id,'보관 메시지 '+i);await finishTurn(db,'receipt-owner',id,turn.lease,{text:'확인',sources:[]},[])}
+ const response=await request('/api/agent?receipt='+ids[0],{headers:identity('receipt-owner')});assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const {receipt}=await response.json();assert.equal(receipt.id,ids[0]);assert.equal(receipt.input,'보관 메시지 0');
+ assert.equal((await (await request('/api/agent?receipt='+ids[0],{headers:identity('other-receipt-owner')})).json()).receipt,null);
+ assert.equal((await request('/api/agent?receipt=invalid',{headers:identity('receipt-owner')})).status,400);
+ assert.equal((await request('/api/agent?actionReceipt=invalid',{headers:identity('receipt-owner')})).status,400);
+ assert.equal((await request('/api/agent?receipt='+ids[0])).status,401);
+});
+
+ test('calendar editor HTTP routes enforce identity, same-origin writes and input validation',async()=>{
+ assert.equal((await request('/api/integrations/calendar/event?id=test')).status,401);
+ assert.equal((await request('/api/integrations/calendar/event',{method:'PATCH',headers:{'content-type':'application/json'},body:'{}'})).status,401);
+ assert.equal((await request('/api/integrations/calendar/event',{method:'PATCH',headers:{...identity(),'content-type':'application/json',origin:'https://other.test'},body:'{}'})).status,403);
+ assert.equal((await request('/api/integrations/calendar/event',{headers:identity()})).status,400);
+ assert.equal((await request('/api/integrations/calendar/event',{method:'PATCH',headers:{...identity(),'content-type':'application/json',origin:'https://orbit.test'},body:'{}'})).status,400);
+ assert.equal((await request('/api/integrations/calendar/event?id=unknown',{headers:identity('editor-http')})).status,404);
+ });

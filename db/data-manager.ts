@@ -1,4 +1,4 @@
-import {WORKSPACE_LIMIT_BYTES} from '../lib/orbit/storage-usage.ts';
+import {prepareWorkspace} from './workspace-storage.ts';
 import { z } from 'zod';
 import { readWorkspace, RevisionConflict, type Database, type Statement } from './repository.ts';
 import { DomainError } from '../lib/orbit/reducer.ts';
@@ -75,12 +75,12 @@ export async function changeData(db: Database, owner: string, command: z.infer<t
     }
   }
   next.events = next.events.filter(e => !e.id.startsWith('google:'));
-  if (new TextEncoder().encode(JSON.stringify(next)).byteLength > WORKSPACE_LIMIT_BYTES) throw new DomainError('저장 한도를 넘습니다. 복원할 항목을 줄여 주세요.');
+  const storage=prepareWorkspace(next);
   const activeGate = `NOT EXISTS(SELECT 1 FROM orbit_agent_actions WHERE owner_id=? AND state='applying') AND NOT EXISTS(SELECT 1 FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.status')='publishing' AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)>?)`;
-  const update = db.prepare(`INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at) SELECT ?,?,?,?,? WHERE ${activeGate} ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision,state_json=excluded.state_json,mutation_id=excluded.mutation_id,updated_at=excluded.updated_at WHERE orbit_workspaces.revision=? AND ${activeGate}`).bind(owner, nextRevision, JSON.stringify(next), operationId, at, owner, owner, Date.now(), expectedRevision, owner, owner, Date.now());
+  const update = db.prepare(`INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at) SELECT ?,?,?,?,? WHERE ${activeGate} ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision,state_json=excluded.state_json,mutation_id=excluded.mutation_id,updated_at=excluded.updated_at WHERE orbit_workspaces.revision=? AND ${activeGate}`).bind(owner, nextRevision, storage.stateJson, operationId, at, owner, owner, Date.now(), expectedRevision, owner, owner, Date.now());
   const gate = 'EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=? AND mutation_id=?) AND NOT EXISTS(SELECT 1 FROM orbit_mutations WHERE owner_id=? AND operation_id=?)';
   const gateValues = [owner, nextRevision, operationId, owner, operationId] as const;
-  const statements: Statement[] = [update];
+  const statements: Statement[] = [update,...storage.statements(db,owner,gate,gateValues)];
   for (const item of trash) {
     if (parsed.action === 'trash') statements.push(db.prepare(`INSERT INTO orbit_data_trash(owner_id,id,category,record_id,title,payload_json,deleted_at) SELECT ?,?,?,?,?,?,? WHERE ${gate}`).bind(owner, item.id, item.category, item.recordId, item.title, JSON.stringify(item.record), at, ...gateValues));
     else {

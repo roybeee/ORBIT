@@ -34,7 +34,7 @@ export async function startPlanningAction(db:Database,owner:string,command:{oper
   // caller first, then let analysis use the refreshed snapshot.
   if(action.type==='proposal.generate')try{await syncCalendar(db,owner,env,planning.date)}catch{}
  }
- try{await runAgent(db,owner,{id:command.operationId,message:briefMessage(planning),planning},env)}
+ try{await runAgent(db,owner,{id:command.operationId,message:briefMessage(planning),planning,retryFailed:true},env)}
  catch(error){
   if(!(error instanceof AgentError&&error.code==='HERMES_SETUP'))throw error;
   const snapshot=await localPlanning(db,owner,command.operationId+':local',planning);

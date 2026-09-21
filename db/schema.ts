@@ -30,7 +30,7 @@ export const identityLinks=sqliteTable('orbit_identity_links',{
  ownerId:text('owner_id').notNull(),
  conflicted:integer('conflicted').notNull().default(0),
 });
-// One owner-scoped aggregate keeps task/proposal/calendar transitions atomic.
+// Revision header and bounded content chunks commit in the same transaction.
 // Schema-only migrations; no user records or demo data are seeded here.
 export const workspaces=sqliteTable('orbit_workspaces',{
  ownerId:text('owner_id').primaryKey(),
@@ -39,6 +39,12 @@ export const workspaces=sqliteTable('orbit_workspaces',{
  mutationId:text('mutation_id').notNull(),
  updatedAt:text('updated_at').notNull(),
 });
+export const workspaceChunks=sqliteTable('orbit_workspace_chunks',{
+ ownerId:text('owner_id').notNull(),generation:text('generation').notNull(),part:integer('part').notNull(),content:text('content').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.part]})]);
+export const workspaceProjects=sqliteTable('orbit_workspace_projects',{
+ ownerId:text('owner_id').notNull(),projectId:text('project_id').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.projectId]})]);
 export const mutations=sqliteTable('orbit_mutations',{
  ownerId:text('owner_id').notNull(),
  operationId:text('operation_id').notNull(),
@@ -63,6 +69,7 @@ export const agentTurns=sqliteTable('orbit_agent_turns',{
  status:text('status').notNull(),responseJson:text('response_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.id]}),index('idx_orbit_turn_owner_created').on(table.ownerId,table.createdAt),index('idx_orbit_turn_conversation_created').on(table.ownerId,table.conversationId,table.createdAt,table.id),uniqueIndex('idx_orbit_one_running_turn_per_conversation').on(table.ownerId,table.conversationId).where(sql`${table.status} = 'running'`)]);
 export const agentActions=sqliteTable('orbit_agent_actions',{
+ guardJson:text('guard_json').notNull().default('{}'),
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),turnId:text('turn_id').notNull(),
  title:text('title').notNull(),reason:text('reason').notNull(),actionJson:text('action_json').notNull(),expectedRevision:integer('expected_revision').notNull(),
  state:text('state').notNull(),note:text('note').notNull(),revisitDate:text('revisit_date'),resultJson:text('result_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
@@ -175,3 +182,7 @@ export const briefParts=sqliteTable('orbit_brief_parts',{
  ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),generation:text('generation').notNull(),
  stage:integer('stage').notNull(),part:integer('part').notNull(),content:text('content').notNull(),
 },table=>[primaryKey({columns:[table.ownerId,table.turnId,table.generation,table.stage,table.part]})]);
+
+export const calendarEdits=sqliteTable('orbit_calendar_edits',{
+ ownerId:text('owner_id').notNull(),operationId:text('operation_id').notNull(),payloadJson:text('payload_json').notNull(),sourceCalendarId:text('source_calendar_id').notNull(),resultJson:text('result_json').notNull().default('{}'),leaseUntil:integer('lease_until').notNull().default(0),
+},t=>[primaryKey({columns:[t.ownerId,t.operationId]})]);

@@ -275,3 +275,11 @@ test('batch intermediate evidence is owner-scoped and cancellation never publish
  const run=randomUUID();await runAgent(db,'owner',{id:run,message:briefMessage(planning),planning},env);await advanceAgent(db,'owner',run,env,true);
  assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_brief_parts WHERE turn_id=?').bind(run).first(),null);
 }));
+
+test('planning automatically refreshes changed records and still requires priority approval',()=>fixture(async db=>{
+ const snapshot=await seed(db);await hermes(db);const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);
+ globalThis.fetch=async(_url,options={})=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):response({kind:'brief',brief:content()});
+ await advanceAgent(db,'owner',id,env);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.status',id:'t',status:'doing'}});
+ await advanceAgent(db,'owner',id,env);let job=JSON.parse((await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE turn_id=?').bind(id).first()).job_json);assert.equal(job.phase,'prepare');assert.equal(job.revalidations,1);assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);
+ await advanceAgent(db,'owner',id,env);await complete(db,id);const data=(await readWorkspace(db,'owner')).data;assert.equal(data.proposals.length,1);assert.equal(data.events.length,0);assert.equal(data.tasks.find(t=>t.id==='t').status,'doing');
+}));
