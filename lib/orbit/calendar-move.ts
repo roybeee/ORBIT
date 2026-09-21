@@ -1,4 +1,6 @@
 import type { CalendarEvent } from './model';
+import type { CalendarEdit } from './agent/calendar-edit.ts';
+import { addDays, validDate } from './dates.ts';
 
 export const HOLD_MS = 420;
 export const MOVE_SLOP = 9;
@@ -35,6 +37,37 @@ export function shiftedEvent(event: CalendarEvent, deltaY: number): CalendarEven
   const delta = Math.round(deltaY / PIXELS_PER_STEP) * STEP_MINUTES;
   const start = Math.max(0, Math.min(1440 - duration, event.start + delta));
   return { ...event, start, end: start + duration };
+}
+
+type WallTime = { date: string; minute: number };
+const dayMinute = (date: string, minute: number) => Date.parse(date + 'T00:00:00Z') / 60000 + minute;
+
+function validPostponedStart(date: string, minute: number, now: WallTime) {
+  if (!validDate(date) || !Number.isInteger(minute) || minute < 0 || minute > 1439)
+    throw new Error('새 시작 날짜와 시간을 확인해 주세요.');
+  if (dayMinute(date, minute) < dayMinute(now.date, now.minute))
+    throw new Error('과거 시각으로 일정을 미룰 수 없습니다.');
+}
+
+export function postponedEvent(event: CalendarEvent, date: string, start: number, now: WallTime): CalendarEvent {
+  validPostponedStart(date, start, now);
+  const duration = event.end - event.start;
+  if (duration <= 0 || start + duration > 1440)
+    throw new Error('기존 일정 길이를 유지할 수 있도록 종료 전 시간을 선택해 주세요.');
+  return { ...event, date, start, end: start + duration };
+}
+
+export function postponedCalendarEdit(edit: CalendarEdit, date: string, start: number, now: WallTime): CalendarEdit {
+  validPostponedStart(date, edit.allDay ? 0 : start, now);
+  if (edit.allDay) {
+    const days = Math.round((Date.parse(edit.endDate + 'T00:00:00Z') - Date.parse(edit.startDate + 'T00:00:00Z')) / 86400000) + 1;
+    if (days < 1) throw new Error('기존 일정 길이를 확인하지 못했습니다.');
+    return { ...edit, startDate: date, endDate: addDays(date, days - 1) };
+  }
+  const duration = dayMinute(edit.endDate, edit.end) - dayMinute(edit.startDate, edit.start);
+  if (duration <= 0) throw new Error('기존 일정 길이를 확인하지 못했습니다.');
+  const end = start + duration;
+  return { ...edit, startDate: date, endDate: addDays(date, Math.floor(end / 1440)), start, end: end % 1440 };
 }
 
 export function moveConflict(event: CalendarEvent, events: CalendarEvent[]): CalendarEvent | undefined {
