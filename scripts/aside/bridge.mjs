@@ -149,7 +149,19 @@ export async function createBridge({directory,cli,account,port=43127,origin=ORIG
     if(ready&&probe){const status=spawnSync(cli.command,[...cli.prefix,'account','list'],{encoding:'utf8',timeout:12000,windowsHide:true,maxBuffer:1024*1024});if(status.status!==0||!(status.stdout??'').split(/\r?\n/).some(line=>line.trim().replace(/^\*\s*/, '').split(/\s+/)[0]===account&&/signed in/i.test(line))){ready=false;diagnostic='선택한 ASIDE 계정을 확인하지 못했습니다. ASIDE에 로그인하고 SETUP-ACCOUNT.cmd에서 계정을 다시 선택해 주세요.'}}
     initialized=true;
   }catch(error){await new Promise(ok=>server.close(ok));throw error}
-  return {server,token,bridgeId,port:server.address().port,ready,diagnostic,close:async()=>{if(active){const job=jobs.get(active.runId);stop(job,'연결 프로그램이 종료되었습니다. ASIDE에서 실행 상태를 확인해 주세요.')}await new Promise(ok=>server.close(ok))}};
+  let closing;
+  const close=()=>closing??=(async()=>{
+    // Drain HTTP handlers before choosing the final child; none can dispatch after this.
+    await new Promise(ok=>server.close(ok));
+    if(active){
+      const {child,runId}=active;
+      // `close` follows stdio drain and our finish listener's durable journal write.
+      const finished=new Promise(ok=>child.once('close',ok));
+      stop(jobs.get(runId),'연결 프로그램이 종료되었습니다. ASIDE에서 실행 상태를 확인해 주세요.');
+      await finished;
+    }
+  })();
+  return {server,token,bridgeId,port:server.address().port,ready,diagnostic,close};
 }
 
 export function resolveCli(){

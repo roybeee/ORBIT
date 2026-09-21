@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,readFileSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -64,6 +64,27 @@ test('completed results survive reconnection; active stop requires native-state 
   assert.equal((await(await req(next,'/health')).json()).blocked,true);
  }finally{if(next)await next.close();rmSync(directory,{recursive:true,force:true})}
 });
+for(const cancelFirst of [false,true])test(`bridge close drains ${cancelFirst?'cancelled':'active'} CLI and is idempotent`,async()=>{
+ const {bridge,directory}=await setup(),runId=randomUUID();try{
+  await req(bridge,'/runs',{runId,account:'paid-account',prompt:'Please wait forever with controlled shutdown.'});
+  await until(()=>existsSync(join(directory,runId+'.jsonl.spawns')));
+  if(cancelFirst)await req(bridge,'/cancel',{runId});
+  let settled=false;
+  const closing=Promise.all([bridge.close(),bridge.close()]).then(()=>{settled=true});
+  await until(()=>existsSync(join(directory,runId+'.jsonl.stopping')));
+  assert.equal(settled,false,'close must remain pending while the child is alive');
+  writeFileSync(join(directory,runId+'.jsonl.release'),'release');
+  await closing;
+  const record=JSON.parse(readFileSync(join(directory,runId+'.json'),'utf8'));
+  assert.equal(record.status,'needs_attention');
+  // Dispatch + optional cancel + shutdown + child finalization, each exactly once.
+  assert.equal(record.seq,cancelFirst?4:3);
+  assert.match(record.result,/Planning only/);
+  await bridge.close();
+  assert.deepEqual(JSON.parse(readFileSync(join(directory,runId+'.json'),'utf8')),record);
+ }finally{writeFileSync(join(directory,runId+'.jsonl.release'),'release');await bridge.close();rmSync(directory,{recursive:true,force:true})}
+});
+
 test('large image-rich log tails are bounded and preserve the final text',()=>{
  const directory=mkdtempSync(join(tmpdir(),'orbit-aside-tail-'));try{
   const file=join(directory,'large.jsonl');writeFileSync(file,'x'.repeat(17*1024*1024)+'\n'+JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:'Final tail result'}]}})+'\n');
