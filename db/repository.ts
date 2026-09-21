@@ -63,6 +63,13 @@ function googleEventSourceId(event:{id:string;date:string}){
   const prefix='google:',suffix=`:${event.date}`;
   return event.id.startsWith(prefix)&&event.id.endsWith(suffix)?event.id.slice(prefix.length,-suffix.length):null;
 }
+async function eventReviewId(canonicalEventId:string){
+  // Keep existing short IDs stable for replay/migration compatibility. Only external IDs
+  // that exceed the shared action-ID contract are replaced by a bounded internal key.
+  if(canonicalEventId.length<=100)return canonicalEventId;
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonicalEventId));
+  return `event-review:${Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')}`;
+}
 function matchEventRelations(events:WorkspaceData['events'],relations:EventRelationRow[]){
   const matches=new Map<string,WorkspaceData['events'][number]>(),byEntity=new Map(events.map(event=>[event.id,event]));
   const currentBySource=new Map<string,WorkspaceData['events']>();
@@ -140,7 +147,7 @@ export async function readWorkspace(db: Database, ownerId: string, now = new Dat
   const byId=new Map(storedReviews.map(review=>[review.review_id,review])),active=new Set<string>(),clock=localClock(data.preferences.timeZone,now),timestamp=now.toISOString();
   for(const event of data.events){
     if(!event.projectId||event.id.startsWith('approved:'))continue;
-    const reviewId=canonical.get(event.id)??event.id;active.add(reviewId);
+    const canonicalEventId=canonical.get(event.id)??event.id,reviewId=await eventReviewId(canonicalEventId);active.add(reviewId);
     const ended=event.date<clock.date||(event.date===clock.date&&event.end<=clock.minute),endAt=zonedEnd(event.date,event.end,data.preferences.timeZone),stored=byId.get(reviewId);
     if(!stored&&ended){
       await db.prepare("INSERT OR IGNORE INTO orbit_event_reviews(owner_id,review_id,event_id,project_id,title,date,start,end,state,requested_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'pending',?,?)").bind(ownerId,reviewId,event.id,event.projectId,event.title,event.date,event.start,event.end,timestamp,timestamp).run();

@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {createDatabase} from './sqlite-d1.mjs';
 import {readWorkspace,writeCommand,upsertProjectRelation} from '../db/repository.ts';
 import {projectOpenItems} from '../lib/orbit/derived.ts';
+import {actionSchema} from '../lib/orbit/validation.ts';
 
 const root=fileURLToPath(new URL('..',import.meta.url));
 const vite=await createServer({appType:'custom',configFile:false,root,resolve:{alias:{'@':root}},server:{middlewareMode:true}});
@@ -82,6 +83,79 @@ test('review approval supports complete, complete with next action, and explicit
  await t.test('defer keeps the event open until the explicit follow-up instant',async()=>{
   const db=createDatabase();try{let state=await seeded(db);state=await writeCommand(db,'alice',command(state.revision,{type:'event.upsert',event}),beforeEnd);state=await readWorkspace(db,'alice',afterEnd);const review=state.data.eventReviews[0];state=await writeCommand(db,'alice',command(state.revision,{type:'event.review',reviewId:review.id,decision:'defer',followUpAt:'2026-09-23T03:00:00.000Z'}),afterEnd);assert.equal(state.data.eventReviews[0].state,'deferred');assert.equal((await readWorkspace(db,'alice',new Date('2026-09-23T02:59:00Z'))).data.eventReviews[0].state,'deferred');assert.equal((await readWorkspace(db,'alice',new Date('2026-09-23T03:01:00Z'))).data.eventReviews[0].state,'pending')}finally{db.close()}
  });
+});
+
+test('96-character Google IDs use an actionable bounded review ID for every UI outcome',async t=>{
+ const nativeId='a'.repeat(96),eventId=`google:${nativeId}:${event.date}`;
+ const {completeEventReview,nextEventReview,deferEventReview}=await vite.ssrLoadModule('/components/orbit/event-review-card.tsx');
+ const decisions=[
+  {decision:'complete',ui:reviewId=>completeEventReview(reviewId)},
+  {decision:'next',ui:reviewId=>nextEventReview(reviewId,'긴 ID 일정 후속','2026-09-24')},
+  {decision:'defer',ui:reviewId=>deferEventReview(reviewId,'2026-09-23T03:00:00.000Z')},
+ ];
+ for(const choice of decisions)await t.test(choice.decision,async()=>{
+  const db=createDatabase();try{
+   await seeded(db);
+   await db.prepare('INSERT INTO orbit_calendar_cache(owner_id,events_json,time_zone,range_start,range_end,updated_at) VALUES(?,?,?,?,?,?)').bind('alice',JSON.stringify([{...event,id:eventId,projectId:undefined}]),'Asia/Seoul','2026-09-15','2026-10-15',afterEnd.toISOString()).run();
+   await upsertProjectRelation(db,'alice',{entityType:'event',entityId:eventId,projectId:project.id,sourceProvider:'google_calendar',sourceId:nativeId,sourceDate:event.date,resolution:'explicit',evidence:['fixture']},beforeEnd);
+   let state=await readWorkspace(db,'alice',afterEnd);
+   const review=state.data.eventReviews[0];
+   assert.equal(review.eventId,eventId,'the review keeps the canonical external event ID');
+   assert.ok(review.id.length<=100,'the internal review ID fits the action contract');
+   const action=actionSchema.parse(choice.ui(review.id));
+   assert.equal(action.reviewId,review.id,'the UI submits the internal review ID');
+   state=await writeCommand(db,'alice',command(state.revision,action),afterEnd);
+   assert.equal(state.data.eventReviews[0].state,choice.decision==='defer'?'deferred':'completed');
+  }finally{db.close()}
+ });
+});
+
+test('maximum Google IDs remain distinct, replay exactly once, and preserve short review IDs',async()=>{
+ const db=createDatabase();try{
+  await seeded(db);
+  const nativeIds=['a'.repeat(1024),'a'.repeat(1023)+'b','short-native'];
+  const externalEvents=nativeIds.map((nativeId,index)=>({...event,id:`google:${nativeId}:${event.date}`,title:`외부 일정 ${index}`,projectId:undefined}));
+  await db.prepare('INSERT INTO orbit_calendar_cache(owner_id,events_json,time_zone,range_start,range_end,updated_at) VALUES(?,?,?,?,?,?)').bind('alice',JSON.stringify(externalEvents),'Asia/Seoul','2026-09-15','2026-10-15',afterEnd.toISOString()).run();
+  for(let index=0;index<nativeIds.length;index++)await upsertProjectRelation(db,'alice',{entityType:'event',entityId:externalEvents[index].id,projectId:project.id,sourceProvider:'google_calendar',sourceId:nativeIds[index],sourceDate:event.date,resolution:'explicit',evidence:['fixture']},beforeEnd);
+  const first=await readWorkspace(db,'alice',afterEnd),second=await readWorkspace(db,'alice',afterEnd);
+  assert.equal(first.data.eventReviews.length,3);
+  assert.equal(second.data.eventReviews.length,3,'repeated sync reads create exactly one review per event');
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM orbit_event_reviews WHERE owner_id='alice'").first()).n,3);
+  const longReviews=first.data.eventReviews.filter(review=>review.eventId.length>100),shortReview=first.data.eventReviews.find(review=>review.eventId.includes('short-native'));
+  assert.equal(new Set(longReviews.map(review=>review.id)).size,2,'different maximum-length IDs cannot collide');
+  assert.ok(longReviews.every(review=>review.id.startsWith('event-review:')&&review.id.length<=100));
+  assert.deepEqual(second.data.eventReviews.map(review=>review.id),first.data.eventReviews.map(review=>review.id),'review IDs are deterministic across reads');
+  assert.equal(shortReview.id,shortReview.eventId,'existing short review IDs remain replay-compatible');
+ }finally{db.close()}
+});
+
+test('bounded review IDs are owner-scoped and stay attached to the moved canonical event',async()=>{
+ const db=createDatabase();try{
+  const nativeId='b'.repeat(96),originalId=`google:${nativeId}:${event.date}`,movedDate='2026-09-24',movedId=`google:${nativeId}:${movedDate}`;
+  for(const owner of ['alice','bob']){
+   await seeded(db,owner);
+   await db.prepare('INSERT INTO orbit_calendar_cache(owner_id,events_json,time_zone,range_start,range_end,updated_at) VALUES(?,?,?,?,?,?)').bind(owner,JSON.stringify([{...event,id:originalId,projectId:undefined}]),'Asia/Seoul','2026-09-15','2026-10-15',afterEnd.toISOString()).run();
+   await upsertProjectRelation(db,owner,{entityType:'event',entityId:originalId,projectId:project.id,sourceProvider:'google_calendar',sourceId:nativeId,sourceDate:event.date,resolution:'explicit',evidence:['fixture']},beforeEnd);
+  }
+  let alice=await readWorkspace(db,'alice',afterEnd),bob=await readWorkspace(db,'bob',afterEnd);
+  const reviewId=alice.data.eventReviews[0].id;
+  assert.equal(bob.data.eventReviews[0].id,reviewId,'the same deterministic key is safe inside separate owner scopes');
+  alice=await writeCommand(db,'alice',command(alice.revision,actionSchema.parse({type:'event.review',reviewId,decision:'complete'})),afterEnd);
+  bob=await readWorkspace(db,'bob',afterEnd);
+  assert.equal(alice.data.eventReviews[0].state,'completed');
+  assert.equal(bob.data.eventReviews[0].state,'pending','one owner cannot resolve another owner review');
+  await db.prepare('UPDATE orbit_calendar_cache SET events_json=? WHERE owner_id=?').bind(JSON.stringify([{...event,id:movedId,date:movedDate,projectId:undefined}]),'bob').run();
+  bob=await readWorkspace(db,'bob',afterEnd);
+  assert.equal(bob.data.eventReviews[0].id,reviewId,'date movement preserves the canonical review identity');
+  assert.equal(bob.data.eventReviews[0].eventId,movedId,'the internal review remains linked to the current external event');
+  assert.equal(bob.data.eventReviews[0].state,'deferred','moving an ended event into the future keeps the existing review policy');
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM orbit_event_reviews WHERE review_id=?').bind(reviewId).first()).n,2,'the database primary key isolates owners');
+ }finally{db.close()}
+});
+
+test('malformed bounded event review IDs are rejected without widening the shared ID contract',()=>{
+ assert.equal(actionSchema.safeParse({type:'event.review',reviewId:'',decision:'complete'}).success,false);
+ assert.equal(actionSchema.safeParse({type:'event.review',reviewId:'x'.repeat(101),decision:'complete'}).success,false);
 });
 
 test('cancel, move and canonical sync are replay-safe and preserve project relation',async()=>{
