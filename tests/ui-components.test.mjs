@@ -83,3 +83,22 @@ test("renders sidebar skeletons deterministically", async () => {
   assert.equal(first, second);
   assert.match(first, /--skeleton-width:70%/);
 });
+
+test("completed project status control offers a clear record-preserving reopen action", async () => {
+  const { ProjectStatusControl, PROJECT_REOPEN_CONFIRMATION } = await vite.ssrLoadModule(
+    "/components/orbit/project-status-control.tsx",
+  );
+  const html = renderToStaticMarkup(
+    React.createElement(ProjectStatusControl, {
+      status: "completed",
+      busy: false,
+      onChange: () => {},
+    }),
+  );
+
+  assert.match(html, /완료/);
+  assert.match(html, /진행 중으로 전환/);
+  assert.match(html, /새 미완료 할 일을 추가하거나 연결하면 자동으로 진행 중/);
+  assert.match(html, /완료된 할 일과 최종 결과, 완료일, 상태 이력은 그대로 보존/);
+  assert.match(PROJECT_REOPEN_CONFIRMATION, /삭제하거나 초기화하지 않습니다/);
+});

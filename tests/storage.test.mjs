@@ -115,3 +115,87 @@ test('creating a project while regrouping tasks persists atomically and remains 
   assert.equal((await readWorkspace(db,'bob')).data.projects.length,0);
  }finally{db.close()}
 });
+
+test('reopening a completed project preserves its result, completion history and completed tasks',async()=>{
+ const db=createDatabase();try{
+  const completedProject={...project,status:'completed',result:'영업자료를 전달했다',completedOn:'2026-09-05',statusHistory:[{status:'completed',changedOn:'2026-09-05'}]};
+  const completedTask={...task,status:'done',completedOn:'2026-09-05',result:'최종 영업자료'};
+  let state=await writeCommand(db,'alice',command(0,{type:'project.upsert',project:completedProject}),now);
+  state=await writeCommand(db,'alice',command(state.revision,{type:'task.upsert',task:completedTask}),now);
+  const reopen=command(state.revision,{type:'project.status',id:project.id,status:'active'});
+  state=await writeCommand(db,'alice',reopen,now);
+  state=await writeCommand(db,'alice',reopen,now);
+  assert.equal(state.revision,3,'retry commits the transition once');
+  assert.deepEqual(state.data.projects[0],{
+   ...completedProject,
+   status:'active',
+   statusHistory:[...completedProject.statusHistory,{status:'active',changedOn:'2026-09-06'}],
+  });
+  assert.deepEqual(state.data.tasks[0],completedTask);
+  await assert.rejects(
+   ()=>writeCommand(db,'bob',command(0,{type:'project.status',id:project.id,status:'active'}),now),
+   error=>error instanceof DomainError&&error.message==='프로젝트를 찾을 수 없습니다.',
+  );
+  assert.equal((await readWorkspace(db,'bob')).revision,0,'another owner cannot mutate the project');
+  state=await writeCommand(db,'alice',command(state.revision,{type:'task.upsert',task:{...task,id:'follow-up',title:'후속 영업 업무'}}),now);
+  assert.equal(state.data.tasks.filter(item=>item.status==='done').length,1);
+  assert.equal(state.data.tasks.length,2);
+ }finally{db.close()}
+});
+
+test('a direct new incomplete task automatically reopens its completed project once and preserves records',async()=>{
+ const db=createDatabase();try{
+  const completedProject={...project,status:'completed',result:'기존 결과',completedOn:'2026-09-05',statusHistory:[{status:'completed',changedOn:'2026-09-05'}]};
+  const completedTask={...task,id:'completed-task',status:'done',completedOn:'2026-09-05',result:'기존 산출물'};
+  let state=await writeCommand(db,'alice',command(0,{type:'project.upsert',project:completedProject}),now);
+  state=await writeCommand(db,'alice',command(state.revision,{type:'task.upsert',task:completedTask}),now);
+  const add=command(state.revision,{type:'task.upsert',task});
+  state=await writeCommand(db,'alice',add,now);
+  state=await writeCommand(db,'alice',add,now);
+  assert.equal(state.revision,3,'the repeated command is committed once');
+  assert.deepEqual(state.data.projects[0],{
+   ...completedProject,
+   status:'active',
+   statusHistory:[...completedProject.statusHistory,{status:'active',changedOn:'2026-09-06'}],
+  });
+  assert.deepEqual(state.data.tasks.find(item=>item.id===completedTask.id),completedTask);
+  assert.equal(state.data.tasks.length,2);
+  assert.equal(state.data.tasks.filter(item=>item.status==='done').length/state.data.tasks.length,0.5,'progress includes both the completed and new incomplete task');
+ }finally{db.close()}
+});
+
+test('project edits cannot erase completion records',()=>{
+ const completedProject={...project,status:'completed',result:'기존 결과',completedOn:'2026-09-05',statusHistory:[{status:'completed',changedOn:'2026-09-05'}]};
+ const data=applyAction(
+  {...emptyWorkspace(),projects:[completedProject]},
+  {type:'project.upsert',project:{...completedProject,name:'Renamed',result:'',statusHistory:[]}},
+  now,
+ );
+ assert.equal(data.projects[0].name,'Renamed');
+ assert.equal(data.projects[0].result,completedProject.result);
+ assert.equal(data.projects[0].completedOn,completedProject.completedOn);
+ assert.deepEqual(data.projects[0].statusHistory,completedProject.statusHistory);
+});
+
+test('importing or upserting a completed task does not reopen a completed project',()=>{
+ const completedProject={...project,status:'completed',result:'기존 결과',completedOn:'2026-09-05',statusHistory:[{status:'completed',changedOn:'2026-09-05'}]};
+ let data={...emptyWorkspace(),projects:[completedProject]};
+ data=applyAction(data,{type:'task.upsert',task:{...task,status:'done',completedOn:'2026-09-05'}},now);
+ assert.deepEqual(data.projects[0],completedProject);
+});
+
+test('moving an incomplete task into a completed project reopens only the destination project',async()=>{
+ const completedProject={...project,id:'completed',status:'completed',result:'기존 결과',completedOn:'2026-09-05',statusHistory:[{status:'completed',changedOn:'2026-09-05'}]};
+ const sourceProject={...project,id:'source',name:'Source',status:'active',statusHistory:[{status:'active',changedOn:'2026-09-01'}]};
+ const otherProject={...project,id:'other',name:'Other',status:'completed',completedOn:'2026-09-04',statusHistory:[{status:'completed',changedOn:'2026-09-04'}]};
+ let data={...emptyWorkspace(),projects:[completedProject,sourceProject,otherProject],tasks:[{...task,projectId:sourceProject.id}]};
+ data=applyAction(data,{type:'task.assign',assignments:[{id:task.id,projectId:completedProject.id}]},now);
+ assert.equal(data.tasks[0].projectId,completedProject.id);
+ assert.deepEqual(data.projects.find(item=>item.id===completedProject.id),{
+  ...completedProject,
+  status:'active',
+  statusHistory:[...completedProject.statusHistory,{status:'active',changedOn:'2026-09-06'}],
+ });
+ assert.deepEqual(data.projects.find(item=>item.id===sourceProject.id),sourceProject);
+ assert.deepEqual(data.projects.find(item=>item.id===otherProject.id),otherProject);
+});

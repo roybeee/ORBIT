@@ -36,6 +36,21 @@ test('a prepared change has no workspace side effects; approval is owner-scoped 
 test('prerequisite approval advances related cards, while unrelated writes invalidate stale proposals',()=>fixture(async db=>{
  const [a,b]=await stage(db,[{type:'project.upsert',project},{type:'task.upsert',task}]);await decide(db,'owner',{id:a.id,decision:'approve'},env);assert.equal((await findAction(db,'owner',b.id)).expectedRevision,1);await decide(db,'owner',{id:b.id,decision:'approve'},env);const [stale]=await stage(db,[{type:'task.status',id:task.id,status:'done'}]);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:2,action:{type:'task.focus',id:task.id,focus:true}});await assert.rejects(()=>decide(db,'owner',{id:stale.id,decision:'approve'},env),e=>e.code==='CONFLICT');assert.equal((await readWorkspace(db,'owner')).data.tasks[0].status,'todo');assert.equal((await findAction(db,'owner',stale.id)).state,'pending');
 }));
+test('approving an incomplete task upsert automatically reopens a completed project and remains retry-safe',()=>fixture(async db=>{
+ const completedProject={...project,status:'completed',result:'기존 결과',completedOn:today,statusHistory:[{status:'completed',changedOn:today}]};
+ await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project:completedProject}});
+ const [card]=await stage(db,[{type:'task.upsert',task}]);
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);
+ await decide(db,'owner',{id:card.id,decision:'approve'},env);
+ const state=await readWorkspace(db,'owner');
+ assert.equal(state.revision,2);
+ assert.deepEqual(state.data.projects[0],{
+  ...completedProject,
+  status:'active',
+  statusHistory:[...completedProject.statusHistory,{status:'active',changedOn:today}],
+ });
+ assert.equal(state.data.tasks.length,1);
+}));
 test('defer requires a reason and future review date and cannot silently approve',()=>fixture(async db=>{
  const [card]=await stage(db,[{type:'project.upsert',project}]);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'defer',reason:'',revisitDate:tomorrow},env));await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'defer',reason:'자료 대기',revisitDate:today},env));await decide(db,'owner',{id:card.id,decision:'defer',reason:'자료 대기',revisitDate:tomorrow},env);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env));assert.equal((await readWorkspace(db,'owner')).revision,0);await decide(db,'owner',{id:card.id,decision:'reconsider'},env);assert.equal((await findAction(db,'owner',card.id)).state,'pending');
 }));

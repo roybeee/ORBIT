@@ -96,6 +96,7 @@ export function applyAction(
     return draft.id;
   };
   const task = (id: string) => data.tasks.find((t) => t.id === id) ?? fail('할 일을 찾을 수 없습니다.');
+  const project = (id: string) => data.projects.find((p) => p.id === id) ?? fail('프로젝트를 찾을 수 없습니다.');
   const proposal = (date: string) =>
     data.proposals.find((p) => p.date === date) ?? fail('제안을 먼저 생성해 주세요.');
   const saveProposal = (p: Proposal) => {
@@ -109,6 +110,20 @@ export function applyAction(
     if (!t.startedAt) return;
     t.actualMinutes = (t.actualMinutes ?? 0) + elapsedMinutes(t.startedAt, now);
     delete t.startedAt;
+  };
+  const reopenProjectsWithNewIncompleteTasks = () => {
+    for (const t of data.tasks) {
+      if (t.status === 'done') continue;
+      const previous = current.tasks.find((item) => item.id === t.id);
+      if (previous && previous.projectId === t.projectId && previous.status !== 'done') continue;
+      const destination = data.projects.find((p) => p.id === t.projectId);
+      if (destination?.status !== 'completed') continue;
+      destination.status = 'active';
+      destination.statusHistory = [
+        ...(destination.statusHistory ?? []),
+        { status: 'active' as const, changedOn: today },
+      ].slice(-100);
+    }
   };
   const assertFocusRoom = (t: Task, date: string) => {
     if (
@@ -175,9 +190,37 @@ export function applyAction(
       routine.log = routine.log.sort().slice(-400);
       break;
     }
-    case 'project.upsert':
-      data.projects = replace(data.projects, action.project);
+    case 'project.upsert': {
+      const old = data.projects.find((p) => p.id === action.project.id);
+      if (!old) {
+        data.projects = replace(data.projects, action.project);
+        break;
+      }
+      const {
+        status: _status,
+        result: _result,
+        completedOn: _completedOn,
+        statusHistory: _statusHistory,
+        ...editable
+      } = action.project;
+      data.projects = replace(data.projects, {
+        ...editable,
+        ...(old.status === undefined ? {} : { status: old.status }),
+        ...(old.result === undefined ? {} : { result: old.result }),
+        ...(old.completedOn === undefined ? {} : { completedOn: old.completedOn }),
+        ...(old.statusHistory === undefined ? {} : { statusHistory: old.statusHistory }),
+      });
       break;
+    }
+    case 'project.status': {
+      const p = project(action.id);
+      const currentStatus = p.status ?? 'active';
+      if (currentStatus === action.status) break;
+      p.status = action.status;
+      if (action.status === 'completed') p.completedOn = p.completedOn ?? today;
+      p.statusHistory = [...(p.statusHistory ?? []), { status: action.status, changedOn: today }].slice(-100);
+      break;
+    }
     case 'project.delete':
       if (
         data.tasks.some((t) => t.projectId === action.id) ||
@@ -668,6 +711,9 @@ export function applyAction(
       data.risks = (data.risks ?? []).filter((r) => r.id !== action.id);
       break;
   }
+  // Every task creation/link path (direct, agent-approved, imported, planned, or reassigned)
+  // passes this invariant before persistence. Historical project records remain untouched.
+  reopenProjectsWithNewIncompleteTasks();
   validateLinks(data);
   if (
     new TextEncoder().encode(JSON.stringify({ ...data, notes: data.notes.map((n) => ({ ...n, body: '' })) }))

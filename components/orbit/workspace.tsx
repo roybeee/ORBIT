@@ -88,6 +88,7 @@ import { suggestProject, automaticProject, projectDraft, assignmentPlan } from '
 import { WikiLibrary, WikiRelated } from '@/components/orbit/wiki/wiki-library';
 import { GraphView } from '@/components/orbit/graph/graph-view';
 import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
+import { ProjectStatusControl } from '@/components/orbit/project-status-control';
 import { addDays, todayInZone, koreanDate, weekDates, weekday } from '@/lib/orbit/dates';
 import type { Preferences } from '@/lib/orbit/model';
 import type { WorkspaceAction } from '@/lib/orbit/validation';
@@ -660,6 +661,7 @@ function WorkspaceContent({
       action = {
         type: 'project.upsert',
         project: {
+          ...old,
           id,
           name: newTitle.trim(),
           goal: newBody.trim(),
@@ -869,7 +871,11 @@ function WorkspaceContent({
         <span
           className={`status ${tasks.some((t) => t.projectId === p.id && t.status === 'waiting') ? 'status-orange' : 'status-gray'}`}
         >
-          {tasks.some((t) => t.projectId === p.id && t.status === 'waiting') ? '확인 필요' : '진행 중'}
+          {p.status === 'completed'
+            ? '완료'
+            : tasks.some((t) => t.projectId === p.id && t.status === 'waiting')
+              ? '확인 필요'
+              : '진행 중'}
         </span>
       </div>
       <div>
@@ -1456,7 +1462,9 @@ function WorkspaceContent({
                       <span className="project-square" style={{ background: `${p.color}19`, color: p.color }}>
                         {p.symbol}
                       </span>
-                      <span className="status status-gray">{p.due.slice(5).replace('-', '/')} 목표</span>
+                      <span className="status status-gray">
+                        {p.status === 'completed' ? '완료' : `${p.due.slice(5).replace('-', '/')} 목표`}
+                      </span>
                       {data.dominoProjectId === p.id && (
                         <span className="status status-blue">
                           <Crosshair size={11} /> 도미노
@@ -1974,6 +1982,16 @@ function WorkspaceContent({
             )}
             {projectDetail && (
               <>
+                <ProjectStatusControl
+                  status={projectDetail.status ?? 'active'}
+                  busy={busy}
+                  onChange={(status) => {
+                    void perform(
+                      { type: 'project.status', id: projectDetail.id, status },
+                      status === 'active' ? '프로젝트를 다시 진행합니다.' : '프로젝트를 완료했습니다.',
+                    );
+                  }}
+                />
                 <div className="section-title">
                   <button className="secondary-button" onClick={() => openEdit('project', projectDetail.id)}>
                     <Pencil size={14} />
@@ -1991,6 +2009,12 @@ function WorkspaceContent({
                 </div>
                 <h3>만들어야 할 결과</h3>
                 <p className="definition">{projectDetail.goal}</p>
+                {projectDetail.result && (
+                  <>
+                    <h3>최종 결과 기록</h3>
+                    <p className="definition">{projectDetail.result}</p>
+                  </>
+                )}
                 <div className="detail-keyvalue">
                   <span>목표일</span>
                   <strong>{projectDetail.due}</strong>
@@ -2027,7 +2051,15 @@ function WorkspaceContent({
                     </button>
                   ))}
                 <div className="sheet-actions">
-                  <button className="primary-button" onClick={() => openCreate('task')}>
+                  <button
+                    className="primary-button"
+                    title={
+                      projectDetail.status === 'completed'
+                        ? '미완료 할 일을 추가하면 프로젝트가 자동으로 진행 중으로 전환됩니다.'
+                        : undefined
+                    }
+                    onClick={() => openCreate('task')}
+                  >
                     <Plus size={16} />할 일 추가
                   </button>
                 </div>

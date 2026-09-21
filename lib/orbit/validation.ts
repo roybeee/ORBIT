@@ -28,6 +28,13 @@ export const projectSchema = z
     aliases: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
     people: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
     organizations: z.array(z.string().trim().min(1).max(120)).max(24).optional(),
+    status: z.enum(['active', 'completed']).optional(),
+    result: z.string().max(4000).optional(),
+    completedOn: dateSchema.optional(),
+    statusHistory: z
+      .array(z.object({ status: z.enum(['active', 'completed']), changedOn: dateSchema }).strict())
+      .max(100)
+      .optional(),
   })
   .strict();
 export const taskSchema = z
@@ -225,6 +232,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('care.check'), id, checked: z.boolean() }).strict(),
   z.object({type:z.literal('wiki.import'),project:projectSchema,notes:z.array(noteSchema).min(1).max(100).refine(list=>new Set(list.map(n=>n.id)).size===list.length)}).strict(),
   z.object({ type: z.literal('project.upsert'), project: projectSchema }).strict(),
+  z.object({ type: z.literal('project.status'), id, status: z.enum(['active', 'completed']) }).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),
   z.object({ type: z.literal('goal.upsert'), goal: goalSchema }).strict(),

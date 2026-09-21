@@ -2,6 +2,7 @@ import type { DailyBrief } from './brief/schema';
 export type View =
   'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
+export type ProjectStatus = 'active' | 'completed';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).
 // Cognition = cognitive load of the block (high / mid / low) or an external meeting/call.
@@ -23,6 +24,10 @@ export interface Project {
   aliases?: string[];
   people?: string[];
   organizations?: string[];
+  status?: ProjectStatus;
+  result?: string;
+  completedOn?: string;
+  statusHistory?: { status: ProjectStatus; changedOn: string }[];
 }
 export interface Task {
   id: string;
