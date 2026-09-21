@@ -24,6 +24,7 @@ export const googleActionSchema = z
           }
         }),
         description: z.string().max(4000),
+        projectId: z.string().min(1).max(100).nullable().default(null),
       })
       .strict()
       .refine((e) => e.end > e.start),
@@ -106,7 +107,7 @@ Goal optional fields: domain work/health/mind/learning/life; status active/pause
 {"type":"proposal.generate","date":"YYYY-MM-DD","energy":"normal"}
 {"type":"proposal.approve","date":"YYYY-MM-DD","itemId":"existing item ID"}
 {"type":"proposal.defer","date":"YYYY-MM-DD","itemId":"existing item ID","reason":"reason","revisitDate":"YYYY-MM-DD"}
-{"type":"google.event.create","event":{"title":"title","date":"YYYY-MM-DD","start":540,"end":585,"timeZone":"Asia/Seoul","description":"purpose"}}
+{"type":"google.event.create","event":{"title":"title","date":"YYYY-MM-DD","start":540,"end":585,"timeZone":"Asia/Seoul","description":"purpose","projectId":"actual-project-id or null"}}
 {"type":"goal.upsert","goal":{"id":"new-id","kind":"life or mid or short or concept","sentence":"one big measurable sentence with a deadline","metric":"number to reach","deadline":"YYYY-MM-DD"}}
 {"type":"project.domino","id":"actual-project-id"}
 {"type":"task.laser","id":"actual-task-id","date":"YYYY-MM-DD","laser":true}

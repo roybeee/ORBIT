@@ -25,6 +25,9 @@ export const projectSchema = z
     priority: z.number().int().min(1).max(5),
     goalId: id.optional(),
     keywords: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
+    aliases: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
+    people: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
+    organizations: z.array(z.string().trim().min(1).max(120)).max(24).optional(),
   })
   .strict();
 export const taskSchema = z

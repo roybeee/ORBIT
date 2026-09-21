@@ -20,6 +20,9 @@ export interface Project {
   priority: number;
   goalId?: string;
   keywords?: string[];
+  aliases?: string[];
+  people?: string[];
+  organizations?: string[];
 }
 export interface Task {
   id: string;

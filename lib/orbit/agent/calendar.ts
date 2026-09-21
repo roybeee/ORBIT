@@ -1,10 +1,11 @@
-import {readWorkspace,RevisionConflict,type Database} from '../../../db/repository.ts';
+import {readProjectRelation,readWorkspace,RevisionConflict,upsertProjectRelation,type Database} from '../../../db/repository.ts';
 import {addDays,todayInZone,validDate} from '../dates.ts';
 import type {CalendarEvent} from '../model.ts';
 import {overlaps} from '../planner.ts';
 import {accessToken,connections,fetchJson,type Runtime} from './integrations.ts';
 import {AgentError} from './errors.ts';
 import type {GoogleEventAction} from './types.ts';
+import {resolveEventProject} from '../classify.ts';
 export interface GoogleEvent {id:string;summary?:string;status?:string;transparency?:string;attendees?:{self?:boolean;responseStatus?:string}[];start:{date?:string;dateTime?:string};end:{date?:string;dateTime?:string};htmlLink?:string;extendedProperties?:{private?:Record<string,string>}}
 const parts=(time:Date,timeZone:string)=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(time).map(p=>[p.type,p.value]));
 export function zonedInstant(date:string,minute:number,timeZone:string){const target=Date.parse(`${date}T00:00:00Z`)+minute*60000;let utc=target;for(let i=0;i<4;i++){const p=parts(new Date(utc),timeZone),local=Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);if(local===target)return new Date(utc).toISOString();utc+=target-local}throw new AgentError('해당 시간대에서 존재하지 않는 시각입니다. 시간을 조정해 주세요.');}
@@ -40,11 +41,15 @@ export async function syncCalendar(db:Database,owner:string,env:Runtime,date?:st
 }
 export async function createGoogleEvent(db:Database,owner:string,env:Runtime,id:string,action:GoogleEventAction,overlapConfirmation?:string){
  const token=await accessToken(db,owner,'google_calendar',env),eventId='orbit'+id.replaceAll('-',''),base='https://www.googleapis.com/calendar/v3/calendars/primary/events';
+ const orbitEventId=`google:${eventId}:${action.event.date}`,current=await readWorkspace(db,owner),existingRelation=await readProjectRelation(db,owner,'event',orbitEventId);
+ if(action.event.projectId&&!current.data.projects.some(project=>project.id===action.event.projectId))throw new AgentError('연결할 프로젝트를 찾을 수 없습니다. 최신 프로젝트를 확인해 주세요.','CONFLICT',409);
+ const project=resolveEventProject(action.event,current.data.projects,current.data.tasks,current.data.notes,existingRelation?.projectId);
+ const persist=async()=>{if(project)await upsertProjectRelation(db,owner,{entityType:'event',entityId:orbitEventId,projectId:project.projectId,sourceProvider:'google_calendar',sourceId:eventId,sourceDate:action.event.date,resolution:project.resolution,evidence:project.evidence});};
  const existing=await fetchJson(base+'/'+eventId,{headers:{Authorization:`Bearer ${token}`}});
- if(existing.response.ok){if(existing.data.extendedProperties?.private?.orbitAction!==id)throw new AgentError('일정 번호가 충돌했습니다. 새 제안을 생성해 주세요.','CONFLICT',409);return {url:existing.data.htmlLink as string|undefined}}
+ if(existing.response.ok){if(existing.data.extendedProperties?.private?.orbitAction!==id)throw new AgentError('일정 번호가 충돌했습니다. 새 제안을 생성해 주세요.','CONFLICT',409);await persist();return {url:existing.data.htmlLink as string|undefined}}
  if(existing.response.status!==404)throw new AgentError('이전 일정 생성 결과를 확인하지 못했습니다. 다시 시도해 주세요.','CALENDAR',502);
  const event=action.event;
- const current=await readWorkspace(db,owner);if(event.timeZone!==current.data.preferences.timeZone)throw new AgentError('워크스페이스 시간대가 달라졌습니다. 새 일정 제안을 요청해 주세요.','CONFLICT',409);if(event.date<todayInZone(event.timeZone))throw new AgentError('지난 일정은 생성할 수 없습니다.');
+ if(event.timeZone!==current.data.preferences.timeZone)throw new AgentError('워크스페이스 시간대가 달라졌습니다. 새 일정 제안을 요청해 주세요.','CONFLICT',409);if(event.date<todayInZone(event.timeZone))throw new AgentError('지난 일정은 생성할 수 없습니다.');
  const live=normalizeEvents(await googleEvents(db,owner,env,event.date,addDays(event.date,1),event.timeZone),event.timeZone,event.date,addDays(event.date,1));
  // Cached Google rows may be stale or duplicate live events; only live Google data
  // and locally managed Orbit events participate in this explicit acknowledgement.
@@ -57,5 +62,5 @@ export async function createGoogleEvent(db:Database,owner:string,env:Runtime,id:
 
  const payload={id:eventId,summary:event.title,description:event.description,start:{dateTime:zonedInstant(event.date,event.start,event.timeZone),timeZone:event.timeZone},end:{dateTime:zonedInstant(event.date,event.end,event.timeZone),timeZone:event.timeZone},extendedProperties:{private:{orbitAction:id}},reminders:{useDefault:false}};
  const {response,data}=await fetchJson(base+'?sendUpdates=none',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});
- if(!response.ok)throw new AgentError('일정 생성 결과를 확인하지 못했습니다. 같은 제안에서 다시 시도해 주세요.','CALENDAR',502);return {url:data.htmlLink as string|undefined};
+ if(!response.ok)throw new AgentError('일정 생성 결과를 확인하지 못했습니다. 같은 제안에서 다시 시도해 주세요.','CALENDAR',502);await persist();return {url:data.htmlLink as string|undefined};
 }

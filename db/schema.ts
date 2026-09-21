@@ -1,5 +1,5 @@
 import {sql} from 'drizzle-orm';
-import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+import {sqliteTable,text,integer,primaryKey,index,uniqueIndex,check} from 'drizzle-orm/sqlite-core';
 // Bind legacy SIWC email claims only after observing the same verified stable ID.
 // A conflicting stable identity permanently disables email-only recovery.
 export const identityLinks=sqliteTable('orbit_identity_links',{
@@ -54,6 +54,17 @@ export const oauthStates=sqliteTable('orbit_oauth_states',{
 export const calendarCache=sqliteTable('orbit_calendar_cache',{
  ownerId:text('owner_id').primaryKey(),eventsJson:text('events_json').notNull(),timeZone:text('time_zone').notNull(),rangeStart:text('range_start').notNull(),rangeEnd:text('range_end').notNull(),updatedAt:text('updated_at').notNull(),
 });
+// Canonical owner-scoped links survive aggregate rewrites and provider resyncs.
+export const projectRelations=sqliteTable('orbit_project_relations',{
+ ownerId:text('owner_id').notNull(),entityType:text('entity_type').notNull(),entityId:text('entity_id').notNull(),
+ projectId:text('project_id').notNull(),sourceProvider:text('source_provider').notNull(),sourceId:text('source_id'),sourceDate:text('source_date'),
+ resolution:text('resolution').notNull(),evidenceJson:text('evidence_json').notNull().default('[]'),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[
+ primaryKey({columns:[table.ownerId,table.entityType,table.entityId]}),
+ index('idx_orbit_project_timeline').on(table.ownerId,table.projectId,table.sourceDate,table.entityType,table.entityId),
+ check('orbit_project_relation_entity_type_check',sql`${table.entityType} in ('event','task','note','meeting','document')`),
+ check('orbit_project_relation_resolution_check',sql`${table.resolution} in ('explicit','alias','existing','backfill')`),
+]);
 // Durable native Hermes runs: reconnecting a phone resumes the same run.
 export const hermesJobs=sqliteTable('orbit_hermes_jobs',{
  ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),turnLease:text('turn_lease').notNull(),

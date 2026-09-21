@@ -39,6 +39,32 @@ interface Receipt {
   action_hash: string;
   revision: number;
 }
+export interface ProjectRelation {
+  entityType:'event'|'task'|'note'|'meeting'|'document';
+  entityId:string;
+  projectId:string;
+  sourceProvider:string;
+  sourceId:string|null;
+  sourceDate:string|null;
+  resolution:'explicit'|'alias'|'existing'|'backfill';
+  evidence:string[];
+}
+interface ProjectRelationRow {
+  entity_type:ProjectRelation['entityType'];entity_id:string;project_id:string;source_provider:string;
+  source_id:string|null;source_date:string|null;resolution:ProjectRelation['resolution'];evidence_json:string;
+}
+export async function upsertProjectRelation(db:Database,ownerId:string,relation:ProjectRelation){
+  const now=new Date().toISOString();
+  const workspace=await db.prepare("SELECT 1 AS found FROM orbit_workspaces WHERE owner_id=? AND EXISTS(SELECT 1 FROM json_each(state_json,'$.projects') WHERE json_extract(value,'$.id')=?)").bind(ownerId,relation.projectId).first<{found:number}>();
+  if(!workspace)throw new DomainError('연결할 project가 이 owner의 워크스페이스에 없습니다.');
+  await db.prepare(`INSERT INTO orbit_project_relations(owner_id,entity_type,entity_id,project_id,source_provider,source_id,source_date,resolution,evidence_json,created_at,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,entity_type,entity_id) DO UPDATE SET project_id=excluded.project_id,source_provider=excluded.source_provider,source_id=excluded.source_id,source_date=excluded.source_date,resolution=excluded.resolution,evidence_json=excluded.evidence_json,updated_at=excluded.updated_at`)
+    .bind(ownerId,relation.entityType,relation.entityId,relation.projectId,relation.sourceProvider,relation.sourceId,relation.sourceDate,relation.resolution,JSON.stringify(relation.evidence),now,now).run();
+}
+export async function readProjectRelation(db:Database,ownerId:string,entityType:ProjectRelation['entityType'],entityId:string):Promise<ProjectRelation|null>{
+  const row=await db.prepare('SELECT entity_type,entity_id,project_id,source_provider,source_id,source_date,resolution,evidence_json FROM orbit_project_relations WHERE owner_id=? AND entity_type=? AND entity_id=?').bind(ownerId,entityType,entityId).first<ProjectRelationRow>();
+  return row?{entityType:row.entity_type,entityId:row.entity_id,projectId:row.project_id,sourceProvider:row.source_provider,sourceId:row.source_id,sourceDate:row.source_date,resolution:row.resolution,evidence:JSON.parse(row.evidence_json)}:null;
+}
 export class RevisionConflict extends Error {}
 export class NoteNotFound extends Error {}
 export async function readWorkspace(db: Database, ownerId: string): Promise<WorkspaceSnapshot> {
@@ -56,8 +82,21 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
       ...data.events.filter((e) => !e.id.startsWith('google:')),
       ...JSON.parse(external.events_json),
     ];
+  const {results:relations}=await db.prepare("SELECT entity_id,project_id FROM orbit_project_relations WHERE owner_id=? AND entity_type='event'").bind(ownerId).all<{entity_id:string;project_id:string}>();
+  const linked=new Map(relations.map(row=>[row.entity_id,row.project_id]));
+  data.events=data.events.map(event=>linked.has(event.id)?{...event,projectId:linked.get(event.id)}:event);
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
+}
+export async function projectTimeline(db:Database,ownerId:string,projectId:string):Promise<Record<string,unknown>[]>{
+  const snapshot=await readWorkspace(db,ownerId),{results}=await db.prepare('SELECT entity_type,entity_id,source_id,source_date FROM orbit_project_relations WHERE owner_id=? AND project_id=? ORDER BY source_date DESC,entity_type,entity_id').bind(ownerId,projectId).all<{entity_type:string;entity_id:string;source_id:string|null;source_date:string|null}>();
+  const timeline:Record<string,unknown>[]=[];
+  for(const row of results){
+    if(row.entity_type==='event'){const value=snapshot.data.events.find(item=>item.id===row.entity_id);if(value)timeline.push({...value,kind:'event',sourceId:row.source_id,sourceDate:row.source_date});continue;}
+    if(row.entity_type==='task'){const value=snapshot.data.tasks.find(item=>item.id===row.entity_id);if(value)timeline.push({...value,kind:'task',sourceId:row.source_id,sourceDate:row.source_date});continue;}
+    const value=snapshot.data.notes.find(item=>item.id===row.entity_id);if(value)timeline.push({...value,kind:row.entity_type,sourceId:row.source_id,sourceDate:row.source_date});
+  }
+  return timeline;
 }
 async function readVersion(db: Database, ownerId: string, id: string, revision: number): Promise<Note> {
   const row = await db
@@ -226,6 +265,10 @@ export async function writeCommand(
     throw new RevisionConflict(
       '다른 기기에서 내용이 변경됐습니다. 최신 내용을 불러온 뒤 다시 적용해 주세요.',
     );
+  if(command.action.type==='project.delete'){
+    const linked=await db.prepare('SELECT 1 AS found FROM orbit_project_relations WHERE owner_id=? AND project_id=? LIMIT 1').bind(ownerId,command.action.id).first<{found:number}>();
+    if(linked)throw new DomainError('연결된 일정이나 기록이 있어 프로젝트를 삭제할 수 없습니다. 먼저 연결을 옮겨 주세요.');
+  }
   let action = command.action;
   let working = current.data;
   if (action.type === 'note.restore') {

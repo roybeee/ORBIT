@@ -15,6 +15,33 @@ export interface Assignment {
   matched: string[];
   from: string;
 }
+export interface EventProjectResolution {
+  projectId: string;
+  resolution: 'explicit' | 'alias' | 'existing';
+  evidence: string[];
+}
+export function resolveEventProject(
+  event: {title:string;description?:string;projectId?:string|null},
+  projects: Project[],
+  tasks: Task[] = [],
+  notes: Note[] = [],
+  existingProjectId?: string|null,
+): EventProjectResolution|null {
+  // Keep task/note context in the contract for the lower-confidence resolver phase;
+  // Phase A deliberately links only explicit, existing, or declared identity fields.
+  void tasks;
+  void notes;
+  if(event.projectId){const project=projects.find(p=>p.id===event.projectId);return project?{projectId:project.id,resolution:'explicit',evidence:['projectId:'+project.id]}:null;}
+  if(existingProjectId){const project=projects.find(p=>p.id===existingProjectId);if(project)return {projectId:project.id,resolution:'existing',evidence:['existing-relation']};}
+  const text=normalize(`${event.title} ${event.description??''}`),matches=projects.map(project=>{
+    const groups:[string,string[]][]=[['name',[project.name]],['alias',project.aliases??[]],['person',project.people??[]],['organization',project.organizations??[]],['keyword',project.keywords??[]]];
+    const evidence:string[]=[];let score=0;
+    for(const [kind,values] of groups)for(const value of values){const term=normalize(value);if(term.length>=2&&text.includes(term)){evidence.push(`${kind}:${value}`);score=Math.max(score,kind==='name'?5:kind==='alias'||kind==='person'||kind==='organization'?4:3);}}
+    return {projectId:project.id,score,evidence};
+  }).filter(match=>match.score>=4).sort((a,b)=>b.score-a.score||b.evidence.length-a.evidence.length||a.projectId.localeCompare(b.projectId));
+  if(!matches[0]||matches[1]?.score===matches[0].score)return null;
+  return {projectId:matches[0].projectId,resolution:'alias',evidence:matches[0].evidence};
+}
 // Generic words that describe work in any project; they never identify one.
 const GENERIC = new Set(
   '프로젝트 업무 할일 작업 정리 확인 작성 완성 완료 진행 준비 검토 회의 미팅 자료 계획 일정 관리 운영 정하기 확정 마무리 시작 핵심 실행 오늘 내일 이번주 다음주 관련 위한 대한 및 그리고 하기 하는 하고 넘기는 넘어가는 잡는 마치는 계산 방법 강구 나의 우리 개인 신규 기본 최종 초안 문서 목록 정보 내용 결과 사항 항목 건 것'.split(
