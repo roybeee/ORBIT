@@ -24,3 +24,14 @@ test('postpone UI locks duplicate saves and closes only after a successful save'
  assert.ok(component.includes('disabled={disabled||busy}'));
  assert.match(component,/await onSaved\([\s\S]*setOpen\(false\)/);
 });
+
+test('Google postponement persists and restores the exact pending receipt across close, remount and lost responses',()=>{
+ assert.ok(component.includes("readDraft<CalendarEdit>(ownerId,'calendar-postpone-pending',storageKey)"));
+ assert.ok(component.includes("saveDraft(ownerId,'calendar-postpone-pending',storageKey,input)"));
+ assert.ok(component.includes("clearDraft(ownerId,'calendar-postpone-pending',storageKey)"));
+ assert.match(workspace,/ownerId=\{ownerId\}[\s\S]*storageKey=/);
+});
+
+test('postpone state is reset when the selected event identity changes',()=>{
+ assert.match(workspace,/<EventPostpone key=\{ownerId\+'\x3a'\+postponeTarget\.id\}/);
+});
