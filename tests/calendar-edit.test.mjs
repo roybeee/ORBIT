@@ -54,10 +54,10 @@ test('editing a Google occurrence changes its title and times while preserving u
  const data=(await readWorkspace(f.db,'owner')).data;assert.equal(data.events.find(e=>e.id==='local').title,'보존할 일정');assert.equal(data.events.find(e=>e.google)?.title,'제주도 후속 통화');
 }));
 test('moving a Google event preserves its attachments, category and custom color',()=>fixture(async f=>{
- const current=await readWorkspace(f.db,'owner');await writeCommand(f.db,'owner',{operationId:randomUUID(),expectedRevision:current.revision,action:{type:'preferences.update',preferences:{...current.data.preferences,eventColors:{[f.id]:'#FF0000'},eventCategories:{[f.id]:'meeting'}}}});
+ let current=await readWorkspace(f.db,'owner');await writeCommand(f.db,'owner',{operationId:randomUUID(),expectedRevision:current.revision,action:{type:'project.upsert',project:{id:'jeju',name:'제주도',keywords:['제주'],color:'#5558e8',symbol:'J',goal:'일정 연결 검증',due:'2026-10-01',priority:3}}});current=await readWorkspace(f.db,'owner');assert.equal(current.data.events.find(e=>e.id===f.id).projectId,'jeju');await writeCommand(f.db,'owner',{operationId:randomUUID(),expectedRevision:current.revision,action:{type:'preferences.update',preferences:{...current.data.preferences,eventColors:{[f.id]:'#FF0000'},eventCategories:{[f.id]:'meeting'}}}});
  await f.db.prepare("INSERT INTO orbit_attachments(owner_id,id,name,mime,size,state,target_type,target_id,created_at,updated_at) VALUES('owner','file','회의자료','text/plain',1,'ready','event',?,?,?)").bind(f.id,'now','now').run();
  const result=await saveCalendarEdit(f.db,'owner',env,{...await f.edit(),startDate:'2026-09-23',endDate:'2026-09-23'});
- const data=(await readWorkspace(f.db,'owner')).data;assert.equal(data.events.some(e=>e.id===f.id),false);assert.equal(data.preferences.eventColors[result.event.id],'#FF0000');assert.equal(data.preferences.eventCategories[result.event.id],'meeting');
+ const data=(await readWorkspace(f.db,'owner')).data;assert.equal(data.events.some(e=>e.id===f.id),false);assert.equal(data.preferences.eventColors[result.event.id],'#FF0000');assert.equal(data.preferences.eventCategories[result.event.id],'meeting');assert.equal(data.events.find(e=>e.id===result.event.id).projectId,'jeju');
  assert.equal((await f.db.prepare("SELECT target_id FROM orbit_attachments WHERE id='file'").first()).target_id,result.event.id);
 }));
 test('lost PATCH response is reconciled once, even when background sync has removed the old date-based ID',()=>fixture(async f=>{

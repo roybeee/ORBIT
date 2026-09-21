@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shiftedEvent,moveConflict,moveRestriction,eventCommand,canEditCalendarEvent,calendarGestureIntent,swipeOffset,SWIPE_ACTION_WIDTH,SWIPE_OPEN_THRESHOLD} from '../lib/orbit/calendar-move.ts';
+import {shiftedEvent,postponedEvent,postponedCalendarEdit,moveConflict,moveRestriction,eventCommand,canEditCalendarEvent,calendarGestureIntent,swipeOffset,SWIPE_ACTION_WIDTH,SWIPE_OPEN_THRESHOLD} from '../lib/orbit/calendar-move.ts';
 import {applyAction} from '../lib/orbit/reducer.ts';
 import {emptyWorkspace} from '../lib/orbit/model.ts';
 import {actionSchema} from '../lib/orbit/validation.ts';
@@ -69,4 +69,21 @@ test('server also rejects a conflicting move and leaves source data unchanged',(
 test('moving an event preserves the memo and schedule classification through strict command parsing',()=>{
  const original={...event,description:'통화 자료 확인\n다음 주 회신',scope:'work'};const command=actionSchema.parse(eventCommand(shiftedEvent(original,48)));assert.equal(command.event.description,original.description);assert.equal(command.event.scope,'work');
  assert.equal(actionSchema.safeParse({...command,event:{...command.event,scope:'invalid'}}).success,false);
+});
+
+test('postponing a local event changes only its start range and preserves duration and relations',()=>{
+ const original={...event,projectId:'project',taskId:'task',description:'메모',scope:'work',category:'meeting',color:'#5484ed',projectAutoLink:false,projectLink:{method:'keyword',matched:['산책']}};
+ const moved=postponedEvent(original,'2026-09-23',780,{date:'2026-09-21',minute:700});
+ assert.deepEqual(moved,{...original,date:'2026-09-23',start:780,end:825});
+ assert.equal(actionSchema.safeParse(eventCommand(moved)).success,true);
+});
+
+test('postponing rejects a past start and a same-day range that cannot preserve duration',()=>{
+ assert.throws(()=>postponedEvent(event,'2026-09-21',699,{date:'2026-09-21',minute:700}),/과거/);
+ assert.throws(()=>postponedEvent(event,'2026-09-22',1420,{date:'2026-09-21',minute:700}),/종료/);
+});
+
+test('postponing a Google edit preserves the full duration across dates and unrelated edit fields',()=>{
+ const edit={operationId:'00000000-0000-4000-8000-000000000000',id:'google:one',calendarId:'primary',eventId:'one',etag:'"v1"',timeZone:'Asia/Seoul',title:'출장',startDate:'2026-09-21',endDate:'2026-09-22',start:1380,end:60,allDay:false,description:'준비',scope:'work'};
+ assert.deepEqual(postponedCalendarEdit(edit,'2026-09-25',600,{date:'2026-09-21',minute:700}),{...edit,startDate:'2026-09-25',endDate:'2026-09-25',start:600,end:720});
 });
