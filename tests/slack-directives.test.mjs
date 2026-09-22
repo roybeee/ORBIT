@@ -45,8 +45,13 @@ test('authentication scope, posted owner, tenant project and receipt isolation',
 }finally{s.db.close()}});
 test('unknown response reconciles; concurrent duplicate and conflicting writes create one note',async()=>{const s=await setup();try{
  const results=await Promise.all([call(s,'',wire()),call(s,'',wire()),call(s,'',{...wire(),change:{...wire().change,text:'conflicting'}})]);
- assert.deepEqual(results.map(r=>r.status),[200,200,409]);assert.equal(results[0].data.id,results[1].data.id);
- assert.equal((await call(s,'?operationKey=origin%3Atest')).data.status,'completed');assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM orbit_slack_directives').first()).n,1);assert.equal((await readWorkspace(s.db,'owner')).data.notes.length,1);
+ const winner=results.find(r=>r.status===200);assert.ok(winner,'one payload must win the atomic receipt race');
+ const conflictWon=winner.data.change.text==='conflicting';
+ assert.deepEqual(results.map(r=>r.status),conflictWon?[409,409,200]:[200,200,409]);
+ for(const r of results){if(r.status===200)assert.equal(r.data.id,winner.data.id);else assert.equal(r.data.error,'payload_conflict')}
+ const saved=(await call(s,'?operationKey=origin%3Atest')).data;
+ assert.equal(saved.status,'completed');assert.equal(saved.id,winner.data.id);assert.equal(saved.target.note.body,conflictWon?'conflicting':wire().change.text);
+ assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM orbit_slack_directives').first()).n,1);assert.equal((await readWorkspace(s.db,'owner')).data.notes.length,1);
 }finally{s.db.close()}});
 test('absent or name-only destination returns bounded canonical candidates without target; failed provider persists failure',async()=>{const s=await setup();try{
  for(const [i,project] of [undefined,{name:'Old Ferry Donut'}].entries()){const input={...wire(),operationKey:'missing:'+i,project};delete input.binding;const r=await call(s,'',input);assert.equal(r.data.status,'needs_confirmation');assert.deepEqual(r.data.candidates,['ofd']);assert.equal(r.data.target,null)}
