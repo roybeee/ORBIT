@@ -33,3 +33,22 @@ test('a dismissed notification disappears, stops counting as unread and is not r
   assert.equal((await listNotifications(db,'a')).items.length,1);
  }finally{db.close()}
 });
+
+test('a repeated failure alerts a device once per window while the inbox keeps every record',async()=>{
+ const db=createDatabase(),real=globalThis.fetch;
+ try{
+  const {sub}=subscription();
+  await notificationState(db,'a');
+  await subscribePush(db,'a',sub,'https://orbit.example.com');
+  const now=Date.now();
+  for(let i=0;i<5;i++)await notify(db,'a',{id:'turn:'+i+':failed',kind:'failed',title:'회의 분석 실패',body:'Codex provider quota exhausted (429)',href:'/',createdAt:new Date(now+i*1000).toISOString()});
+  await notify(db,'a',{id:'other',kind:'approval',title:'승인 요청',body:'다른 알림',href:'/',createdAt:new Date(now+9000).toISOString()});
+  await collectNotifications(db,'a');
+  const queued=await db.prepare("SELECT notification_id FROM orbit_push_deliveries WHERE owner_id='a' AND status='queued' ORDER BY notification_id").all();
+  assert.deepEqual(queued.results.map(r=>r.notification_id),['other','turn:0:failed']);
+  assert.equal((await listNotifications(db,'a')).items.length,6);
+  let sent=0;globalThis.fetch=async()=>{sent++;return new Response('',{status:201})};
+  await flushPushNotifications(db,'a');
+  assert.equal(sent,2);
+ }finally{globalThis.fetch=real;db.close()}
+});
