@@ -23,7 +23,8 @@ export function ProjectDetailPanel({intent='overview',onManage,project:p,data,to
   const [tab,setTab]=useState(['settings','complete','resume'].includes(intent)?'overview':intent==='overview'&&state==='completed'?'overview':'tasks'),[settings,setSettings]=useState(intent==='settings'||intent==='complete'||intent==='resume'),[status,setStatus]=useState<ProjectStatus>(intent==='complete'?'completed':intent==='resume'?'active':state),[priority,setPriority]=useState(p.priority),[goalId,setGoalId]=useState(p.goalId??'none'),[result,setResult]=useState(p.result??''),[error,setError]=useState('');
   const [stage,setStage]=useState<ProjectMilestone|null>(null),[removeStage,setRemoveStage]=useState<ProjectMilestone|null>(null);
   const [taskFilter,setTaskFilter]=useState(state==='completed'?'all':'open');
-  useEffect(()=>{if(state==='completed')setTaskFilter('all')},[state]);
+  const [seenState,setSeenState]=useState(state);
+  if(seenState!==state){setSeenState(state);if(state==='completed')setTaskFilter('all')}
   const [due,setDue]=useState(p.due),[stagesOpen,setStagesOpen]=useState(s.milestones.length>0);
   const settingsRef=useRef<HTMLFormElement>(null);
   useEffect(()=>{if(settings){const frame=requestAnimationFrame(()=>{const form=settingsRef.current,body=form?.closest<HTMLElement>('.sheet-body');if(form&&body)body.scrollTop+=form.getBoundingClientRect().top-body.getBoundingClientRect().top-66});return()=>cancelAnimationFrame(frame)}},[settings]);
