@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 from urllib import error, parse, request
 
-GUIDANCE = """Slack 사용자의 일정·할 일·메모 변경을 실제로 수행/시도한 경우만 호출하세요. 모든 대화·첨부·비밀은 넣지 마세요. 출처는 런타임 자동 확인이므로 ID를 추측하지 마세요. 등록 위치·종류가 애매하면 alternatives에 후보를 넣으세요. needs_confirmation이면 반환된 approval_prompt로 요청자에게 프로젝트를 확인 질문하세요. 승인 문구를 대신 작성하거나 승인으로 간주하지 마세요. pending_source는 출처 미확인입니다. 부분 실패·provider_failed·readback 실패는 전체 성공이 아닙니다."""
+GUIDANCE = """새 ORBIT 메모는 쓰기 전에 orbit_slack_note_prepare로 canonical 후보를 준비하고 요청자의 정확한 승인 답변 뒤 request_id만으로 재개하세요. 준비 단계에는 provider_status를 넣지 마세요. 기존 사후 동기화 도구는 다음 규칙을 따릅니다. Slack 사용자의 일정·할 일·메모 변경을 실제로 수행/시도한 경우만 호출하세요. 모든 대화·첨부·비밀은 넣지 마세요. 출처는 런타임 자동 확인이므로 ID를 추측하지 마세요. 등록 위치·종류가 애매하면 alternatives에 후보를 넣으세요. needs_confirmation이면 반환된 approval_prompt로 요청자에게 프로젝트를 확인 질문하세요. 승인 문구를 대신 작성하거나 승인으로 간주하지 마세요. pending_source는 출처 미확인입니다. 부분 실패·provider_failed·readback 실패는 전체 성공이 아닙니다."""
 
 def encoded(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
@@ -359,6 +359,60 @@ def resume(key):
     payload.update(change=selected['change'], project=selected.get('project'))
     return deliver(key, payload, original)
 
+def prepare_note(params, **kwargs):
+    """Read-only canonical preparation. Only verified resume can execute a note.
+
+    The legacy wire's succeeded flag means local ORBIT execution is requested;
+    it is not evidence of a preceding external provider write. No POST occurs
+    here until the durable requester choice has passed resume's Slack readback.
+    """
+    try:
+        if 'request_id' in params:
+            if set(params) != {'request_id'}:
+                raise ValueError('resume_accepts_only_request_id')
+            return encoded(resume(params['request_id']))
+        if set(params) - {'change', 'project'}:
+            raise ValueError('prepare_accepts_only_note_and_project')
+        payload = bounded(dict(params, provider_status='succeeded'))
+        if payload['change']['kind'] != 'note' or set(payload['change']) != {'kind', 'title', 'text', 'date'}:
+            raise ValueError('note_only')
+        origin = bound_origin()
+        if not origin or not source_for(origin, {}):
+            return encoded(result('pending_source', providerWritesAllowed=False))
+        key = 'origin:' + origin['correlation_id']
+        with database() as db:
+            row = db.execute('SELECT * FROM requests WHERE id=?', (key,)).fetchone()
+        if row:
+            saved = json.loads(row['payload'])
+            if any(saved.get(field) != payload.get(field) for field in ('change', 'project', 'provider_status')) or not json.loads(row['choices']):
+                raise ValueError('payload_conflict')
+            return sync_directive(saved)
+        query = {'prepareNote': '1', 'workspaceId': origin['workspace_scope'], 'requesterId': origin['requesting_user']}
+        if payload.get('project', {}).get('id'):
+            query['projectId'] = payload['project']['id']
+        prepared = orbit_request('GET', query)
+        candidates = prepared.get('candidates')
+        if (prepared.get('contract') != 'orbit-slack-note-prepare-v1'
+                or prepared.get('workspaceId') != origin['workspace_scope']
+                or prepared.get('requesterId') != origin['requesting_user']
+                or prepared.get('providerWritesAllowed') is not False
+                or not isinstance(candidates, list) or len(candidates) > 8):
+            raise ValueError('canonical_contract_unavailable')
+        if not candidates:
+            return encoded(result('blocked_no_candidates', providerWritesAllowed=False))
+        choices = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict) or any(not isinstance(candidate.get(field), str) or not 1 <= len(candidate[field]) <= 160 for field in ('id', 'name')):
+                raise ValueError('invalid_candidates')
+            if query.get('projectId') and candidate['id'] != query['projectId']:
+                raise ValueError('canonical_candidate_mismatch')
+            choices.append({'label': candidate['name'], 'destination': 'orbit', 'project': {'id': candidate['id']}, 'change': payload['change']})
+        payload['alternatives'] = choices
+        return sync_directive(payload)
+    except Exception as exc:
+        return encoded(result('rejected', error=str(exc) if isinstance(exc, ValueError) else type(exc).__name__, providerWritesAllowed=False))
+
+
 def sync_directive(params, **kwargs):
     try:
         if 'request_id' in params:
@@ -403,6 +457,10 @@ SCHEMA = {'name': 'orbit_slack_directive_sync', 'description': 'Persist a bounde
     'alternatives': {'type': 'array', 'minItems': 1, 'maxItems': 8, 'items': {'type': 'object', 'additionalProperties': False, 'properties': {'label': {'type': 'string', 'maxLength': 160}, 'destination': {'type': 'string', 'enum': ['orbit', 'knowledge_base']}, 'project': {'type': 'object'}, 'change': {'type': 'object'}}, 'required': ['label', 'destination', 'change']}},
 }, 'required': []}}
 
+NOTE_SCHEMA = {'name': 'orbit_slack_note_prepare', 'description': 'Prepare an ORBIT knowledge note BEFORE writing. Always ask the requester using the returned approval_prompt; resume with request_id only after their exact Slack approval. No external provider status is needed.', 'parameters': {'type': 'object', 'additionalProperties': False, 'properties': {'change': {'type': 'object'}, 'project': {'type': 'object'}, 'request_id': {'type': 'string', 'maxLength': 200}}, 'required': []}}
+
+
 def register(ctx):
+    ctx.register_tool(name=NOTE_SCHEMA['name'], toolset='orbit', schema=NOTE_SCHEMA, handler=prepare_note)
     ctx.register_tool(name=SCHEMA['name'], toolset='orbit', schema=SCHEMA, handler=sync_directive)
     ctx.register_system_prompt_section('orbit.slack-directive-sync', GUIDANCE, position='after_memory', max_chars=1200)

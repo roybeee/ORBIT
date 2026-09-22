@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDatabase} from './sqlite-d1.mjs';
 import {writeCommand,readWorkspace,readNote} from '../db/repository.ts';
+test('prepare lists canonical owner-scoped candidates without any receipt or note write',async()=>{const s=await setup();try{
+ const before=await readWorkspace(s.db,'owner');
+ const r=await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=UTEST');
+ assert.equal(r.status,200);assert.equal(r.data.contract,'orbit-slack-note-prepare-v1');assert.deepEqual(r.data.candidates,[{id:'ofd',name:'Old Ferry Donut'}]);
+ assert.deepEqual(await readWorkspace(s.db,'owner'),before);assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM orbit_slack_directives').first()).n,0);
+ assert.equal((await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=OTHER')).status,403);
+ assert.equal((await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=UTEST&projectId=other')).status,403);
+}finally{s.db.close()}});
 const moduleUrl='../lib/orbit/slack/directives.ts';
 const token='test-only-integration-credential-1234567890';
 const project={id:'ofd',name:'Old Ferry Donut',goal:'Progress',due:'2099-01-01',color:'#4455cc',symbol:'O',priority:3,status:'active'};
