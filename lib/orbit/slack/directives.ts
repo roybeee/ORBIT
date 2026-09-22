@@ -5,7 +5,10 @@ import {dateSchema} from '../validation.ts';
 const id=z.string().min(1).max(160);
 const sourceSchema=z.object({platform:z.literal('slack'),workspaceId:id,requesterId:id,channelId:id,messageTs:z.string().regex(/^\d{10}\.\d{6}$/),threadId:z.string().regex(/^\d{10}\.\d{6}$/).optional(),eventId:id.optional(),clientMsgId:id.optional()}).strict().refine(s=>s.eventId||s.clientMsgId);
 const bindingSchema=z.object({contract:z.literal('orbit-slack-v2'),authorized:z.literal(true),ownerId:id,workspaceId:id,requesterId:id,projectId:id}).strict();
-const inputSchema=z.object({operationKey:z.string().min(1).max(200),source:sourceSchema,providerStatus:z.enum(['succeeded','failed']),providerError:z.enum(['','provider_failed']),change:z.object({kind:z.literal('note'),title:z.string().min(1).max(160),text:z.string().min(1).max(4000),date:dateSchema}).strict(),project:z.object({id:id.optional(),name:id.optional()}).strict().optional(),binding:bindingSchema.optional()}).strict();
+const taskBindingSchema=z.object({contract:z.literal('orbit-slack-task-receipt-v1'),authorized:z.literal(true),ownerId:id,workspaceId:id,requesterId:id}).strict();
+const taskResultSchema=z.object({kind:z.literal('task'),provider:z.literal('google_tasks'),text:z.string().min(1).max(160),due:dateSchema,providerTaskListId:id,providerTaskId:id,providerEtag:z.string().min(1).max(200),providerTaskStatus:z.enum(['needsAction','completed']),providerUrl:z.string().max(500).regex(/^https:\/\/tasks\.google\.com\/task\/[A-Za-z0-9_-]+(?:\?sa=\d+)?$/),notesSha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
+const taskFailureSchema=z.object({kind:z.literal('task'),provider:z.literal('google_tasks'),text:z.string().min(1).max(160),due:dateSchema}).strict();
+const inputSchema=z.object({operationKey:z.string().min(1).max(200),source:sourceSchema,providerStatus:z.enum(['succeeded','failed']),providerError:z.enum(['','provider_failed']),change:z.union([z.object({kind:z.literal('note'),title:z.string().min(1).max(160),text:z.string().min(1).max(4000),date:dateSchema}).strict(),taskResultSchema,taskFailureSchema]),project:z.object({id:id.optional(),name:id.optional()}).strict().optional(),binding:z.union([bindingSchema,taskBindingSchema]).optional()}).strict().refine(w=>w.providerStatus==='failed'||w.change.kind==='note'||'providerTaskId' in w.change);
 type Input=z.infer<typeof inputSchema>;
 type Principal={token_hash:string;owner_id:string;workspace_id:string;requester_id:string};
 type Row={id:string;payload_json:string;payload_hash:string;status:string;target_id:string|null;candidates_json:string};
@@ -16,25 +19,40 @@ const authGate="EXISTS(SELECT 1 FROM orbit_slack_credentials WHERE token_hash=? 
 const authValues=(p:Principal)=>[p.token_hash,p.owner_id,p.workspace_id,p.requester_id,Date.now()];
 async function authenticate(db:Database,request:Request){const match=/^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(request.headers.get('authorization')??'');if(!match)throw new Failure(401,'unauthorized');const hash=await digest(match[1]);const principal=await db.prepare("SELECT token_hash,owner_id,workspace_id,requester_id FROM orbit_slack_credentials WHERE token_hash=? AND scope='directives:write' AND revoked=0 AND expires_at>?").bind(hash,Date.now()).first<Principal>();if(!principal)throw new Failure(401,'unauthorized');return principal}
 const binding=(p:Principal,projectId:string)=>({contract:'orbit-slack-v2' as const,authorized:true as const,ownerId:p.owner_id,workspaceId:p.workspace_id,requesterId:p.requester_id,projectId});
+const taskBinding=(p:Principal)=>({contract:'orbit-slack-task-receipt-v1' as const,authorized:true as const,ownerId:p.owner_id,workspaceId:p.workspace_id,requesterId:p.requester_id});
 async function lookup(db:Database,p:Principal,field:'id'|'operation_key',value:string){return db.prepare(`SELECT * FROM orbit_slack_directives WHERE owner_id=? AND workspace_id=? AND requester_id=? AND ${field}=?`).bind(p.owner_id,p.workspace_id,p.requester_id,value).first<Row>()}
-async function readback(db:Database,p:Principal,row:Row){const wire:Input=JSON.parse(row.payload_json);let target=null,status=row.status;if(row.target_id){try{const note=await readNote(db,p.owner_id,row.target_id);target={type:'note',id:note.id,note:{...note,ownerId:p.owner_id,date:note.updated}};if(note.kind!=='knowledge'||note.projectId!==wire.project?.id||note.title!==wire.change.title||note.body!==wire.change.text||note.updated!==wire.change.date)status='target_changed'}catch{status='target_missing'}}return {...wire,id:row.id,status,candidates:JSON.parse(row.candidates_json),target}}
-async function post(db:Database,p:Principal,raw:unknown){const parsed=inputSchema.safeParse(raw);if(!parsed.success)throw new Failure(422,'unsupported_or_invalid_directive');const wire=parsed.data;if(wire.source.workspaceId!==p.workspace_id||wire.source.requesterId!==p.requester_id)throw new Failure(403,'source_scope_mismatch');if(wire.binding&&canonical(wire.binding)!==canonical(binding(p,wire.project?.id??'')))throw new Failure(403,'binding_mismatch');
+async function readback(db:Database,p:Principal,row:Row){const wire:Input=JSON.parse(row.payload_json);
+ if(wire.change.kind==='task'){
+  if(!('providerTaskId' in wire.change))return {...wire,id:row.id,status:row.status,candidates:[],receiptOnly:true,target:null};
+  const c=wire.change;
+  // A receipt of the scoped runtime's provider GET, not a live Google view and
+  // not a new ORBIT task. Readback is explicit about that distinction.
+  const target=row.status==='completed'?{type:'google_task',id:c.providerTaskId,task:{id:c.providerTaskId,taskListId:c.providerTaskListId,title:c.text,due:c.due,status:c.providerTaskStatus,etag:c.providerEtag,url:c.providerUrl,notesSha256:c.notesSha256,ownerId:p.owner_id}}:null;
+  return {...wire,id:row.id,status:row.status,candidates:JSON.parse(row.candidates_json),receiptOnly:true,target};
+ }
+ let target=null,status=row.status;if(row.target_id){try{const note=await readNote(db,p.owner_id,row.target_id);target={type:'note',id:note.id,note:{...note,ownerId:p.owner_id,date:note.updated}};if(note.kind!=='knowledge'||note.projectId!==wire.project?.id||note.title!==wire.change.title||note.body!==wire.change.text||note.updated!==wire.change.date)status='target_changed'}catch{status='target_missing'}}return {...wire,id:row.id,status,candidates:JSON.parse(row.candidates_json),target}}
+async function post(db:Database,p:Principal,raw:unknown){const parsed=inputSchema.safeParse(raw);if(!parsed.success)throw new Failure(422,'unsupported_or_invalid_directive');const wire=parsed.data;if(wire.source.workspaceId!==p.workspace_id||wire.source.requesterId!==p.requester_id)throw new Failure(403,'source_scope_mismatch');if(wire.binding&&canonical(wire.binding)!==canonical(wire.change.kind==='task'?taskBinding(p):binding(p,wire.project?.id??'')))throw new Failure(403,'binding_mismatch');
  const hash=await digest(canonical(wire));const prior=await lookup(db,p,'operation_key',wire.operationKey);if(prior){if(prior.payload_hash!==hash)throw new Failure(409,'payload_conflict');return readback(db,p,prior)}
  const snapshot=await readWorkspace(db,p.owner_id);const project=snapshot.data.projects.find(project=>project.id===wire.project?.id);
  if(wire.project?.id&&!project)throw new Failure(403,'project_not_authorized');
- const status=wire.providerStatus==='failed'?'provider_failed':!project?'needs_confirmation':'completed';
- if(status==='completed'&&!wire.binding)throw new Failure(403,'binding_required');
- const receiptId=crypto.randomUUID(),targetId=status==='completed'?'slack:'+receiptId:null;
- const candidates=!project?snapshot.data.projects.filter(p=>p.status==='active').slice(0,8).map(p=>p.id):[];
+ const taskReceipt=wire.change.kind==='task';
+ if(taskReceipt&&wire.project)throw new Failure(422,'task_receipt_has_no_project');
+ const status=wire.providerStatus==='failed'?'provider_failed':taskReceipt||project?'completed':'needs_confirmation';
+ if(status==='completed'&&!taskReceipt&&!wire.binding)throw new Failure(403,'binding_required');
+ const receiptId=crypto.randomUUID(),targetId=status==='completed'&&!taskReceipt?'slack:'+receiptId:null;
+ const candidates=!project&&!taskReceipt?snapshot.data.projects.filter(p=>p.status==='active').slice(0,8).map(p=>p.id):[];
  const receipt=(gate:string,values:(string|number|null)[])=>db.prepare(`INSERT INTO orbit_slack_directives(owner_id,workspace_id,requester_id,operation_key,id,payload_hash,payload_json,status,target_id,candidates_json,created_at) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${gate}`).bind(p.owner_id,p.workspace_id,p.requester_id,wire.operationKey,receiptId,hash,JSON.stringify(wire),status,targetId,JSON.stringify(candidates),new Date().toISOString(),...values);
- try{if(targetId&&project){await writeCommand(db,p.owner_id,{operationId:'slack-directive:'+receiptId,expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{id:targetId,kind:'knowledge',title:wire.change.title,body:wire.change.text,projectId:project.id,summary:'',tags:[],updated:wire.change.date}}},new Date(),{gate:authGate,values:authValues(p),statements:(gate,values)=>[receipt(gate,values)]})}else{await db.batch([receipt(authGate,authValues(p))])}}catch(error){const winner=await lookup(db,p,'operation_key',wire.operationKey);if(winner){if(winner.payload_hash!==hash)throw new Failure(409,'payload_conflict');return readback(db,p,winner)}throw error}
+ try{if(targetId&&project&&wire.change.kind==='note'){await writeCommand(db,p.owner_id,{operationId:'slack-directive:'+receiptId,expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{id:targetId,kind:'knowledge',title:wire.change.title,body:wire.change.text,projectId:project.id,summary:'',tags:[],updated:wire.change.date}}},new Date(),{gate:authGate,values:authValues(p),statements:(gate,values)=>[receipt(gate,values)]})}else{await db.batch([receipt(authGate,authValues(p))])}}catch(error){const winner=await lookup(db,p,'operation_key',wire.operationKey);if(winner){if(winner.payload_hash!==hash)throw new Failure(409,'payload_conflict');return readback(db,p,winner)}throw error}
  const saved=await lookup(db,p,'operation_key',wire.operationKey);if(!saved)throw new Failure(409,'authorization_or_revision_changed');return readback(db,p,saved);
 }
 // Integration credentials represent an explicitly provisioned single owner / Slack
 // workspace / requester. Posted owner IDs and browser cookies never grant access.
 // No provider I/O, task calendar outbox, or filesystem KB writes are performed here.
 export async function handleDirective(db:Database,request:Request):Promise<Response>{const respond=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store','Vary':'Authorization'}});try{const p=await authenticate(db,request);const url=new URL(request.url);
- if(request.method==='GET'){if(url.searchParams.has('prepareNote')){
+ if(request.method==='GET'){if(url.searchParams.has('resolveTaskReceipt')){
+  if(url.searchParams.get('workspaceId')!==p.workspace_id||url.searchParams.get('requesterId')!==p.requester_id)throw new Failure(403,'source_scope_mismatch');
+  return respond(taskBinding(p));
+ }if(url.searchParams.has('prepareNote')){
   if(url.searchParams.get('workspaceId')!==p.workspace_id||url.searchParams.get('requesterId')!==p.requester_id)throw new Failure(403,'source_scope_mismatch');
   const projectId=url.searchParams.get('projectId');
   const projects=(await readWorkspace(db,p.owner_id)).data.projects;
