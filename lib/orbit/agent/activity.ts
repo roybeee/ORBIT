@@ -52,11 +52,17 @@ function activityMessage(value:unknown,position:number,token:string){
  const content=hidden?'[시스템 메시지 제외]':redactActivity(m.content,token),tools=!hidden&&m.tool_calls?redactActivity(m.tool_calls,token):'';
  return {id,role:m.role,positional,content:content.slice(0,30000)+(content.length>30000?'\n[긴 메시지 일부만 보관 · Hermes 원본 확인]':''),tool:hidden?'':String(m.tool_name??'').slice(0,150),tools:tools.slice(0,8000),at:String(m.timestamp??'')};
 }
+// A quarantined session repeats its format reason every retry; the counts tell an
+// operator which upstream shape is actually blocking collection, not just how many.
+function quarantineReasons(quarantine:Cursor['quarantine']){
+ const counts=(quarantine??[]).reduce<Record<string,number>>((acc,q)=>({...acc,[q.reason]:(acc[q.reason]??0)+1}),{});
+ return Object.entries(counts).map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count||a.reason.localeCompare(b.reason));
+}
 export async function activityStatus(db:Database,owner:string){
  const r=await db.prepare('SELECT state_json FROM orbit_activity_sync WHERE owner_id=?').bind(owner).first<{state_json:string}>();
  const state:Cursor=r?JSON.parse(r.state_json):defaults();
  const count=await db.prepare('SELECT COUNT(*) AS sessions,COALESCE(SUM(message_offset),0) AS messages FROM orbit_activity_sessions WHERE owner_id=?').bind(owner).first<{sessions:number;messages:number}>();
-  return {enabled:state.enabled!==false,lastSync:state.lastSync??null,lastError:state.lastError??'',pending:state.pending.length,cycles:state.cycles??0,quarantined:state.quarantine?.length??0,...count,coverage:'연결된 Hermes 프로필의 API에 노출된 세션과 하위 에이전트 기록. 숨김·보관 세션과 첨부파일 원본은 제외됩니다.'};
+  return {enabled:state.enabled!==false,lastSync:state.lastSync??null,lastError:state.lastError??'',pending:state.pending.length,cycles:state.cycles??0,quarantined:state.quarantine?.length??0,quarantineReasons:quarantineReasons(state.quarantine),...count,coverage:'연결된 Hermes 프로필의 API에 노출된 세션과 하위 에이전트 기록. 숨김·보관 세션과 첨부파일 원본은 제외됩니다.'};
 }
 export async function syncActivity(db:Database,owner:string,env:Runtime){
  await db.prepare('INSERT OR IGNORE INTO orbit_activity_sync(owner_id,state_json,lease_until) VALUES(?,?,0)').bind(owner,JSON.stringify(defaults())).run();
@@ -133,7 +139,8 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
     await db.batch(statements);state.quarantine=state.quarantine?.filter(q=>q.id!==alias&&q.id!==session.id);if(!more)state.pending.shift();else state.pending[0]=session;
    }
   }
-  state.lastSync=new Date().toISOString();state.lastError=state.quarantine?.length?`형식 확인이 필요한 대화 ${state.quarantine.length}개는 분리해 재확인합니다. 나머지 기록은 계속 수집합니다.`:'';
+  state.lastSync=new Date().toISOString();const top=quarantineReasons(state.quarantine)[0];
+ state.lastError=state.quarantine?.length?`형식 확인이 필요한 대화 ${state.quarantine.length}개는 분리해 재확인합니다. 나머지 기록은 계속 수집합니다. 가장 많은 사유: ${top.reason} (${top.count}건)`:'';
   await recordSource(db,owner,'hermes_activity',{state:state.pending.length||state.offset||state.quarantine?.length?'partial':'ok',detail:state.lastError||'Hermes 채널 기록 수집 중 · 숨김/보관 세션 및 첨부 원본 제외'});
   return {synced:true,pending:state.pending.length};
  }catch(e){
