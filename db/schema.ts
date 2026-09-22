@@ -194,5 +194,19 @@ export const calendarEdits=sqliteTable('orbit_calendar_edits',{
 },t=>[primaryKey({columns:[t.ownerId,t.operationId]})]);
 
 export const meetingReviews=sqliteTable('orbit_meeting_reviews',{
+ summary:text('summary').notNull().default(''),engineVersion:integer('engine_version').notNull().default(1),attempts:integer('attempts').notNull().default(0),
  ownerId:text('owner_id').notNull(),noteId:text('note_id').notNull(),revision:integer('revision').notNull(),turnId:text('turn_id').notNull(),conversationId:text('conversation_id').notNull(),status:text('status').notNull(),error:text('error').notNull().default(''),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
 },t=>[primaryKey({columns:[t.ownerId,t.noteId,t.revision]}),index('idx_orbit_meeting_review_queue').on(t.ownerId,t.status,t.createdAt),uniqueIndex('idx_orbit_meeting_review_turn').on(t.ownerId,t.turnId)]);
+
+export const notifications=sqliteTable('orbit_notifications',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),kind:text('kind').notNull(),title:text('title').notNull(),body:text('body').notNull(),href:text('href').notNull(),createdAt:text('created_at').notNull(),readAt:text('read_at'),
+},t=>[primaryKey({columns:[t.ownerId,t.id]}),index('idx_orbit_notifications_recent').on(t.ownerId,t.createdAt),index('idx_orbit_notifications_unread').on(t.ownerId,t.readAt)]);
+export const notificationState=sqliteTable('orbit_notification_state',{
+ ownerId:text('owner_id').primaryKey(),startedAt:text('started_at').notNull(),publicKey:text('public_key').notNull().default(''),privateKey:text('private_key').notNull().default(''),
+});
+export const pushSubscriptions=sqliteTable('orbit_push_subscriptions',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),subscriptionJson:text('subscription_json').notNull(),createdAt:text('created_at').notNull(),lastError:text('last_error').notNull().default(''),
+},t=>[primaryKey({columns:[t.ownerId,t.id]})]);
+export const pushDeliveries=sqliteTable('orbit_push_deliveries',{
+ ownerId:text('owner_id').notNull(),notificationId:text('notification_id').notNull(),subscriptionId:text('subscription_id').notNull(),status:text('status').notNull().default('queued'),attempts:integer('attempts').notNull().default(0),nextAt:integer('next_at').notNull().default(0),leaseUntil:integer('lease_until').notNull().default(0),error:text('error').notNull().default(''),
+},t=>[primaryKey({columns:[t.ownerId,t.notificationId,t.subscriptionId]}),index('idx_orbit_push_queue').on(t.ownerId,t.status,t.nextAt)]);

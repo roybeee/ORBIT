@@ -18,7 +18,7 @@ export async function importRecording(db:Database,owner:string,record:Recording)
  for(const id of [...ids,...(old?.noteIds??[])])if(await db.prepare("SELECT id FROM orbit_data_trash WHERE owner_id=? AND category='notes' AND record_id=?").bind(owner,id).first())return exclude();
  let snapshot=await readWorkspace(db,owner);
  if(old?.noteIds.some(id=>!snapshot.data.notes.some(n=>n.id===id)))return exclude();
- if(previous?.hash===hash)return {status:old!.status,changed:false};
+ if(previous?.hash===hash){for(const id of old?.noteIds??[])await enqueueMeetingStatement(db,owner,await readNote(db,owner,id)).run();return {status:old!.status,changed:false};}
  if(record.pending&&old?.hasComplete){await saveImport(db,owner,record.id,'',{...old,status:'pending'});return {status:'pending',changed:false};}
  // Nothing ready yet: retain the metadata and revisit; never create an empty evidence note.
  if(!record.transcript&&!record.summary){await saveImport(db,owner,record.id,hash,{title:record.title,noteIds:[],bodyHashes:[],matches:[],status:'pending'});return {status:'pending',changed:false};}
@@ -49,7 +49,7 @@ export async function importRecording(db:Database,owner:string,record:Recording)
   if(!(currentHash===bodyHash&&current?.title===title))await writeCommand(db,owner,{operationId:'plaud:'+record.id+':'+hash+':'+i,expectedRevision:snapshot.revision,action:{type:'note.upsert',note,...(meta?{expectedNoteRevision:meta.revision??1}:{})}});
   await saveImport(db,owner,record.id,'',{title:record.title,hasComplete:old?.hasComplete||!record.pending,summary:sourceSummary,noteIds:[...noteIds],bodyHashes:[...bodyHashes],matches,autoPrimary:primary,...(old?.manualProject?{manualProject:old.manualProject}:{}),status:'partial'});
  }
- if(!record.pending)for(const id of noteIds){const note=await readNote(db,owner,id);await enqueueMeetingStatement(db,owner,note).run();}
+ for(const id of noteIds){const note=await readNote(db,owner,id);await enqueueMeetingStatement(db,owner,note).run();}
  await saveImport(db,owner,record.id,hash,{title:record.title,hasComplete:old?.hasComplete||!record.pending,summary:('Plaud AI 요약 · '+(record.summary||'전사 원문 수집됨 · 요약 준비 중')).slice(0,500),noteIds,bodyHashes,matches,autoPrimary:primary,...(old?.manualProject?{manualProject:old.manualProject}:{}),status:record.pending?'pending':'ready'});
  return {status:record.pending?'pending':'ready',changed:true};
 }

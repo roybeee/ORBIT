@@ -1,3 +1,4 @@
+import {notificationStatement} from '../lib/orbit/notifications/store.ts';
 import {enqueueMeetingStatement} from '../lib/orbit/meetings/review.ts';
 import {prepareWorkspace,decodeWorkspace,type WorkspaceChunk} from './workspace-storage.ts';
 import {googleColorTargets,googleColorQueue,alignGoogleAppearance} from '../lib/orbit/calendar-color-sync.ts';
@@ -379,6 +380,7 @@ export async function writeCommand(
           ...gateValues,
         ),
     );
+  for(const task of next.tasks)if(task.status==='done'&&working.tasks.some(t=>t.id===task.id&&t.status!=='done'))statements.push(notificationStatement(db,ownerId,{id:'task:'+task.id+':'+command.operationId,kind:'completed',title:'할 일 완료',body:task.title,href:'/?task='+encodeURIComponent(task.id),createdAt:timestamp},gate,gateValues));
   for(const note of changedNotes)if(note.kind==='meeting'&&note.body.trim()&&(!note.source||note.source.provider!=='plaud'))statements.push(enqueueMeetingStatement(db,ownerId,note,gate,gateValues));
   if (action.type === 'note.delete')
     statements.push(
