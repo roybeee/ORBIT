@@ -77,7 +77,7 @@ export async function executeDiscordCommand(db:Database,owner:string,config:Disc
 export async function receiveDiscord(db:Database,owner:string,config:DiscordConfig,state:DiscordState,env:Runtime){
  const messages=await discordRequest(config.token,`/channels/${config.channelId}/messages?after=${state.after}&limit=20`);
  if(!Array.isArray(messages))throw new DiscordError(502);
- const sorted=messages.filter((m:any)=>/^\d{17,20}$/.test(m.id)&&BigInt(m.id)>BigInt(state.after)).sort((a:any,b:any)=>BigInt(a.id)<BigInt(b.id)?-1:1);
+ const sorted=messages.filter((m:{id:string})=>/^\d{17,20}$/.test(m.id)&&BigInt(m.id)>BigInt(state.after)).sort((a:{id:string},b:{id:string})=>BigInt(a.id)<BigInt(b.id)?-1:1);
  for(const message of sorted){
   if(message.channel_id&&message.channel_id!==config.channelId||message.guild_id&&message.guild_id!==config.guildId||message.author?.id!==config.userId||message.author?.bot||message.webhook_id){state.after=message.id;continue;}
   let command:Command|null;try{command=parseCommand(String(message.content??''));}catch(error){await queueDiscord(db,owner,config,'syntax:'+message.id,error instanceof Error?error.message:discordHelp);state.after=message.id;return true;}

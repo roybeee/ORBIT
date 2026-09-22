@@ -20,13 +20,14 @@ export const settingsKeys=['preferences','memories','careRoutines','chief','prop
 export type SettingsKey=typeof settingsKeys[number];
 export const settingsLabels:Record<SettingsKey,string>={preferences:'시간대·근무·집중·리듬·도미노 설정',memories:'개인 기억과 근거',careRoutines:'돌봄·학습 루틴과 기록',chief:'비서실장 말투·조용한 시간·체크인',proposals:'실행 제안 이력',sound:'사운드 설정·즐겨찾기·루틴·기록',calendar:'조회 캘린더 선택',runtime:'자동 실행 시간 · 꺼진 상태로 복원',chiefSchedule:'외부 예약 설정 · 재승인 후보'};
 export const settingsSelection=z.array(z.enum(settingsKeys)).min(1).max(settingsKeys.length).refine(s=>new Set(s).size===s.length);
-export function settingsFromBackup(data:WorkspaceData,capturedAt:string,rows:Record<string,any[]>={}){
- const get=(table:string,field:string)=>{const value=rows[table]?.[0]?.[field];return value?JSON.parse(value):undefined};
+export function settingsFromBackup(data:WorkspaceData,capturedAt:string,rows:Record<string,Record<string,unknown>[]>={}){
+ const get=(table:string,field:string)=>{const value=rows[table]?.[0]?.[field];return value?JSON.parse(value as string):undefined};
  const remote=get('orbit_chief_jobs','config_json'),candidate=remote?.restored??remote?.confirmed;
  return settingsSchema.parse({format:'orbit-settings/v1',capturedAt,preferences:data.preferences,dominoProjectId:data.dominoProjectId,memories:data.memories??[],careRoutines:data.careRoutines??[],chief:data.chief??{},proposals:data.proposals,sound:get('orbit_sound_state','state_json'),calendar:get('orbit_calendar_settings','selected_json'),runtime:get('orbit_daily_runtime','config_json'),chiefSchedule:candidate});
 }
 const tables=[['orbit_sound_state','state_json'],['orbit_calendar_settings','selected_json'],['orbit_daily_runtime','config_json'],['orbit_chief_jobs','config_json']] as const;
-async function stateOf(db:Database,owner:string){const snapshot=await readWorkspace(db,owner);const rows=await db.batch(tables.map(([table])=>db.prepare(`SELECT * FROM ${table} WHERE owner_id=?`).bind(owner)));const state=rows.map(r=>r.results?.[0] as any??null);return {snapshot,state,basis:await digest({revision:snapshot.revision,state:state.map((r,i)=>[r?.[tables[i][1]]??'',r?.revision??0])})};}
+type StateRow={state_json:string;selected_json:string;config_json:string;revision:number};
+async function stateOf(db:Database,owner:string){const snapshot=await readWorkspace(db,owner);const rows=await db.batch(tables.map(([table])=>db.prepare(`SELECT * FROM ${table} WHERE owner_id=?`).bind(owner)));const state=rows.map(r=>r.results?.[0] as StateRow|undefined??null);return {snapshot,state,basis:await digest({revision:snapshot.revision,state:state.map((r,i)=>[r?.[tables[i][1]]??'',r?.revision??0])})};}
 const cleanDraft=(t:Task):Task=>({...t,startedAt:undefined,focus:false,focusDate:undefined,laserDate:undefined,planHoldUntil:undefined,planHoldReason:undefined,planHoldProposalId:undefined});
 export function planSettings(current:WorkspaceData,raw:unknown,selection:SettingsKey[]){
  const parsed=settingsSchema.safeParse(raw);if(!parsed.success)throw new DomainError('설정 백업을 확인해 주세요: '+parsed.error.issues[0]?.path.join('.'));
@@ -45,12 +46,12 @@ export function planSettings(current:WorkspaceData,raw:unknown,selection:Setting
    for(const p of imported){const drafts=[...p.draftTasks??[],...p.items.flatMap(i=>i.draftTask?[i.draftTask]:[])];const pool=[...new Map([...drafts,...next.tasks].map(t=>[t.id,t])).values()];validateLinks({...next,tasks:pool});if([...p.items.map(i=>i.taskId),...p.unscheduled,...p.delegate??[],...p.laser?.taskId?[p.laser.taskId]:[]].some(id=>!pool.some(t=>t.id===id)))throw new DomainError('제안에 연결된 할 일을 먼저 복원하세요.');}
    next.proposals=[...current.proposals,...imported.map(p=>({...p,draftTasks:p.draftTasks?.map(cleanDraft),items:p.items.map(i=>({...i,draftTask:i.draftTask?cleanDraft(i.draftTask):undefined,state:i.state==='approved'?'pending' as const:i.state}))}))] as Proposal[];
   }
-  changes.push({key,before:key==='preferences'?{...current.preferences,dominoProjectId:current.dominoProjectId}:key in current?(current as any)[key]:null,after:key==='preferences'?{...next.preferences,dominoProjectId:next.dominoProjectId}:key in next?(next as any)[key]:source[key]});
+  changes.push({key,before:key==='preferences'?{...current.preferences,dominoProjectId:current.dominoProjectId}:key in current?current[key as keyof WorkspaceData]:null,after:key==='preferences'?{...next.preferences,dominoProjectId:next.dominoProjectId}:key in next?next[key as keyof WorkspaceData]:source[key]});
  }
  validateLinks(next);if(new TextEncoder().encode(JSON.stringify(next)).length>950000)throw new DomainError('설정 복원 후 저장 한도를 넘습니다.');
  return {next,source,changes};
 }
-function separateSettings(source:z.infer<typeof settingsSchema>,state:any[],selection:SettingsKey[]){
+function separateSettings(source:z.infer<typeof settingsSchema>,state:(StateRow|null)[],selection:SettingsKey[]){
  const separate=new Map<number,string>();
  if(selection.includes('sound')){const old=state[0]?soundState.parse(JSON.parse(state[0].state_json)):null;if(old?.active)throw new DomainError('재생 중인 사운드를 마친 뒤 복원하세요.');const s=structuredClone(source.sound!);const sessions=[...s.sessions,...s.active?[{...s.active,status:'abandoned' as const,finished_at:Date.parse(source.capturedAt)}]:[]];s.sessions=[...new Map([...sessions,...old?.sessions??[]].map(x=>[x.id,x])).values()];s.active=null;s.routines=[...new Map([...s.routines,...old?.routines??[]].map(x=>[x.id,x])).values()];soundState.parse(s);separate.set(0,JSON.stringify(s));}
  if(selection.includes('calendar'))separate.set(1,JSON.stringify([...new Set(source.calendar!)]));
@@ -68,7 +69,7 @@ export async function restoreSettings(db:Database,owner:string,raw:unknown,selec
  const separate=separateSettings(plan.source,state.state,selection);
  const storage=prepareWorkspace({...plan.next,events:plan.next.events.filter(e=>!e.id.startsWith('google:'))}),rawState=storage.stateJson;
  const guard=tables.map(([table,column])=>`COALESCE((SELECT ${column} FROM ${table} WHERE owner_id=?),'')=?`).join(' AND ')+' AND COALESCE((SELECT revision FROM orbit_sound_state WHERE owner_id=?),0)=?';
- const guardValues=tables.flatMap(([_,column],i)=>[owner,state.state[i]?.[column]??'']).concat([owner,state.state[0]?.revision??0]);
+ const guardValues=tables.flatMap<string|number>(([_,column],i)=>[owner,state.state[i]?.[column]??'']).concat([owner,state.state[0]?.revision??0]);
  const idle=`NOT EXISTS(SELECT 1 FROM orbit_daily_runtime WHERE owner_id=? AND lease_until>?) AND NOT EXISTS(SELECT 1 FROM orbit_chief_jobs WHERE owner_id=? AND lease_until>?) AND NOT EXISTS(SELECT 1 FROM orbit_agent_turns WHERE owner_id=? AND status='running') AND NOT EXISTS(SELECT 1 FROM orbit_agent_actions WHERE owner_id=? AND state='applying') AND NOT EXISTS(SELECT 1 FROM orbit_agent_orders WHERE owner_id=? AND json_extract(state_json,'$.status') NOT IN ('completed','failed','cancelled','unknown')) AND NOT EXISTS(SELECT 1 FROM orbit_aside_jobs WHERE owner_id=? AND status IN ('queued','awaiting_approval','running','stop_requested','needs_attention')) AND NOT EXISTS(SELECT 1 FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.status')='publishing' AND COALESCE(json_extract(state_json,'$.leaseUntil'),0)>?)`;
  const idleValues=[owner,Date.now(),owner,Date.now(),owner,owner,owner,owner,owner,Date.now()];const revision=state.snapshot.revision+1;
  const update=db.prepare(`INSERT INTO orbit_workspaces(owner_id,revision,state_json,mutation_id,updated_at) SELECT ?,?,?,?,? WHERE ${guard} AND ${idle} ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision,state_json=excluded.state_json,mutation_id=excluded.mutation_id,updated_at=excluded.updated_at WHERE orbit_workspaces.revision=? AND ${guard} AND ${idle}`).bind(owner,revision,rawState,operationId,at,...guardValues,...idleValues,state.snapshot.revision,...guardValues,...idleValues);
