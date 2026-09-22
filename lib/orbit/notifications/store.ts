@@ -30,9 +30,19 @@ export async function collectNotifications(db:Database,owner:string){
   writes.push(notificationStatement(db,owner,{id:'order:'+row.id+':'+o.status+':'+(o.status==='waiting_for_approval'?o.approval?.id??'wait':o.updatedAt),kind,title:kind==='approval'?'업무 진행 중 승인 필요':kind==='failed'?'업무 실행 실패':'업무 실행 완료 · 결과 확인',body:[o.title,o.error||o.output||o.message||''].filter(Boolean).join(' · '),href:'/?order='+encodeURIComponent(row.id)+'#agent',createdAt:o.updatedAt||now}));
  }
  for(let i=0;i<writes.length;i+=40)await db.batch(writes.slice(i,i+40));
+ // One failing dependency can repeat the same notification for every retried record
+ // (225 identical "회의 분석 실패" rows in one day). The inbox keeps them all as a log,
+ // but a device is alerted once per title and kind: the oldest unread record of a group
+ // represents it, and a group already delivered inside the window is skipped.
+ const day=new Date(Date.now()-86400000).toISOString(),group=new Date(Date.now()-21600000).toISOString();
  await db.prepare(`INSERT OR IGNORE INTO orbit_push_deliveries(owner_id,notification_id,subscription_id)
  SELECT n.owner_id,n.id,s.id FROM orbit_notifications n JOIN orbit_push_subscriptions s ON s.owner_id=n.owner_id
- WHERE n.owner_id=? AND n.created_at>=s.created_at AND n.created_at>=? AND n.read_at IS NULL`).bind(owner,new Date(Date.now()-86400000).toISOString()).run();
+ WHERE n.owner_id=? AND n.created_at>=s.created_at AND n.created_at>=? AND n.read_at IS NULL AND n.dismissed_at IS NULL
+ AND n.id=(SELECT m.id FROM orbit_notifications m WHERE m.owner_id=n.owner_id AND m.kind=n.kind AND m.title=n.title
+  AND m.created_at>=? AND m.read_at IS NULL AND m.dismissed_at IS NULL ORDER BY m.created_at,m.id LIMIT 1)
+ AND NOT EXISTS(SELECT 1 FROM orbit_push_deliveries d JOIN orbit_notifications o ON o.owner_id=d.owner_id AND o.id=d.notification_id
+  WHERE d.owner_id=n.owner_id AND d.subscription_id=s.id AND o.kind=n.kind AND o.title=n.title AND o.created_at>=? AND o.id<>n.id)`)
+ .bind(owner,day,group,group).run();
 }
 export async function listNotifications(db:Database,owner:string,before?:string){
  const rows=await db.prepare('SELECT * FROM orbit_notifications WHERE owner_id=? AND dismissed_at IS NULL AND (? IS NULL OR created_at<?) ORDER BY created_at DESC,id DESC LIMIT 51').bind(owner,before??null,before??null).all<{id:string;kind:OrbitNotification['kind'];title:string;body:string;href:string;created_at:string;read_at:string|null}>();

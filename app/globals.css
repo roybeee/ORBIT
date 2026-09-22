@@ -489,6 +489,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .notification-row>.notification-item{flex:1;min-width:0}
 .notification-dismiss{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:40px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:inherit;opacity:.65}
 .notification-dismiss:hover,.notification-dismiss:focus-visible{opacity:1;border-color:#d8443a;color:#d8443a}
+.notification-group{display:flex;flex-direction:column;gap:8px}
+.notification-group-more{display:flex;gap:12px;flex-wrap:wrap;padding-left:4px;font-size:12px}
+.notification-row.is-grouped{margin-left:16px;opacity:.85}
 @media(hover:none){.notification-dismiss{display:none}}.meeting-date-editor{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:12px 0}.meeting-date-editor label{font-size:12px;display:grid;gap:6px}
 
 .meeting-review-summary h4{font-weight:650;font-size:15px;margin:18px 0 8px;color:var(--foreground)}.meeting-review-summary h4:first-child{margin-top:0}.meeting-review-summary p{margin:0;line-height:1.8;white-space:pre-wrap}
