@@ -217,6 +217,10 @@ def deliver(key, payload, origin):
         db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT * FROM requests WHERE id=?', (key,)).fetchone()
         previous = db.execute('SELECT wire FROM request_wires WHERE id=?', (key,)).fetchone()
+        # Includes stale pre-gate requests and alternate-kind proposals. Only a
+        # choice persisted by verified resume grants new canonical note creation.
+        if payload['change']['kind'] == 'note' and payload['provider_status'] == 'succeeded' and not row['selected']:
+            return result('approval_required', request_id=key)
         if previous and previous['wire'] != encoded(wire):
             return result('binding_conflict', request_id=key)
         if not previous and row['state'] not in ('pending', 'approved'):
@@ -386,7 +390,7 @@ def prepare_note(params, **kwargs):
             saved = json.loads(row['payload'])
             if any(saved.get(field) != payload.get(field) for field in ('change', 'project', 'provider_status')) or not json.loads(row['choices']):
                 raise ValueError('payload_conflict')
-            return sync_directive(saved)
+            return _persist_directive(saved)
         query = {'prepareNote': '1', 'workspaceId': origin['workspace_scope'], 'requesterId': origin['requesting_user']}
         if payload.get('project', {}).get('id'):
             query['projectId'] = payload['project']['id']
@@ -408,12 +412,28 @@ def prepare_note(params, **kwargs):
                 raise ValueError('canonical_candidate_mismatch')
             choices.append({'label': candidate['name'], 'destination': 'orbit', 'project': {'id': candidate['id']}, 'change': payload['change']})
         payload['alternatives'] = choices
-        return sync_directive(payload)
+        return _persist_directive(payload)
     except Exception as exc:
         return encoded(result('rejected', error=str(exc) if isinstance(exc, ValueError) else type(exc).__name__, providerWritesAllowed=False))
 
 
 def sync_directive(params, **kwargs):
+    # This exposed legacy tool is not a separate note-creation capability.
+    # A model-asserted project/provider status cannot prove destination intent.
+    try:
+        if 'request_id' not in params:
+            payload = bounded(params)
+            origin = bound_origin()
+            if origin:
+                source_for(origin, params)  # Do not discard mismatched source hints.
+            if payload['change']['kind'] == 'note' and payload['provider_status'] == 'succeeded':
+                return prepare_note({key: payload[key] for key in ('change', 'project') if key in payload})
+        return _persist_directive(params, **kwargs)
+    except Exception as exc:
+        return encoded(result('rejected', error=str(exc) if isinstance(exc, ValueError) else type(exc).__name__))
+
+
+def _persist_directive(params, **kwargs):
     try:
         if 'request_id' in params:
             if set(params) != {'request_id'}:

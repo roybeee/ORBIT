@@ -28,6 +28,64 @@ def backend():
     child.stdout.close()
     assert child.returncode == 0
 
+@pytest.fixture
+def registered(plugin, tmp_path):
+    """Actual SDK manifest discovery, loader and scoped tool registry."""
+    import shutil
+    from hermes_cli.plugins import PluginManager
+    from tools.registry import registry
+    folder = tmp_path / 'plugins' / 'orbit-slack-directive-sync'
+    folder.mkdir(parents=True)
+    for name in ('__init__.py', 'plugin.yaml'):
+        shutil.copy(Path(__file__).parents[1] / name, folder / name)
+    manager = PluginManager(scope_key=str(tmp_path))
+    manifests = manager._scan_directory(folder.parent, source='user')
+    assert len(manifests) == 1
+    manager._load_plugin(manifests[0])
+    loaded = manager._plugins[manifests[0].key or manifests[0].name]
+    assert loaded.enabled and not loaded.error, loaded.error
+    try:
+        yield loaded, registry
+    finally:
+        manager.unload()
+
+
+def test_sdk_manifest_and_discovery(registered):
+    loaded, registry = registered
+    expected = {'orbit_slack_note_prepare', 'orbit_slack_directive_sync'}
+    assert set(loaded.manifest.provides_tools) == expected
+    assert set(loaded.tools_registered) == expected
+    assert {d['function']['name'] for d in registry.get_definitions(expected)} == expected
+
+
+@pytest.mark.parametrize('tool', ['orbit_slack_note_prepare', 'orbit_slack_directive_sync'])
+def test_registered_tools_cannot_bypass_ambiguous_note_gate(registered, monkeypatch, backend, tool):
+    loaded, registry = registered
+    remote, calls = backend
+    monkeypatch.setattr(loaded.module, 'orbit_request', remote)
+    params = dict(NOTE, project={'id':'project-a'})
+    if tool == 'orbit_slack_directive_sync':
+        params['provider_status'] = 'succeeded'
+    with origin():
+        pending = json.loads(registry.dispatch(tool, params))
+    assert pending['state'] == 'needs_confirmation', pending
+    assert 'POST' not in calls
+    assert remote('INSPECT')['receipts']['n'] == 0
+    assert remote('INSPECT')['workspace']['data']['notes'] == []
+    approvals = []
+    def approval(current):
+        approvals.append(current)
+        return {'text':f"ORBIT 승인 {pending['request_id']} 1", 'user':'U_TEST', 'ts':current['message_ts']}
+    monkeypatch.setattr(loaded.module, 'approval_message', approval)
+    with origin(event='Ev-approval', client='approval', ts='1790000000.000003'):
+        done = json.loads(registry.dispatch(tool, {'request_id':pending['request_id']}))
+        replay = json.loads(registry.dispatch(tool, {'request_id':pending['request_id']}))
+    assert approvals and done['success'] and replay['success'], (done, replay)
+    actual = remote('INSPECT')
+    assert calls.count('POST') == actual['receipts']['n'] == 1
+    assert actual['workspace']['data']['notes'][0]['body'] == NOTE['change']['text']
+
+
 def test_note_prepare_tool_is_registered(plugin):
     tools = {}
     class Context:
