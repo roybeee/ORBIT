@@ -4,8 +4,11 @@ import {BookOpen,ChevronLeft,ChevronRight,FileText,Inbox,Lightbulb,RotateCcw} fr
 import type {Note} from '@/lib/orbit/model';
 export function NoteLibrary({notes,kind,query,revision,demo,onSelect,onRefresh,projectId='',tag='',documentKind=''}:{notes:Note[];kind:'wiki'|'knowledge'|'all';query:string;revision:number;demo:boolean;onSelect:(id:string)=>void;onRefresh:()=>Promise<void>;projectId?:string;tag?:string;documentKind?:string}){
  const [page,setPage]=useState(0),[items,setItems]=useState<Note[]>([]),[more,setMore]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[conflict,setConflict]=useState(false),[attempt,setAttempt]=useState(0);
- useEffect(()=>{setPage(0)},[query,kind,projectId,tag,documentKind]);
+ const filterKey=JSON.stringify([query,kind,projectId,tag,documentKind]);
+ const [activeFilter,setActiveFilter]=useState(filterKey);
+ if(activeFilter!==filterKey){setActiveFilter(filterKey);setPage(0)}
  useEffect(()=>{
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the loading, error and conflict flags must reset before the debounced request starts so the previous results are not shown as current
   const controller=new AbortController();setLoading(true);setError('');setConflict(false);
   if(demo){const matches=notes.filter(n=>(kind==='all'||(kind==='knowledge'?n.kind==='knowledge':n.kind!=='knowledge'))&&(!projectId||n.projectId===projectId)&&(!tag||n.tags.includes(tag))&&(!documentKind||n.kind===documentKind)&&[n.title,n.summary,n.body,...n.tags].some(text=>text.toLowerCase().includes(query.toLowerCase()))).sort((a,b)=>b.updated.localeCompare(a.updated)||a.id.localeCompare(b.id));setItems(matches.slice(page*24,(page+1)*24));setMore(matches.length>(page+1)*24);setLoading(false);return}
   const timer=setTimeout(async()=>{try{const params=new URLSearchParams({q:query,kind,project:projectId,tag,documentKind,offset:String(page*24)});const response=await fetch('/api/notes?'+params,{cache:'no-store',signal:controller.signal});const result=await response.json();if(!response.ok){if(response.status===409)setConflict(true);throw new Error(result.error||'검색을 완료하지 못했습니다.')}if(!controller.signal.aborted){setItems(result.items);setMore(result.hasMore)}}catch(error){if(!controller.signal.aborted)setError((error as Error).message)}finally{if(!controller.signal.aborted)setLoading(false)}},200);

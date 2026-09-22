@@ -8,9 +8,11 @@ const time=(value:string|null|undefined)=>value?new Date(value).toLocaleString('
 export function DiscordConnection({onChange}:{onChange:()=>Promise<void>}){
  const [state,setState]=useState<State|null>(null),[token,setToken]=useState(''),[guildId,setGuildId]=useState(''),[channelId,setChannelId]=useState(''),[userId,setUserId]=useState(''),[enabled,setEnabled]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState('');
  const load=async()=>{const data=await agentRequest('/api/discord');setState(data);if(data.config){setGuildId(data.config.guildId);setChannelId(data.config.channelId);setUserId(data.config.userId);setEnabled(data.config.enabled);}};
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- load() awaits the Discord status response before it updates state; nothing is set synchronously here
  useEffect(()=>{void load().catch(e=>setError(e.message));},[]);
  async function run(action:'save'|'sync'|'test'){setBusy(true);setError('');setFeedback('');try{await agentRequest('/api/discord','POST',{action,...(action==='save'?{settings:{...(token?{token}:{}),guildId,channelId,userId,enabled}}:{})});if(action==='save')setToken('');await load();await onChange();setFeedback(action==='save'?'봇과 채널 권한을 확인해 저장했습니다.':action==='test'?'테스트 알림을 요청했습니다. 채널에서 수신 여부를 확인하세요.':'동기화 상태를 갱신했습니다.');}catch(e){setError(e instanceof Error?e.message:'연결을 확인하세요.');}finally{setBusy(false);}}
  const scheduler=state?.runtime?.config.lastSchedulerTick;
+ // eslint-disable-next-line react-hooks/purity -- the freshness label compares the server tick with the wall clock at render time; snapshotting the time would change when the label flips
  const healthy=Boolean(state?.runtime?.config.enabled&&scheduler&&Date.now()-Date.parse(scheduler)<180000);
  return <section className="connection-card discord-connection"><header><span className="connection-icon"><MessageCircle size={22}/></span><div><h3>Discord 업무 채널</h3><p>업무 지시 · 결과 보고 · 승인과 보류</p></div><span className={'connection-status '+(state?.config?.enabled?'connected':'')}>{state?.config?(state.config.enabled?'사용 중':'일시 정지'):'연결 필요'}</span></header>
  <p className="connection-help">본인 전용 텍스트 채널을 연결하세요. 아래 사용자 ID의 명령만 실행하며, ORBIT의 새 응답·업무 결과·검토 제안을 이 채널로 보냅니다. 다른 채널과 과거 메시지는 자동 수집하지 않습니다.</p>

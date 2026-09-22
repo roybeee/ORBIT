@@ -51,6 +51,7 @@ export function PwaProvider({children}:{children:ReactNode}){
     const capture=(event:Event)=>{event.preventDefault();promptRef.current=event as InstallPrompt;setCanInstall(true)};
     const complete=()=>{promptRef.current=null;setCanInstall(false);setInstalled(true)};
     const detected=detectInstallEnvironment(navigator);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- platform and display-mode detection need navigator and matchMedia, which only exist after hydration; ready marks that point
     setPlatform(detected.platform);setBrowser(detected.browser);
     updateDisplay();setReady(true);
     window.addEventListener('beforeinstallprompt',capture);
