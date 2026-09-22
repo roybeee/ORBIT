@@ -104,7 +104,7 @@ gh pr merge "${pr_number}" -R "${ORBIT_GITHUB_REPO}" --auto --merge >/dev/null
 
 deadline=$(( $(date +%s) + wait_minutes * 60 ))
 while :; do
-  state="$(gh pr view "${pr_number}" -R "${ORBIT_GITHUB_REPO}" --json state,mergeCommit,mergeStateStatus --jq '[.state, (.mergeCommit.oid // ""), .mergeStateStatus] | join(" ")')"
+  state="$(gh pr view "${pr_number}" -R "${ORBIT_GITHUB_REPO}" --json state,mergeCommit,mergeStateStatus --jq '[.state, (.mergeCommit.oid // "-"), .mergeStateStatus] | join(" ")')"
   read -r pr_state merge_sha merge_state <<<"${state}"
   case "${pr_state}" in
     MERGED)
