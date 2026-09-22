@@ -1,13 +1,13 @@
 # ORBIT 병렬 작업 루프
 
 여러 에이전트(Claude, Codex/ChatGPT, Slack/Hermes)와 사람이 동시에 개발해도 `main`과 운영 앱이 깨지지 않게 하는 절차와 도구다.
-비유하면 공항 관제다. 비행기(PR)는 각자 준비하지만 활주로(`main`)에는 관제탑(머지 큐)이 한 대씩, 그 순간의 바람(최신 `main`)으로 다시 점검한 뒤에만 내려보낸다.
+비유하면 공항 관제다. 비행기(PR)는 각자 준비하지만 활주로(`main`)에는 관제탑이 한 대씩, 그 순간의 바람(최신 `main`)으로 다시 점검한 뒤에만 내려보낸다. GitHub의 머지 큐는 조직 소유 저장소 전용이라 이 저장소에서는 쓸 수 없고, 대신 "검사받은 head가 최신 `main`을 포함해야 한다"는 규칙이 같은 역할을 한다.
 
 ## 보장하는 것
 
 | 위험 | 방지 장치 |
 |---|---|
-| 오래된 `main` 기준으로 green을 받은 PR이 그대로 머지 | 머지 큐가 `main` + 대기 PR을 합쳐 `Validate Orbit`을 다시 실행한 뒤 순서대로 머지 (`merge_group` 이벤트) |
+| 오래된 `main` 기준으로 green을 받은 PR이 그대로 머지 | 룰셋의 strict required check: 검사받은 head가 최신 `main`을 포함해야 머지된다. 앞 PR이 먼저 들어가면 뒤 PR은 `BEHIND`가 되어 `main`을 반영하고 CI를 다시 받아야 한다 |
 | 두 브랜치가 같은 번호의 마이그레이션 생성 | `scripts/check-migrations.mjs`가 PR·큐·main 푸시마다 journal 순번, 파일, 스냅샷 체인, 기준 브랜치 대비 재번호 여부를 검사 |
 | `CHANGELOG.md` 동시 편집 충돌 | `.gitattributes`의 `merge=union`으로 양쪽 섹션을 모두 보존 |
 | 로컬 작업 트리가 서로 덮어씀 | 작업 하나 = 워크트리 하나, 항상 검증된 원격 `main` SHA에서 시작 |
@@ -25,6 +25,7 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [auto-m
 - `origin`이 `roybeee/ORBIT`인지, `git rev-parse origin/main`이 `git ls-remote`와 같은지 확인한다.
 - `../orbit-<slug>` 워크트리를 `<type>/<slug>` 브랜치로 만들고 `npm ci`를 실행한다 (`--no-install`로 생략).
 - 기준 SHA와 tree를 워크트리의 `.orbit-task.json`(git 무시)에 기록한다.
+- **워크트리는 작업 하나당 하나이며 재사용하지 않는다.** PR이 머지된 워크트리에서 다음 작업을 이어 하면 안 된다. 머지 후에는 `cleanup.sh`로 지우고 새 slug로 다시 `start.sh`를 실행한다. 같은 브랜치 이름을 다시 쓰면 `finish.sh`는 새 PR을 열지만(이전에는 머지된 PR에 잘못 붙었다), 브랜치가 이미 main에 포함되어 있어 혼동이 생긴다.
 
 ### 2. 동기화 — `scripts/parallel/sync.sh [--rebase] [--no-verify]`
 
@@ -40,7 +41,7 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [auto-m
 
 ### 4. 현황 — `scripts/parallel/status.sh`
 
-모든 워크트리의 브랜치, `main` 대비 뒤처짐/앞섬, 미커밋 변경, PR 상태, `validate` 결과, 큐 대기 여부와 현재 머지 큐 항목을 한 표로 보여 준다.
+모든 워크트리의 브랜치, `main` 대비 뒤처짐/앞섬, 미커밋 변경, **열려 있는** PR의 상태, `validate` 결과, auto-merge 설정 여부를 한 표로 보여 준다. 머지된 PR은 표시하지 않는다.
 
 ### 5. 정리 — `scripts/parallel/cleanup.sh --merged | <slug>...`
 
@@ -65,7 +66,7 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [auto-m
 ## GitHub 설정 — `scripts/parallel/github-setup.sh [--dry-run] [--remove]`
 
 - 저장소: `delete_branch_on_merge`, `allow_auto_merge`, `allow_update_branch` 켬. 머지 커밋 방식 유지.
-- 룰셋 `main-integration`(기본 브랜치): PR 필수(merge 방식만), required check `validate`, 머지 큐(MERGE, 1~5개, 대기 0분, 응답 시한 30분), 삭제·non-fast-forward 금지, 우회 대상 없음.
+- 룰셋 `main-integration`(기본 브랜치): PR 필수(merge 방식만), required check `validate`에 strict 최신화 요구, 삭제·non-fast-forward 금지, 우회 대상 없음. `--merge-queue`는 저장소를 조직으로 옮긴 뒤에만 의미가 있으며, 그때는 strict 요구를 끄고 큐가 그 역할을 맡는다.
 - 긴급 시 소유자가 룰셋을 비활성화하거나 `--remove`로 삭제한다. 그 사실을 기록한다.
 
 ## 규칙 요약 (모든 에이전트 공통, AGENTS.md와 동일)
@@ -78,7 +79,11 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [auto-m
 
 ## 알려진 한계
 
-- 큐는 PR을 순차 검증하므로 동시 PR 5개면 최대 10분 안팎 지연된다(CI 약 2분).
-- `merge=union`은 같은 위치에 삽입된 두 섹션의 순서를 바꿀 수 있다. 내용은 잃지 않는다.
+- 동시 PR이 많을수록 뒤 PR은 앞 PR이 머지될 때마다 최신화·재검증을 반복한다. 동시 5개면 마지막 PR은 10분 안팎 지연된다(CI 약 2분).
+- `merge=union`은 **로컬 머지에만** 적용된다. GitHub이 서버에서 수행하는 머지에는 적용되지 않으므로, `CHANGELOG.md`가 양쪽에서 바뀌면 PR이 `DIRTY`가 되고 `sync.sh`로 로컬에서 해결해야 한다(이때 union이 동작한다).
+- `finish.sh`가 대기 시한(기본 45분)을 넘겨 종료해도 **auto-merge는 켜진 채로 남는다.** 조건이 갖춰지면 나중에 사람 없이 머지된다. 원치 않으면 `gh pr merge --disable-auto <n>`으로 끈다.
+- CI가 간헐적으로 실패하면 `finish.sh`는 그 자리에서 중단한다. 실패가 이 변경과 무관하면 `gh run rerun <id> --failed` 후 `finish.sh`를 다시 실행한다.
+- 워크트리는 재사용하지 않는다(1단계 참조). `cleanup.sh`는 자기 커밋이 있고 PR이 머지된 워크트리만 지우며, 방금 시작해 아직 커밋이 없는 다른 에이전트의 워크트리는 건너뛴다.
 - Sites publication은 Codex의 Sites 연결을 통해서만 가능하다. `release.sh`는 소스 push와 기록, `publish-sites.sh`는 소유자가 실행하는 Codex 게시 지시를 담당한다.
-- 이 변경 이전에 배포된 빌드는 `tree`를 `unknown`으로 보고한다.
+- 이 변경 이전에 배포된 빌드는 `tree`를 `unknown`으로 보고한다. 작업 트리가 더러운 상태에서 빌드하면 `tree`가 `unknown`이 되어 `verify-deploy.sh`가 실패한다(거짓 검증 방지).
+- tree 일치는 "배포된 소스가 그 커밋의 파일과 같다"는 뜻이다. 파일이 같은 서로 다른 커밋은 같은 tree를 가지므로, 커밋 자체를 특정하지는 않는다.

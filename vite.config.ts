@@ -40,11 +40,14 @@ const localBindingConfig = {
 function sourceTree(): string {
   const configured = process.env.ORBIT_SOURCE_TREE;
   if (configured && /^[0-9a-f]{40}$/.test(configured)) return configured;
+  const git = (args: string[]) =>
+    execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   try {
-    return execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    // Vite bundles what is on disk, so a modified working tree would ship code
+    // that HEAD's tree hash does not describe and a deployment check would call
+    // it verified. Report no identity at all rather than a false one.
+    if (git(["status", "--porcelain"]).trim() !== "") return "dirty";
+    return git(["rev-parse", "HEAD^{tree}"]).trim();
   } catch {
     return "unknown";
   }
