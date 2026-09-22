@@ -71,7 +71,7 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [auto-m
 ## 규칙 요약 (모든 에이전트 공통, AGENTS.md와 동일)
 
 1. 머지 = 큐 진입. REST merge 직접 호출 금지.
-2. 마이그레이션은 append-only. 번호가 겹치면 통합된 `main` 위에서 다시 생성.
+2. 마이그레이션은 append-only. 번호는 머지 전까지 잠정값이다. 번호가 겹치면 `drizzle/meta/`를 `main` 것으로 되돌리고(`git checkout origin/main -- drizzle/meta/`) 초안 SQL을 지운 뒤 `npm run db:generate`로 다시 생성한다. 이름을 바꾸려면 SQL 파일명과 journal `tag`를 함께 바꾸고, 스냅샷의 `id`/`prevId`는 손으로 고치지 않는다.
 3. 의존성·lockfile 변경은 단독 소형 PR.
 4. `CHANGELOG.md`는 날짜 섹션 단위로 추가.
 5. GitHub 머지 = 소스 릴리스. `verify-deploy.sh`가 tree 일치를 확인했을 때만 운영 배포로 보고.
