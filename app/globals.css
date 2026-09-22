@@ -475,6 +475,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .meeting-review-card dl>div {display:grid;grid-template-columns:6rem minmax(0,1fr);gap:.5rem}
 .meeting-review-card dt {opacity:.7}.meeting-review-card dd {margin:0}
 .meeting-review-card form {display:grid;gap:.75rem;margin-top:1rem}
+.meeting-merge-editor label {display:grid;gap:.4rem;font-size:.9rem}.meeting-merge-editor .sheet-actions {margin-top:0}
 .meeting-review .section-title {flex-wrap:wrap;gap:.5rem}
 
 /* Persistent owner-scoped inbox */
