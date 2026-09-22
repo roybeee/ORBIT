@@ -2,12 +2,13 @@
 import {useEffect,useState} from 'react';
 import {agentRequest} from './connections';
 import type {SourceStatus} from '@/lib/orbit/source-status';
+import type {View} from '@/lib/orbit/model';
 interface Status {schedulerConfigured:boolean;config:{enabled:boolean;eveningHour:number;lastError?:string;lastSchedulerTick?:string};lastTick:string|null;sources:SourceStatus[];runs:{date:string;status:string;message?:string}[]}
-export function RuntimePanel({demo,navigate}:{demo:boolean;navigate:(view:any)=>void}){
+export function RuntimePanel({demo,navigate}:{demo:boolean;navigate:(view:View)=>void}){
  const [status,setStatus]=useState<Status|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const load=async()=>{try{setStatus(await agentRequest('/api/runtime'));setError('')}catch(e){setError(e instanceof Error?e.message:'상태 확인 실패')}};
- useEffect(()=>{if(demo)return;void load();const timer=setInterval(()=>{if(document.visibilityState==='visible')void load()},60000);return()=>clearInterval(timer)},[demo]);
+ useEffect(()=>{if(demo)return;const load=async()=>{try{setStatus(await agentRequest('/api/runtime'));setError('')}catch(e){setError(e instanceof Error?e.message:'상태 확인 실패')}};void load();const timer=setInterval(()=>{if(document.visibilityState==='visible')void load()},60000);return()=>clearInterval(timer)},[demo]);
  if(demo)return null;
+ // eslint-disable-next-line react-hooks/purity -- the stale label compares the server tick with the wall clock at render time; snapshotting the time would change when the label flips
  const stale=!status?.config.lastSchedulerTick||Date.now()-Date.parse(status.config.lastSchedulerTick)>180000;
  const action=async(method:string,body?:unknown)=>{setBusy(true);try{setStatus(await agentRequest('/api/runtime',method,body));setError('')}catch(e){setError(e instanceof Error?e.message:'운영 확인 실패')}finally{setBusy(false)}};
  const labels:Record<string,string>={google_calendar:'Google 일정',google_mail:'Gmail',plaud:'Plaud 원문',hermes:'Hermes 실행'};

@@ -31,6 +31,7 @@ export function AsidePanel({snapshot,perform,busy,demo,onAsk,visible}:{snapshot:
   const pairingGuide=useRef<HTMLDetailsElement>(null),pairingInput=useRef<HTMLInputElement>(null);
   function showPairing(){if(pairingGuide.current)pairingGuide.current.open=true;pairingInput.current?.focus();pairingInput.current?.scrollIntoView({block:'center',behavior:'smooth'});}
   const syncing=useRef(false),submission=useRef<{signature:string;id:string}|null>(null);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the pairing token is read from location.hash and sessionStorage, which only exist after mount
   useEffect(()=>{if(demo)return;setToken(capturePair());const onPair=()=>setToken(capturePair());window.addEventListener('hashchange',onPair);return()=>window.removeEventListener('hashchange',onPair)},[demo]);
   async function refresh():Promise<AsideJob[]>{if(!demo){const result=await agentRequest('/api/aside') as {jobs:AsideJob[]};setJobs(result.jobs);return result.jobs}return []}
   async function connect(){

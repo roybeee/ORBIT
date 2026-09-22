@@ -14,6 +14,7 @@ export function GoogleEventEditor({eventId,storageKey,ownerId,disabled,onEditing
  const lock=useRef(false),alive=useRef(true);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
  useEffect(()=>{onEditing(open);return()=>onEditing(false)},[open,onEditing]);
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- reports a device storage failure raised while persisting the draft to the external store
  useEffect(()=>{if(form&&open)try{saveDraft(ownerId,'calendar-edit-draft',storageKey,form)}catch{setError('임시 저장을 사용할 수 없습니다. 수정 창을 닫기 전에 저장해 주세요.')}},[form,open,ownerId,storageKey]);
  const load=async(fresh=false)=>{if(lock.current)return;lock.current=true;setBusy(true);setOpen(true);setError('');try{
   const receipt=fresh?null:readDraft<CalendarEdit>(ownerId,'calendar-edit-pending',storageKey),draft=fresh?null:readDraft<Form>(ownerId,'calendar-edit-draft',storageKey);
