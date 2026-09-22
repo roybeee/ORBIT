@@ -1,5 +1,11 @@
 import {sql} from 'drizzle-orm';
 import {sqliteTable,text,integer,primaryKey,index,uniqueIndex} from 'drizzle-orm/sqlite-core';
+export const slackCredentials=sqliteTable('orbit_slack_credentials',{
+ tokenHash:text('token_hash').primaryKey(),ownerId:text('owner_id').notNull(),workspaceId:text('workspace_id').notNull(),requesterId:text('requester_id').notNull(),scope:text('scope').notNull(),expiresAt:integer('expires_at').notNull(),revoked:integer('revoked').notNull().default(0),
+});
+export const slackDirectives=sqliteTable('orbit_slack_directives',{
+ ownerId:text('owner_id').notNull(),workspaceId:text('workspace_id').notNull(),requesterId:text('requester_id').notNull(),operationKey:text('operation_key').notNull(),id:text('id').notNull(),payloadHash:text('payload_hash').notNull(),payloadJson:text('payload_json').notNull(),status:text('status').notNull(),targetId:text('target_id'),candidatesJson:text('candidates_json').notNull(),createdAt:text('created_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.workspaceId,t.requesterId,t.operationKey]}),uniqueIndex('idx_slack_receipt_id').on(t.id)]);
 export const plaudSync=sqliteTable('orbit_plaud_sync',{
  ownerId:text('owner_id').primaryKey(),stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),
 });
