@@ -1,3 +1,4 @@
+import {enqueueMeetingStatement} from '../lib/orbit/meetings/review.ts';
 import {prepareWorkspace,decodeWorkspace,type WorkspaceChunk} from './workspace-storage.ts';
 import {googleColorTargets,googleColorQueue,alignGoogleAppearance} from '../lib/orbit/calendar-color-sync.ts';
 import {linkEventProject} from '../lib/orbit/project-context.ts';
@@ -262,6 +263,14 @@ export async function writeCommand(
       throw new RevisionConflict('기록이 변경됐습니다. 작성 중인 내용을 보관하고 최신 내용을 확인해 주세요.');
   }
   const next = applyAction(working, action, now);
+  // AI meeting cards carry verified quotes; the ordinary reducer never trusts
+  // caller-supplied citations. Validate against the owner's immutable full note here.
+  if(action.type==='task.upsert'&&action.task.noteId&&action.task.noteCitation&&!current.data.tasks.some(t=>t.id===action.task.id)){
+    const cited=await readNote(db,ownerId,action.task.noteId),ref=action.task.noteCitation;
+    if((cited.revision??1)!==ref.revision||!ref.quote.trim()||!cited.body.split(/\r?\n/)[ref.line-1]?.includes(ref.quote))throw new RevisionConflict('회의록의 원문 근거가 변경되었습니다. 최신 내용으로 다시 검토해 주세요.');
+    const task=next.tasks.find(t=>t.id===action.task.id);if(task)task.noteCitation=ref;
+  }
+
   if(action.type==='preferences.update')alignGoogleAppearance(working.events,working.preferences,next.preferences);
   // Trashed IDs are reserved. Imports and older screens cannot silently recreate
   // them or remove retained document history through the legacy delete endpoint.
@@ -367,6 +376,7 @@ export async function writeCommand(
           ...gateValues,
         ),
     );
+  for(const note of changedNotes)if(note.kind==='meeting'&&note.body.trim()&&(!note.source||note.source.provider!=='plaud'))statements.push(enqueueMeetingStatement(db,ownerId,note,gate,gateValues));
   if (action.type === 'note.delete')
     statements.push(
       db

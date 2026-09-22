@@ -50,6 +50,8 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   if(parsed.type==='google.event.create'||parsed.type==='google.event.deleteSeries'){try{await syncCalendar(db,owner,env,parsed.type==='google.event.create'?parsed.event.date:undefined)}catch{/* External creation is acknowledged; sync can be retried separately. */}}
  }catch(error){
   if(error instanceof AgentError&&error.code==='ACTION_CHANGED'){
+   const meeting=action.guard?.meeting;
+   if(meeting){await resetAction(db,owner,action.id,lease);throw new AgentError('회의록 또는 연결 대상이 바뀌었습니다. 회의록에서 최신 내용으로 다시 분석한 뒤 승인해 주세요.','MEETING_CHANGED',409);}
    // Refresh is analysis only. The old card is retired atomically when the new
    // response is stored; refreshed changes always require a new approval.
    const existing=action.result?.refreshTurnId?await db.prepare('SELECT status FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,action.result.refreshTurnId).first<{status:string}>():null;

@@ -1,3 +1,4 @@
+import {advanceMeetingReviews} from './meetings/review-runtime.ts';
 import {syncDiscord} from './discord/runtime.ts';
 import {syncMeetings} from './meetings/sync.ts';
 import {collectMetrics} from './metric-collector.ts';
@@ -40,6 +41,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  config.workFirst=true;
  // One independently checkpointed Plaud operation per housekeeping tick.
  meetingsActive=!!(await syncMeetings(db,owner,env).catch(()=>({active:false}))).active;
+ await advanceMeetingReviews(db,owner,env).catch(()=>{});
  const capture=await activityStatus(db,owner);if(!capture.lastSync||Date.now()-Date.parse(capture.lastSync)>=120000)try{await syncActivity(db,owner,env);}catch{/* independent collector error is visible in source status */}
  // One bounded unit per tick. Collection happens before preparing a new brief.
  if(!config.syncAt||Date.now()-Date.parse(config.syncAt)>=900000){

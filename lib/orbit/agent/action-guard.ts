@@ -2,7 +2,7 @@ import {todayInZone} from '../dates.ts';
 import {normalize} from '../classify.ts';
 import type {WorkspaceData} from '../model.ts';
 import type {AgentAction} from './types.ts';
-export interface ActionGuard {version:1;actionHash:string;values:Record<string,string|null>}
+export interface ActionGuard {meeting?:{noteId:string;revision:number};version:1;actionHash:string;values:Record<string,string|null>}
 export type WorkspaceBasis=Record<string,string>;
 const canonical=(value:unknown):string=>JSON.stringify(value===undefined?null:value,(_key,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).filter(([k])=>!['createdAt','updatedAt'].includes(k)).sort(([a],[b])=>a.localeCompare(b))):v);
 async function hash(value:unknown){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical(value)))),b=>b.toString(16).padStart(2,'0')).join('')}

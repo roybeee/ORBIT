@@ -1,3 +1,4 @@
+import {enqueueMeetingStatement} from './review.ts';
 import {readWorkspace,readNote,writeCommand,type Database} from '../../../db/repository.ts';
 import {todayInZone} from '../dates.ts';
 import {AgentError} from '../agent/errors.ts';
@@ -48,6 +49,7 @@ export async function importRecording(db:Database,owner:string,record:Recording)
   if(!(currentHash===bodyHash&&current?.title===title))await writeCommand(db,owner,{operationId:'plaud:'+record.id+':'+hash+':'+i,expectedRevision:snapshot.revision,action:{type:'note.upsert',note,...(meta?{expectedNoteRevision:meta.revision??1}:{})}});
   await saveImport(db,owner,record.id,'',{title:record.title,hasComplete:old?.hasComplete||!record.pending,summary:sourceSummary,noteIds:[...noteIds],bodyHashes:[...bodyHashes],matches,autoPrimary:primary,...(old?.manualProject?{manualProject:old.manualProject}:{}),status:'partial'});
  }
+ if(!record.pending)for(const id of noteIds){const note=await readNote(db,owner,id);await enqueueMeetingStatement(db,owner,note).run();}
  await saveImport(db,owner,record.id,hash,{title:record.title,hasComplete:old?.hasComplete||!record.pending,summary:('Plaud AI 요약 · '+(record.summary||'전사 원문 수집됨 · 요약 준비 중')).slice(0,500),noteIds,bodyHashes,matches,autoPrimary:primary,...(old?.manualProject?{manualProject:old.manualProject}:{}),status:record.pending?'pending':'ready'});
  return {status:record.pending?'pending':'ready',changed:true};
 }

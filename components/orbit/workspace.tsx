@@ -304,6 +304,7 @@ function WorkspaceContent({
   const cosmic=useCosmicMotion();
   const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh, acceptSnapshot } =
     useWorkspace(demo, ownerId);
+  useEffect(()=>{const changed=()=>{if(!hasPending)void refresh()};window.addEventListener('orbit-meeting-approved',changed);return()=>window.removeEventListener('orbit-meeting-approved',changed)},[hasPending,refresh]);
   const data = snapshot.data,
     preferences = data.preferences;
   const { tasks, projects, notes, events } = data;
