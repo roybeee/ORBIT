@@ -95,9 +95,10 @@ def source_for(origin, params):
             source[remote] = origin[field]
     return source
 
-def http_json(url, token, method='GET', body=None):
-    req = request.Request(url, data=encoded(body).encode() if body is not None else None,
-                          headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}, method=method)
+def http_json(url, token, method='GET', body=None, extra_headers=None):
+    headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+    headers.update(extra_headers or {})
+    req = request.Request(url, data=encoded(body).encode() if body is not None else None, headers=headers, method=method)
     # Never follow redirects with an Authorization header.
     class NoRedirect(request.HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
@@ -127,7 +128,12 @@ def orbit_request(method, payload=None, remote_id=None):
     if method == 'GET':
         endpoint += '?' + parse.urlencode(payload if payload is not None else {'id': remote_id})
         payload = None
-    return http_json(endpoint, token, method, payload)
+    # The ORBIT Site is owner-private behind the Sites sign-in wall. Machine
+    # clients pass it with the site's bypass bearer (same as runtime-tick.mjs);
+    # this header goes only to the ORBIT endpoint, never to Slack.
+    sites_bearer = scoped_setting('ORBIT_SITES_BEARER')
+    extra = {'OAI-Sites-Authorization': 'Bearer ' + sites_bearer} if sites_bearer else None
+    return http_json(endpoint, token, method, payload, extra)
 
 def authorize_project(payload, origin):
     project_id = (payload.get('project') or {}).get('id')
