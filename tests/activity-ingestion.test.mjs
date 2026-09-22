@@ -85,7 +85,7 @@ test('Hermes session metadata carriers are stored hidden instead of failing the 
 
 test('bad roles stay quarantined rather than being relabeled as user or assistant',()=>fixture(async db=>{
  upstream([{id:1,role:'unexpected',content:'untrusted'}]);
- await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT'&&/역할/.test(e.message));
+ await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT'&&/역할: unexpected/.test(e.message));
  assert.equal((await rows(db)).length,0);assert.equal((await activityStatus(db,'owner')).quarantined,1);
 }));
 
@@ -94,9 +94,9 @@ test('quarantine reasons are grouped so the blocking upstream shape is visible',
  await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT');
  const blocked=await activityStatus(db,'owner');
  assert.equal(blocked.quarantined,1);
- assert.deepEqual(blocked.quarantineReasons,[{reason:'Hermes 메시지 역할을 확인하지 못했습니다.',count:1}]);
+ assert.deepEqual(blocked.quarantineReasons,[{reason:'Hermes 메시지 역할을 확인하지 못했습니다. (역할: unexpected)',count:1}]);
  upstream([{id:2,role:'user',content:'다음 수집'}]);await syncActivity(db,'owner',env);
- assert.match((await activityStatus(db,'owner')).lastError,/가장 많은 사유: Hermes 메시지 역할을 확인하지 못했습니다\. \(1건\)/);
+ assert.match((await activityStatus(db,'owner')).lastError,/가장 많은 사유: Hermes 메시지 역할을 확인하지 못했습니다\. \(역할: unexpected\) \(1건\)/);
 }));
 
 test('wrong pagination and oversized pages cannot assign incorrect positional identities',()=>fixture(async db=>{
