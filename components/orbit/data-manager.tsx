@@ -40,6 +40,8 @@ export function DataManager({ initialTab='records', snapshot, demo, demoTrash, s
   const [editor, setEditor] = useState<{ category: 'goals' | 'memories' | 'habits'; record?: DataRecord; revision: number } | null>(null);
   const [trashOffset, setTrashOffset] = useState(0);
   const pending = useRef<Record<string, unknown> | null>(null), locked = useRef(false);
+  // Render-facing mirror of pending.current: refs must not be read during render.
+  const [hasPending, setHasPending] = useState(false);
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { onEditing(!!confirm || !!editor || adding || working); return () => onEditing(false); }, [confirm, editor, adding, working, onEditing]);
@@ -50,6 +52,7 @@ export function DataManager({ initialTab='records', snapshot, demo, demoTrash, s
     catch (e) { if (active.current) setError((e as Error).message); }
     finally { if (active.current && !silent) setLoading(false); }
   }, [demo, trashOffset]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- overview fetch on mount and after each revision; loadOverview() marks loading before the network round trip
   useEffect(() => { void loadOverview(); }, [loadOverview, snapshot.revision]);
   useEffect(() => { const timer = setInterval(() => { if (document.visibilityState === 'visible' && !locked.current && !confirm) void loadOverview(true); }, 30000); return () => clearInterval(timer); }, [loadOverview, confirm]);
   const rows = useMemo(() => dataCategories.flatMap(category => recordsOf(data, category).map(record => ({ category, id: record.id, record, title: recordTitle(record) }))), [data]);
@@ -58,8 +61,11 @@ export function DataManager({ initialTab='records', snapshot, demo, demoTrash, s
   const trash = demo ? { items: demoTrash as TrashSummary[], total: demoTrash.length, hasMore: false } : overview?.trash;
   const detailRow = rows.find(r => detail && keyOf(r) === keyOf(detail));
   const related = detailRow ? relatedRecords(data, detailRow) : [];
-  useEffect(() => { setPage(0); setSelected([]); }, [category, project, query, tab]);
-  useEffect(() => { setPage(p => Math.min(p, pageCount - 1)); setSelected(s => s.filter(key => rows.some(r => keyOf(r) === key))); }, [rows, pageCount]);
+  // Adjust paging/selection during render when the filters or the underlying rows change (no extra committed frame).
+  const [seenFilter, setSeenFilter] = useState({ category, project, query, tab });
+  if (seenFilter.category !== category || seenFilter.project !== project || seenFilter.query !== query || seenFilter.tab !== tab) { setSeenFilter({ category, project, query, tab }); setPage(0); setSelected([]); }
+  const [seenRows, setSeenRows] = useState({ rows, pageCount });
+  if (seenRows.rows !== rows || seenRows.pageCount !== pageCount) { setSeenRows({ rows, pageCount }); setPage(p => Math.min(p, pageCount - 1)); setSelected(s => s.filter(key => rows.some(r => keyOf(r) === key))); }
   const pickCategory = (c: DataCategory) => { setCategory(c); setTab('records'); setProject('all'); setQuery(''); };
   const pickRow = (r: DataSelection) => { setDetail(r); };
   const toggle = (key: string, checked: boolean) => setSelected(s => checked ? Array.from(new Set([...s, key])).slice(0, 100) : s.filter(k => k !== key));
@@ -85,7 +91,7 @@ export function DataManager({ initialTab='records', snapshot, demo, demoTrash, s
     if (!confirm || locked.current || busy) return;
     locked.current = true; setWorking(true); setError('');
     const request = pending.current ?? { operationId: crypto.randomUUID(), expectedRevision: confirm.revision, action: confirm.action, ...(confirm.action === 'trash' ? { selection: confirm.rows.map(r => ({ category: r.category, id: r.id })) } : { trashIds: confirm.rows.map(r => r.id) }) };
-    pending.current = request;
+    pending.current = request; setHasPending(true);
     try {
       if (demo) {
         if (confirm.action === 'trash') {
@@ -101,21 +107,21 @@ export function DataManager({ initialTab='records', snapshot, demo, demoTrash, s
         const result = await agentRequest('/api/data', 'POST', request); onSnapshot(result.snapshot); await loadOverview();
       }
       toast.success(confirm.action === 'trash' ? `${confirm.rows.length}개 항목을 휴지통으로 옮겼습니다.` : confirm.action === 'restore' ? '기록을 복원했습니다.' : '선택한 항목을 영구 삭제했습니다.');
-      pending.current = null; setConfirm(null); setSelected([]); setDetail(null);
+      pending.current = null; setHasPending(false); setConfirm(null); setSelected([]); setDetail(null);
     } catch (e) {
       const code = (e as { code?: string }).code;
-      if (demo || code === 'INPUT' || code === 'CONFLICT' || code === 'AUTH' || code === 'SESSION_CHANGED' || code === 'ORIGIN') pending.current = null;
+      if (demo || code === 'INPUT' || code === 'CONFLICT' || code === 'AUTH' || code === 'SESSION_CHANGED' || code === 'ORIGIN') { pending.current = null; setHasPending(false); }
       setError((e as Error).message);
     } finally { locked.current = false; setWorking(false); }
   }
-  const askDelete = (selectedRows: Row[]) => { setError(''); pending.current = null; setConfirm({ action: 'trash', rows: selectedRows, revision: snapshot.revision }); };
+  const askDelete = (selectedRows: Row[]) => { setError(''); pending.current = null; setHasPending(false); setConfirm({ action: 'trash', rows: selectedRows, revision: snapshot.revision }); };
   const counts = dataCategories.map(c => ({ category: c, count: recordsOf(data, c).length }));
   return <section className="data-manager" aria-label="데이터 관리">
     <div className="dm-summary">
       <div><span className="dm-overline">MY DATA</span><strong>{rows.length.toLocaleString()}<small>개의 기록</small></strong><p>{data.projects.length}개 프로젝트에 연결된 나의 데이터</p></div>
       <div className="dm-summary-meta"><span><ShieldCheck size={16} /> 내 계정의 데이터</span><span>마지막 저장 {fmt(snapshot.updatedAt)}</span><button className="text-button" disabled={loading || working || busy || !!confirm} onClick={() => void refresh()}><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> 새로고침</button></div>
     </div>
-    <div className="dm-top-actions"><Tabs value={tab} onValueChange={v => { setTab(v); setDetail(null); }}><TabsList><TabsTrigger value="records"><List size={16} />데이터 목록</TabsTrigger><TabsTrigger value="structure"><Network size={16} />구조 보기</TabsTrigger><TabsTrigger value="trash"><Trash2 size={16} />휴지통{trash?.total ? ` ${trash.total}` : ''}</TabsTrigger></TabsList></Tabs><button className="primary-button" disabled={busy || working || !!pending.current} onClick={() => { setNewCategory(category === 'all' ? 'projects' : category); setAdding(true); }}><Plus size={17} /> 데이터 추가</button></div>
+    <div className="dm-top-actions"><Tabs value={tab} onValueChange={v => { setTab(v); setDetail(null); }}><TabsList><TabsTrigger value="records"><List size={16} />데이터 목록</TabsTrigger><TabsTrigger value="structure"><Network size={16} />구조 보기</TabsTrigger><TabsTrigger value="trash"><Trash2 size={16} />휴지통{trash?.total ? ` ${trash.total}` : ''}</TabsTrigger></TabsList></Tabs><button className="primary-button" disabled={busy || working || hasPending} onClick={() => { setNewCategory(category === 'all' ? 'projects' : category); setAdding(true); }}><Plus size={17} /> 데이터 추가</button></div>
     {error && !confirm && <div className="dm-error" role="alert"><AlertCircle size={18} /><span>{error}</span><button className="text-button" onClick={() => void refresh()}>다시 확인</button></div>}
     {tab === 'records' && <>
       <div className="dm-categories">{counts.map(({ category: c, count }) => { const Icon = icons[c]; return <button key={c} className={category === c ? 'active' : ''} onClick={() => setCategory(category === c ? 'all' : c)} aria-pressed={category === c}><Icon size={17} /><span>{dataLabels[c]}</span><strong>{count.toLocaleString()}</strong></button>; })}</div>
@@ -140,7 +146,7 @@ export function DataManager({ initialTab='records', snapshot, demo, demoTrash, s
     <Sheet open={!!detailRow} onOpenChange={v => !v && setDetail(null)}><SheetContent className="dm-detail"><SheetHeader><SheetTitle>{detailRow?.title}</SheetTitle><SheetDescription>{detailRow && dataLabels[detailRow.category]}</SheetDescription></SheetHeader>{detailRow && <div className="dm-detail-body"><dl><dt>출처</dt><dd>{recordSource(detailRow.category, detailRow.record)}</dd><dt>프로젝트</dt><dd>{data.projects.find(p => p.id === detailRow.record.projectId)?.name ?? '해당 없음'}</dd><dt>상태</dt><dd>{labels[String(detailRow.record.status)] ?? '등록된 기록'}</dd></dl><p className="dm-detail-text">{String(detailRow.record.summary ?? detailRow.record.definition ?? detailRow.record.goal ?? detailRow.record.choice ?? detailRow.record.statement ?? detailRow.record.sentence ?? '') || '추가 설명이 없습니다.'}</p><div className="dm-detail-actions"><button className="primary-button" disabled={working || busy} onClick={() => void editRow(detailRow)}><Pencil size={16} />{editableRecord(detailRow.category, detailRow.record) ? '수정하기' : '원본 화면 열기'}</button><button className="secondary-button" disabled={working || busy || !editableRecord(detailRow.category, detailRow.record)} onClick={() => askDelete([detailRow])}><Trash2 size={16} /> 삭제</button></div><h3>이 항목에 연결된 기록 <span>{related.length}</span></h3>{related.length ? related.map(r => <button key={keyOf(r)} className="dm-related" onClick={() => pickRow(r)}><span>{dataLabels[r.category]}</span><strong>{r.title}</strong><ArrowUpRight size={15} /></button>) : <p className="dm-footnote">다른 데이터에서 연결한 항목이 없습니다.</p>}<details className="dm-record-id"><summary>데이터 식별 정보</summary><code>{detailRow.id}</code><p>저장 위치: orbit_workspaces · {detailRow.category}{detailRow.category === 'notes' ? ' / 본문: orbit_note_revisions' : ''}</p></details></div>}</SheetContent></Sheet>
     <Dialog open={adding} onOpenChange={setAdding}><DialogContent><DialogHeader><DialogTitle>어떤 데이터를 추가할까요?</DialogTitle><DialogDescription>종류를 고르면 필요한 항목만 입력할 수 있습니다.</DialogDescription></DialogHeader><Select value={newCategory} onValueChange={v => setNewCategory(v as DataCategory)}><SelectTrigger aria-label="추가할 데이터 종류"><SelectValue /></SelectTrigger><SelectContent>{dataCategories.map(c => <SelectItem key={c} value={c}>{dataLabels[c]}</SelectItem>)}</SelectContent></Select><p className="dm-footnote">{categoryDescriptions[newCategory]}</p><button className="primary-button" onClick={() => createRecord(newCategory)}>계속 <ArrowUpRight size={16} /></button></DialogContent></Dialog>
     {editor && <SmallEditor key={editor.category + (editor.record?.id ?? 'new')} {...editor} today={today} snapshot={snapshot} busy={busy} onClose={() => setEditor(null)} perform={perform} />}
-    <AlertDialog open={!!confirm} onOpenChange={v => { if (!v && !working && !pending.current) { setConfirm(null); setError(''); } }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{confirm?.action === 'trash' ? `${confirm.rows.length}개 항목을 삭제할까요?` : confirm?.action === 'restore' ? '선택한 기록을 복원할까요?' : '휴지통에서 영구 삭제할까요?'}</AlertDialogTitle><AlertDialogDescription>{confirm?.action === 'trash' ? '휴지통에서 복원할 수 있습니다. 연결된 기록이 남아 있으면 삭제를 중단하고 정리할 항목을 알려드립니다. 할 일을 복원해도 이전 시간 배정과 실행 승인은 재개하지 않습니다.' : confirm?.action === 'restore' ? '기존 데이터를 덮어쓰지 않습니다. 필요한 프로젝트나 근거 문서도 휴지통에 있다면 함께 복원해 주세요.' : '이 항목과 문서 변경 이력을 되돌릴 수 없게 삭제합니다. 별도 첨부파일·외부 원본·기존 백업은 포함하지 않습니다.'}</AlertDialogDescription></AlertDialogHeader><ul className="dm-confirm-list">{confirm?.rows.slice(0, 8).map(r => <li key={r.id}>{r.title}</li>)}{confirm && confirm.rows.length > 8 && <li>외 {confirm.rows.length - 8}개</li>}</ul>{error && <p className="dm-error" role="alert">{error}</p>}<AlertDialogFooter><AlertDialogCancel disabled={working || !!pending.current}>취소</AlertDialogCancel><AlertDialogAction disabled={working || busy} onClick={e => { e.preventDefault(); void executeConfirmation(); }}>{working ? '처리 중…' : pending.current ? '같은 요청으로 결과 확인' : confirm?.action === 'trash' ? '휴지통으로 이동' : confirm?.action === 'restore' ? '복원' : '영구 삭제'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={!!confirm} onOpenChange={v => { if (!v && !working && !pending.current) { setConfirm(null); setError(''); } }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{confirm?.action === 'trash' ? `${confirm.rows.length}개 항목을 삭제할까요?` : confirm?.action === 'restore' ? '선택한 기록을 복원할까요?' : '휴지통에서 영구 삭제할까요?'}</AlertDialogTitle><AlertDialogDescription>{confirm?.action === 'trash' ? '휴지통에서 복원할 수 있습니다. 연결된 기록이 남아 있으면 삭제를 중단하고 정리할 항목을 알려드립니다. 할 일을 복원해도 이전 시간 배정과 실행 승인은 재개하지 않습니다.' : confirm?.action === 'restore' ? '기존 데이터를 덮어쓰지 않습니다. 필요한 프로젝트나 근거 문서도 휴지통에 있다면 함께 복원해 주세요.' : '이 항목과 문서 변경 이력을 되돌릴 수 없게 삭제합니다. 별도 첨부파일·외부 원본·기존 백업은 포함하지 않습니다.'}</AlertDialogDescription></AlertDialogHeader><ul className="dm-confirm-list">{confirm?.rows.slice(0, 8).map(r => <li key={r.id}>{r.title}</li>)}{confirm && confirm.rows.length > 8 && <li>외 {confirm.rows.length - 8}개</li>}</ul>{error && <p className="dm-error" role="alert">{error}</p>}<AlertDialogFooter><AlertDialogCancel disabled={working || hasPending}>취소</AlertDialogCancel><AlertDialogAction disabled={working || busy} onClick={e => { e.preventDefault(); void executeConfirmation(); }}>{working ? '처리 중…' : hasPending ? '같은 요청으로 결과 확인' : confirm?.action === 'trash' ? '휴지통으로 이동' : confirm?.action === 'restore' ? '복원' : '영구 삭제'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>;
 }
 
