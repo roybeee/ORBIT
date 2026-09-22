@@ -5,6 +5,7 @@ import {EventPostpone} from './event-postpone';
 import {questReadiness} from '@/lib/orbit/pacemaker';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import Link from 'next/link';
 import {afterPopupClose,replacePopupRoute,pushPopupRoute} from '@/components/ui/use-popup-history';
 import {OrbitWordmark} from './brand';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
@@ -293,6 +294,13 @@ function ProjectLabel({ project }: { project?: Project }) {
     <span className="project-label">개인</span>
   );
 }
+// Shape of the per-device form draft persisted while a create sheet is open (see saveDraft(ownerId,'form',…) below).
+type FormDraft = {
+  id: string; newTitle: string; newBody: string;
+  newColor?: string | null; newCategory?: CalendarCategory; newScope?: EventScope; newTaskMemo?: string; newProject?: string;
+  newDuration?: string; newDate?: string; newTime?: string; newFocus?: boolean; newBlocker?: string; newCheckDate?: string;
+  newQuadrant?: Quadrant | 'auto'; newCognition?: Cognition | 'auto'; newMust?: boolean; newKeywords?: string; projectTouched?: boolean;
+};
 function WorkspaceContent({
   demo = false,
   displayName = '황인범',
@@ -306,7 +314,6 @@ function WorkspaceContent({
   const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh, acceptSnapshot } =
     useWorkspace(demo, ownerId);
   const notificationLinkOpened=useRef(false);
-  useEffect(()=>{if(!loaded||notificationLinkOpened.current)return;notificationLinkOpened.current=true;const q=new URLSearchParams(location.search);if(q.get('note'))setDetail({kind:'note',id:q.get('note')!});else if(q.get('task'))setDetail({kind:'task',id:q.get('task')!});},[loaded]);
   useEffect(()=>{const changed=()=>{if(!hasPending)void refresh()};window.addEventListener('orbit-meeting-approved',changed);return()=>window.removeEventListener('orbit-meeting-approved',changed)},[hasPending,refresh]);
   const data = snapshot.data,
     preferences = data.preferences;
@@ -348,6 +355,9 @@ function WorkspaceContent({
   const [detail, setDetail] = useState<{ kind: 'task' | 'note' | 'project' | 'event'; id: string; revision?:number; projectIntent?:ProjectIntent } | null>(
     null,
   );
+  // Declared after setDetail so the effect does not reference it before its declaration.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- opens the record named by the ?note/?task notification link once the workspace has loaded; the query string is only readable on the client
+  useEffect(()=>{if(!loaded||notificationLinkOpened.current)return;notificationLinkOpened.current=true;const q=new URLSearchParams(location.search);if(q.get('note'))setDetail({kind:'note',id:q.get('note')!});else if(q.get('task'))setDetail({kind:'task',id:q.get('task')!});},[loaded]);
   const [create, setCreate] = useState<
     'task' | 'meeting' | 'wiki' | 'knowledge' | 'project' | 'event' | null
   >(null);
@@ -375,13 +385,14 @@ function WorkspaceContent({
     [brainyOpen, setBrainyOpen] = useState(false),
     [assignOpen, setAssignOpen] = useState(false),
     [projectsMode, setProjectsMode] = useState<'cards' | 'graph'>('cards');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- persists the open form to localStorage after every change; the error state only reports a failed write of that external store
   useEffect(()=>{if(demo||!create||editingId||(!newTitle&&!newBody&&!newTaskMemo))return;try{saveDraft(ownerId,'form',create,{id:createId.current,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,newScope,newTaskMemo,projectTouched});setFormDraftError('');}catch{setFormDraftError('기기 임시 저장에 실패했습니다. 내용을 복사해 보관해 주세요.');}},[demo,ownerId,create,editingId,newTitle,newBody,newProject,newDuration,newDate,newTime,newFocus,newBlocker,newCheckDate,newQuadrant,newCognition,newMust,newKeywords,newCategory,newColor,newScope,newTaskMemo,projectTouched]);
   const [discardCreateConfirm,setDiscardCreateConfirm]=useState(false);
   const [discardProjectConfirm,setDiscardProjectConfirm]=useState(false);
   const [calendarInteracting, setCalendarInteracting] = useState(false);
   const [unconfirmedCalendarMove, setUnconfirmedCalendarMove] = useState<CalendarEvent | null>(null);
   const liveCalendar = useRef({events,data,busy,hasPending});
-  liveCalendar.current = {events,data,busy,hasPending};
+  useEffect(()=>{liveCalendar.current = {events,data,busy,hasPending};});
   const [energy, setEnergy] = useState<Proposal['energy']>('normal'),
     [reviewDate, setReviewDate] = useState(TODAY);
   const [deferId, setDeferId] = useState<string | null>(null),
@@ -427,11 +438,15 @@ function WorkspaceContent({
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
-  useEffect(() => {
+  // Follow the day rollover during render instead of one commit later.
+  const [seenTomorrow, setSeenTomorrow] = useState(TOMORROW);
+  if (seenTomorrow !== TOMORROW) {
+    setSeenTomorrow(TOMORROW);
     setProposalDate(TOMORROW);
-  }, [TOMORROW]);
+  }
   useEffect(() => {
     const v = location.hash.slice(1) as View;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial view comes from location.hash, which only exists on the client after mount; the server renders the default view
     if (navigation.some((n) => n.id === v)) setView(v);
     else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);replacePopupRoute(null,url.pathname+url.search+'#'+initial);}
     const handle = () => {
@@ -540,7 +555,7 @@ function WorkspaceContent({
     setNewMust(false);
     setNewKeywords('');
     setProjectTouched(false);
-    const restored=!demo&&readDraft<any>(ownerId,'form',kind);
+    const restored=!demo&&readDraft<FormDraft>(ownerId,'form',kind);
     if(restored&&typeof restored.id==='string'&&typeof restored.newTitle==='string'&&typeof restored.newBody==='string'){
       createId.current=restored.id;setNewTitle(restored.newTitle);setNewColor(restored.newColor??null);setNewCategory(restored.newCategory??(kind==='event'?'meeting':'work'));setNewBody(restored.newBody);setNewScope(restored.newScope??(kind==='task'?'work':'personal'));setNewTaskMemo(restored.newTaskMemo??'');setNewProject(restored.newProject??'');setNewDuration(restored.newDuration??'45');setNewDate(restored.newDate??TODAY);setNewTime(restored.newTime??'10:00');setNewFocus(!!restored.newFocus);setNewBlocker(restored.newBlocker??'');setNewCheckDate(restored.newCheckDate??'');setNewQuadrant(restored.newQuadrant??'auto');setNewCognition(restored.newCognition??'auto');setNewMust(!!restored.newMust);setNewKeywords(restored.newKeywords??'');setProjectTouched(!!restored.projectTouched);toast('이 기기에 임시 보관한 작성을 복원했습니다.');
     }
@@ -1038,7 +1053,7 @@ function WorkspaceContent({
         </header>
         {demo ? (
           <div className="demo-bar">
-            예시 체험 · 변경은 저장되지 않습니다. <a href="/">내 워크스페이스로 이동 →</a>
+            예시 체험 · 변경은 저장되지 않습니다. <Link href="/">내 워크스페이스로 이동 →</Link>
           </div>
         ) : (
           <div className={`sync-bar ${failure || !online ? 'has-error' : ''}`} hidden={loaded&&!busy&&!failure&&online} role="status">

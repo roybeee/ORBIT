@@ -73,6 +73,8 @@ export function useWorkspace(demo: boolean, ownerId = '') {
   const pending = useRef<{ operationId: string; expectedRevision: number; action: WorkspaceAction } | null>(
     null,
   );
+  // Render-facing mirror of pending.current: refs must not be read during render.
+  const [hasPending, setHasPending] = useState(false);
   const publish = useCallback((value: WorkspaceSnapshot) => {
     snapshotRef.current = value;
     if (mounted.current) setSnapshot(value);
@@ -116,6 +118,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
       const restored=commandSchema.safeParse(readDraft(ownerId,'command'));pending.current=restored.success?restored.data:null;
       if(pending.current)setFailure({code:'PENDING',message:'서버 저장이 확인되지 않은 입력이 있습니다. 같은 요청으로 저장 결과를 확인해 주세요.'});
     }
+    setHasPending(!!pending.current);
     void load();
     return () => {
       mounted.current = false;
@@ -124,7 +127,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
   const send = useCallback(
     async (command: NonNullable<typeof pending.current>): Promise<boolean> => {
       if(busyRef.current){toast('저장 중입니다. 잠시 기다려 주세요.');return false;}
-      if(!demo && ownerId){try{saveDraft(ownerId,'command','',command);pending.current=command;}catch{setFailure({code:'DRAFT',message:'기기 임시 저장 공간을 사용할 수 없습니다. 입력을 복사한 뒤 다시 시도해 주세요.'});return false;}}
+      if(!demo && ownerId){try{saveDraft(ownerId,'command','',command);pending.current=command;setHasPending(true);}catch{setFailure({code:'DRAFT',message:'기기 임시 저장 공간을 사용할 수 없습니다. 입력을 복사한 뒤 다시 시도해 주세요.'});return false;}}
       if (!demo && !navigator.onLine) {
         setOnline(false);
         setFailure({code:'OFFLINE',message:'입력을 이 기기에 임시 보관했습니다. 인터넷 연결 후 저장 결과 확인을 눌러 주세요.'});toast('이 기기에 임시 보관했습니다. 서버에는 아직 저장되지 않았습니다.');
@@ -137,6 +140,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
       busyRef.current = true;
       setBusy(true);
       pending.current = command;
+      setHasPending(true);
       const before = snapshotRef.current;
       let optimistic = false;
       if (!demo && ['task.status', 'task.focus'].includes(command.action.type)) {
@@ -171,6 +175,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
           }
         }
         pending.current = null;
+        setHasPending(false);
         if(!demo)clearDraft(ownerId,'command');
         setFailure(null);
         return true;
@@ -181,7 +186,7 @@ export function useWorkspace(demo: boolean, ownerId = '') {
           message: err.message || '저장을 확인하지 못했습니다. 다시 저장해 주세요.',
           code: err.code || (e instanceof DomainError ? 'INPUT' : 'NETWORK'),
         };
-        if (failure.code === 'INPUT') {pending.current = null;clearDraft(ownerId,'command');}
+        if (failure.code === 'INPUT') {pending.current = null;setHasPending(false);clearDraft(ownerId,'command');}
         setFailure(failure);
         toast.error(failure.message);
         return false;
@@ -218,11 +223,13 @@ export function useWorkspace(demo: boolean, ownerId = '') {
   const discardRequestAndRefresh = useCallback(async () => {
     if(pending.current){try{saveDraft(ownerId,'recovered-command','',pending.current);}catch{toast.error('임시 요청 보관에 실패했습니다. 저장 결과 확인으로 다시 시도해 주세요.');return;}}
     pending.current = null;
+    setHasPending(false);
     clearDraft(ownerId,'command');
     await load();
   }, [load,ownerId]);
   useEffect(() => {
     if (demo) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- navigator.onLine is only readable on the client; seed it here before subscribing to online/offline events
     setOnline(navigator.onLine);
     const resume = () => {
       if (
@@ -269,6 +276,6 @@ export function useWorkspace(demo: boolean, ownerId = '') {
     acceptSnapshot,
     refresh: load,
     discardRequestAndRefresh,
-    hasPending: !!pending.current,
+    hasPending,
   };
 }

@@ -120,11 +120,10 @@ export function RecordDialog({
 }) {
   const [outcome, setOutcome] = useState<Outcome>('done');
   const measured = !!task.startedAt || task.actualMinutes !== undefined;
-  const [actual, setActual] = useState(measured ? String(prefill) : '');
+  const [typedActual, setActual] = useState(measured ? String(prefill) : '');
   const [timeEdited, setTimeEdited] = useState(false);
-  useEffect(() => {
-    if (measured && !timeEdited) setActual(String(prefill));
-  }, [prefill, measured, timeEdited]);
+  // Until the user edits the field, a measured task keeps following the live prefill.
+  const actual = measured && !timeEdited ? String(prefill) : typedActual;
   const [reason, setReason] = useState<OutcomeReason>('time');
   const [handoff, setHandoff] = useState(false);
   const [rule, setRule] = useState('');

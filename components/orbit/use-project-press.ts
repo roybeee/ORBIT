@@ -3,7 +3,8 @@ import {useEffect,useRef,useState} from 'react';
 import {createProjectPressController} from '@/lib/orbit/project-press';
 
 export function useProjectPress({disabled,onManage}:{disabled:boolean;onManage:(id:string)=>void}){
-  const root=useRef<HTMLDivElement>(null),latest=useRef({disabled,onManage});latest.current={disabled,onManage};
+  const root=useRef<HTMLDivElement>(null),latest=useRef({disabled,onManage});
+  useEffect(()=>{latest.current={disabled,onManage}});
   const [holding,setHolding]=useState<string|null>(null);
   useEffect(()=>{
     const element=root.current;if(!element)return;
