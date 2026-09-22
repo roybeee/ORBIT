@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {readNote,readWorkspace,writeCommand,type Database} from '../../../db/repository.ts';
 import {dateSchema} from '../validation.ts';
+import {projectStatus} from '../project-management.ts';
 
 const id=z.string().min(1).max(160);
 const sourceSchema=z.object({platform:z.literal('slack'),workspaceId:id,requesterId:id,channelId:id,messageTs:z.string().regex(/^\d{10}\.\d{6}$/),threadId:z.string().regex(/^\d{10}\.\d{6}$/).optional(),eventId:id.optional(),clientMsgId:id.optional()}).strict().refine(s=>s.eventId||s.clientMsgId);
@@ -40,7 +41,7 @@ async function post(db:Database,p:Principal,raw:unknown){const parsed=inputSchem
  const status=wire.providerStatus==='failed'?'provider_failed':taskReceipt||project?'completed':'needs_confirmation';
  if(status==='completed'&&!taskReceipt&&!wire.binding)throw new Failure(403,'binding_required');
  const receiptId=crypto.randomUUID(),targetId=status==='completed'&&!taskReceipt?'slack:'+receiptId:null;
- const candidates=!project&&!taskReceipt?snapshot.data.projects.filter(p=>p.status==='active').slice(0,8).map(p=>p.id):[];
+ const candidates=!project&&!taskReceipt?snapshot.data.projects.filter(p=>projectStatus(p)==='active').slice(0,8).map(p=>p.id):[];
  const receipt=(gate:string,values:(string|number|null)[])=>db.prepare(`INSERT INTO orbit_slack_directives(owner_id,workspace_id,requester_id,operation_key,id,payload_hash,payload_json,status,target_id,candidates_json,created_at) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${gate}`).bind(p.owner_id,p.workspace_id,p.requester_id,wire.operationKey,receiptId,hash,JSON.stringify(wire),status,targetId,JSON.stringify(candidates),new Date().toISOString(),...values);
  try{if(targetId&&project&&wire.change.kind==='note'){await writeCommand(db,p.owner_id,{operationId:'slack-directive:'+receiptId,expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{id:targetId,kind:'knowledge',title:wire.change.title,body:wire.change.text,projectId:project.id,summary:'',tags:[],updated:wire.change.date}}},new Date(),{gate:authGate,values:authValues(p),statements:(gate,values)=>[receipt(gate,values)]})}else{await db.batch([receipt(authGate,authValues(p))])}}catch(error){const winner=await lookup(db,p,'operation_key',wire.operationKey);if(winner){if(winner.payload_hash!==hash)throw new Failure(409,'payload_conflict');return readback(db,p,winner)}throw error}
  const saved=await lookup(db,p,'operation_key',wire.operationKey);if(!saved)throw new Failure(409,'authorization_or_revision_changed');return readback(db,p,saved);
@@ -57,7 +58,7 @@ export async function handleDirective(db:Database,request:Request):Promise<Respo
   const projectId=url.searchParams.get('projectId');
   const projects=(await readWorkspace(db,p.owner_id)).data.projects;
   if(projectId&&!projects.some(v=>v.id===projectId))throw new Failure(403,'project_not_authorized');
-  const candidates=projects.filter(v=>projectId?v.id===projectId:v.status==='active').slice(0,8).map(v=>({id:v.id,name:v.name}));
+  const candidates=projects.filter(v=>projectId?v.id===projectId:projectStatus(v)==='active').slice(0,8).map(v=>({id:v.id,name:v.name}));
   return respond({contract:'orbit-slack-note-prepare-v1',workspaceId:p.workspace_id,requesterId:p.requester_id,candidates,providerWritesAllowed:false});
  }if(url.searchParams.has('resolveProjectId')){const projectId=url.searchParams.get('resolveProjectId')??'';if(url.searchParams.get('workspaceId')!==p.workspace_id||url.searchParams.get('requesterId')!==p.requester_id)throw new Failure(403,'source_scope_mismatch');if(!(await readWorkspace(db,p.owner_id)).data.projects.some(v=>v.id===projectId))throw new Failure(403,'project_not_authorized');return respond(binding(p,projectId))}const field=url.searchParams.has('id')?'id':'operation_key';const value=url.searchParams.get(field==='id'?'id':'operationKey');if(!value||value.length>200)throw new Failure(422,'lookup_required');const row=await lookup(db,p,field,value);if(!row)throw new Failure(404,'not_found');return respond(await readback(db,p,row))}
  if(request.method!=='POST')throw new Failure(405,'method_not_allowed');if(!request.headers.get('content-type')?.startsWith('application/json'))throw new Failure(415,'json_required');const reader=request.body?.getReader();if(!reader)throw new Failure(422,'body_required');let size=0;const chunks:Uint8Array[]=[];while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>12000){await reader.cancel();throw new Failure(413,'body_too_large')}chunks.push(value)}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength}let raw:unknown;try{raw=JSON.parse(new TextDecoder().decode(bytes))}catch{throw new Failure(422,'invalid_json')}return respond(await post(db,p,raw));

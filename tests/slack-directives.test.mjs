@@ -10,6 +10,24 @@ test('prepare lists canonical owner-scoped candidates without any receipt or not
  assert.equal((await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=OTHER')).status,403);
  assert.equal((await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=UTEST&projectId=other')).status,403);
 }finally{s.db.close()}});
+test('legacy status-omitted active projects remain candidates in prepare and receipt paths',async()=>{const s=await setup();try{
+ const legacy={...project,id:'legacy',name:'Legacy active'};delete legacy.status;
+ for(const p of [legacy,...['planned','paused','completed'].map(status=>({...project,id:status,name:status,status,...(status==='completed'?{result:'Finished fixture'}:{})}))]){
+  await writeCommand(s.db,'owner',{operationId:'seed:'+p.id,expectedRevision:(await readWorkspace(s.db,'owner')).revision,action:{type:'project.upsert',project:p}});
+ }
+ const before=await readWorkspace(s.db,'owner');
+ assert.equal(before.data.projects.find(p=>p.id==='legacy').status,undefined,'fixture must preserve legacy omitted status');
+ const prepared=await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=UTEST');
+ assert.equal(prepared.status,200);
+ assert.deepEqual(prepared.data.candidates.map(p=>p.id).sort(),['legacy','ofd']);
+ assert.deepEqual(await readWorkspace(s.db,'owner'),before,'prepare is read-only');
+ const input={...wire(),operationKey:'legacy-candidates'};delete input.project;delete input.binding;
+ const receipt=await call(s,'',input);
+ assert.equal(receipt.status,200);assert.equal(receipt.data.status,'needs_confirmation');
+ assert.deepEqual(receipt.data.candidates.slice().sort(),['legacy','ofd']);assert.equal(receipt.data.target,null);
+ assert.equal((await readWorkspace(s.db,'owner')).data.notes.length,0);
+ assert.deepEqual((await call(s,'?id='+receipt.data.id)).data.candidates,receipt.data.candidates);
+}finally{s.db.close()}});
 const moduleUrl='../lib/orbit/slack/directives.ts';
 const token='test-only-integration-credential-1234567890';
 const project={id:'ofd',name:'Old Ferry Donut',goal:'Progress',due:'2099-01-01',color:'#4455cc',symbol:'O',priority:3,status:'active'};
