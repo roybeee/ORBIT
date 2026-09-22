@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# One board for every parallel task: drift from main, dirty files, PR, CI and queue.
+# One board for every parallel task: drift from main, dirty files, open PR and CI.
 # usage: scripts/parallel/status.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 main="$(fetch_verified_main)"
 printf 'main  %s  tree %s\n\n' "${main}" "$(short "$(tree_of "${main}")")"
-printf '%-24s %-38s %-8s %-6s %-6s %-5s %-12s %s\n' WORKTREE BRANCH HEAD BEHIND AHEAD DIRTY PR CI/QUEUE
+printf '%-24s %-38s %-8s %-6s %-6s %-5s %-12s %s\n' WORKTREE BRANCH HEAD BEHIND AHEAD DIRTY PR CI/MERGE
 
 git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r path; do
   branch="$(git -C "${path}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
@@ -15,8 +15,10 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r pat
   dirty="$([[ -n "$(git -C "${path}" status --porcelain --untracked-files=no 2>/dev/null)" ]] && echo yes || echo no)"
   pr="-"; ci="-"
   if [[ "${branch}" != "${ORBIT_MAIN_BRANCH}" && "${branch}" != "HEAD" ]] && command -v gh >/dev/null 2>&1; then
-    info="$(gh pr view "${branch}" -R "${ORBIT_GITHUB_REPO}" --json number,state,mergeStateStatus,autoMergeRequest,statusCheckRollup \
-      --jq '"\(.number) \(.state) \(.mergeStateStatus) \(if .autoMergeRequest then "queued" else "-" end) \(([.statusCheckRollup[]? | select(.name=="validate" or .context=="validate") | (.conclusion // .state // "pending")] | first) // "none")' 2>/dev/null || true)"
+    # --head + --state open, because `gh pr view <branch>` falls back to a MERGED
+    # pull request and would report a finished one as this worktree's state.
+    info="$(gh pr list -R "${ORBIT_GITHUB_REPO}" --head "${branch}" --state open --limit 1 --json number,state,mergeStateStatus,autoMergeRequest,statusCheckRollup \
+      --jq '.[0] | select(.) | "\(.number) \(.state) \(.mergeStateStatus) \(if .autoMergeRequest then "auto" else "-" end) \(([.statusCheckRollup[]? | select(.name=="validate" or .context=="validate") | (.conclusion // .state // "pending")] | map(select(. != "")) | first) // "none")"' 2>/dev/null || true)"
     if [[ -n "${info}" ]]; then
       read -r number state merge_state queued check <<<"${info}"
       pr="#${number}:${state}"

@@ -55,7 +55,7 @@ $(git log --reverse --format='- %s' "${main}..HEAD")
 - PR head: \`${head}\` · 소스 tree: \`${tree}\`
 - ${checks}
 - \`scripts/check-migrations.mjs --base ${main}\`: 통과
-- [ ] 현재 PR 코드의 \`Validate Orbit\` 성공 후 머지 큐 통과
+- [ ] 현재 PR 코드의 \`Validate Orbit\` 성공, 그리고 최신 \`main\`을 포함한 head로 auto-merge
 
 ## 데이터 / 연동 / 복구 영향
 
@@ -63,10 +63,16 @@ $(git log --reverse --format='- %s' "${main}..HEAD")
 BODY
 )"
 
-if pr_number="$(gh pr view "${branch}" -R "${ORBIT_GITHUB_REPO}" --json number --jq .number 2>/dev/null)" && [[ -n "${pr_number}" ]]; then
+pr_number="$(open_pr_for "${branch}")"
+if [[ -n "${pr_number}" ]]; then
   log "updating PR #${pr_number}"
   gh pr edit "${pr_number}" -R "${ORBIT_GITHUB_REPO}" --body "${body}" >/dev/null
 else
+  # A reused branch name whose previous PR merged must not silently re-attach to
+  # that merged PR: open a fresh one, and refuse if the branch carries no new work.
+  if [[ "$(pr_state_of "${branch}")" == "MERGED" ]]; then
+    log "note: ${branch} had a previously merged PR; opening a new one for this work"
+  fi
   [[ -n "${title}" ]] || title="$(git log -1 --format=%s)"
   pr_url="$(gh pr create -R "${ORBIT_GITHUB_REPO}" --base "${ORBIT_MAIN_BRANCH}" --head "${branch}" --title "${title}" --body "${body}")"
   pr_number="${pr_url##*/}"
@@ -124,11 +130,22 @@ MSG
   case "${merge_state}" in
     DIRTY) die "PR #${pr_number} conflicts with ${ORBIT_MAIN_BRANCH}; run scripts/parallel/sync.sh, then finish.sh again" ;;
     BEHIND)
-      log "${ORBIT_MAIN_BRANCH} moved; updating PR #${pr_number} from ${ORBIT_MAIN_BRANCH} so CI re-runs on the combined head"
-      gh pr update-branch "${pr_number}" -R "${ORBIT_GITHUB_REPO}" >/dev/null 2>&1 \
-        || log "update-branch failed (conflict?); run scripts/parallel/sync.sh and finish.sh again" ;;
+      # Integrate locally and push, rather than `gh pr update-branch`. That command
+      # advances the PR head on GitHub only; the local branch stays behind it, and
+      # the next push from this worktree is rejected as a non-fast-forward. Keeping
+      # the local branch the single source of truth avoids wedging the worktree.
+      log "${ORBIT_MAIN_BRANCH} moved; merging it locally into ${branch} so CI re-runs on the combined head"
+      moved="$(fetch_verified_main)"
+      if git merge --no-edit "${moved}" >/dev/null 2>&1; then
+        git push --quiet "${ORBIT_REMOTE}" "${branch}" \
+          && log "pushed $(git rev-parse --short HEAD) (merged ${ORBIT_MAIN_BRANCH} $(short "${moved}"))" \
+          || log "push rejected; the PR head moved on GitHub — run scripts/parallel/sync.sh and finish.sh again"
+      else
+        git merge --abort 2>/dev/null || true
+        die "merging ${ORBIT_MAIN_BRANCH} ${moved} into ${branch} conflicts; run scripts/parallel/sync.sh, resolve, then finish.sh again"
+      fi ;;
   esac
-  [[ $(date +%s) -lt ${deadline} ]] || die "PR #${pr_number} not merged after ${wait_minutes} minutes (state ${merge_state}); check the queue with status.sh"
-  log "waiting for queue/CI (state ${merge_state})"
+  [[ $(date +%s) -lt ${deadline} ]] || die "PR #${pr_number} not merged after ${wait_minutes} minutes (state ${merge_state}); check it with status.sh"
+  log "waiting for CI / auto-merge (state ${merge_state})"
   sleep 30
 done

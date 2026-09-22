@@ -38,8 +38,14 @@ if [[ ! -d "${checkout}" && ${print_only} == 0 ]]; then
   git -C "${checkout}" fetch --quiet origin "${sha}"
   git -C "${checkout}" checkout --quiet --detach "${sha}"
   git -C "${checkout}" remote remove origin
-  [[ "$(git -C "${checkout}" rev-parse HEAD)" == "${sha}" ]] || die "publish checkout is not at ${sha}"
   log "created publish checkout ${checkout} (standalone clone at ${sha})"
+fi
+# Assert the state of the checkout every run, not only when it was just created:
+# a leftover directory may sit at another revision or carry edits, and the build
+# packages what is on disk while the projection commit records HEAD's tree.
+if [[ ${print_only} == 0 ]]; then
+  [[ "$(git -C "${checkout}" rev-parse HEAD)" == "${sha}" ]] || die "${checkout} is at $(git -C "${checkout}" rev-parse --short HEAD), not ${sha}; delete it and rerun"
+  [[ -z "$(git -C "${checkout}" status --porcelain)" ]] || die "${checkout} has local modifications; delete it and rerun so the published bytes match ${sha}"
 fi
 project_id="$(git show "${sha}:.openai/hosting.json" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).project_id))')"
 
@@ -75,6 +81,17 @@ log "starting Codex Sites publication for ${sha} (tree ${tree}); approve its req
 printf '%s' "${prompt}" | "${cmd[@]}"
 log "Codex finished; report:"
 cat "${result}" >&2
+# The sandbox is writable, so the prompt's "do not edit any file" is a request,
+# not a guarantee. If the source changed, the deployed bytes are not ${sha} and
+# the projection commit recorded a tree that was never built.
+dirty="$(git -C "${checkout}" status --porcelain -- . ':!.sites-publish-result.md' || true)"
+[[ -z "${dirty}" ]] || cat >&2 <<WARN
+
+[parallel] WARNING: the publish checkout was modified during publication:
+${dirty}
+The deployed bundle may not match ${sha}. Do not record this as a verified release
+until the differences are reviewed and, if real, committed through a pull request.
+WARN
 cat >&2 <<MSG
 
 next: scripts/parallel/verify-deploy.sh ${sha}
