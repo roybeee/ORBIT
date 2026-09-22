@@ -49,3 +49,6 @@ __pycache__/
 
 # Generated from the pinned user-supplied sound package.
 /public/sound-station/
+
+# Parallel work loop task metadata (scripts/parallel)
+.orbit-task.json
