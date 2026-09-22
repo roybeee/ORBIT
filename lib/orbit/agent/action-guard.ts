@@ -71,6 +71,15 @@ export async function guardFor(action:AgentAction['action'],data:WorkspaceData,b
  const source=basis??await captureWorkspaceBasis(data);
  return {version:1,actionHash:await hash(action),values:Object.fromEntries(keysFor(action,data).map(key=>[key,source[key]??null]))};
 }
+// An owner editing a proposal's project (name, colour) rewrites that project's
+// fingerprint, which would block every sibling proposal referencing it as "대상이
+// 변경됨". Only the project fingerprints are rebased onto the workspace the owner
+// just created; every other guard value keeps detecting outside changes.
+export function rebaseProjectValues(guard:ActionGuard,basis:WorkspaceBasis):ActionGuard{
+ const values=Object.fromEntries(Object.entries(guard.values).map(([key,value])=>
+  key.startsWith('projects:')||key.startsWith('projectName:')||key==='projects'?[key,basis[key]??null]:[key,value]));
+ return {...guard,values};
+}
 export async function guardMatches(guard:ActionGuard,action:AgentAction['action'],data:WorkspaceData,basis?:WorkspaceBasis){
  if(guard.version!==1||guard.actionHash!==await hash(action))return false;
  const current=basis??await captureWorkspaceBasis(data);

@@ -1,11 +1,11 @@
 import {notify} from '../notifications/store.ts';
 import {registrationOverlap} from '../overlap-review.ts';
-import {guardMatches} from './action-guard.ts';
+import {guardMatches,captureWorkspaceBasis,rebaseProjectValues} from './action-guard.ts';
 import {z} from 'zod';
 import {dispatchOrder} from './orders.ts';
 import {startPlanningAction} from '../brief/start.ts';
 import {readWorkspace,writeCommand,RevisionConflict,type Database} from '../../../db/repository.ts';
-import {dateSchema} from '../validation.ts';
+import {dateSchema,actionSchema} from '../validation.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {AgentError} from './errors.ts';
 import {claimAction,findAction,markApproved,resetAction} from './repository.ts';
@@ -13,7 +13,38 @@ import {createGoogleEvent,syncCalendar} from './calendar.ts';
 import {deleteCalendarSeries} from './calendar-delete.ts';
 import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
-export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional()}).strict();
+// An approval may rename the registration, recolor it or move it to another project.
+// Only these three fields, and only on the proposals that actually carry them.
+export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().uuid().nullable().optional()}).strict();
+export const editableActions=['task.upsert','event.upsert','project.upsert'] as const;
+export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional(),overrides:overrideSchema.optional()}).strict();
+type ParsedAction=ReturnType<typeof parseAction>;
+function withOverrides<T extends ParsedAction>(parsed:T,overrides?:z.infer<typeof overrideSchema>):T{
+ if(!overrides||!Object.keys(overrides).length)return parsed;
+ const {title,color,projectId}=overrides;
+ const edited=parsed.type==='project.upsert'
+  ?{...parsed,project:{...parsed.project,...(title?{name:title}:{}),...(color?{color}:{})}} // a project always carries a colour, so "자동" keeps the proposed one
+  :parsed.type==='task.upsert'
+  ?{...parsed,task:{...parsed.task,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})}}
+  :parsed.type==='event.upsert'
+  ?{...parsed,event:{...parsed.event,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})}}
+  :null;
+ if(!edited)throw new AgentError('이 제안은 이름·색을 정해서 등록할 수 없습니다. 그대로 승인해 주세요.','ACTION_NOT_EDITABLE',422);
+ const checked=actionSchema.safeParse(edited);
+ if(!checked.success)throw new AgentError('등록할 이름과 색을 확인해 주세요.','ACTION_INVALID',422);
+ return checked.data as T;
+}
+async function rebaseSiblingGuards(db:Database,owner:string,turnId:string){
+ const rows=await db.prepare("SELECT id,guard_json FROM orbit_agent_actions WHERE owner_id=? AND turn_id=? AND state='pending' AND guard_json IS NOT NULL").bind(owner,turnId).all<{id:string;guard_json:string}>();
+ if(!rows.results.length)return;
+ const basis=await captureWorkspaceBasis((await readWorkspace(db,owner)).data);
+ const writes=rows.results.flatMap(row=>{
+  const guard=JSON.parse(row.guard_json);
+  if(guard?.version!==1)return [];
+  return [db.prepare("UPDATE orbit_agent_actions SET guard_json=? WHERE owner_id=? AND id=? AND state='pending'").bind(JSON.stringify(rebaseProjectValues(guard,basis)),owner,row.id)];
+ });
+ if(writes.length)await db.batch(writes);
+}
 export async function decide(db:Database,owner:string,input:z.infer<typeof decisionSchema>,env:Runtime){
  const action=await findAction(db,owner,input.id);
  if(input.decision!=='approve'){
@@ -35,20 +66,21 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
    for(let attempt=0;attempt<3;attempt++){
     const current=await readWorkspace(db,owner),receipt=await db.prepare('SELECT operation_id FROM orbit_mutations WHERE owner_id=? AND operation_id=?').bind(owner,action.id).first();
     if(!receipt&&((action.guard&&!await guardMatches(action.guard,parsed,current.data))||(!action.guard&&current.revision!==action.expectedRevision)))throw new AgentError('이 제안의 대상 또는 근거가 변경되어 최신 내용으로 다시 확인합니다.','ACTION_CHANGED',409);
-    let command=parsed;
+    let command=withOverrides(parsed,input.overrides);
     if(!receipt){
      const review=registrationOverlap(current.data,parsed);
      if(review&&(parsed.type==='event.upsert'||parsed.type==='proposal.approve')){
       const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([owner,action.id,review.confirmation])));
       const confirmation=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
       if(input.overlapConfirmation!==confirmation)throw new AgentError('겹치는 일정을 확인하고 등록 여부를 선택해 주세요.','CALENDAR_OVERLAP',409,{overlapConfirmation:confirmation,conflicts:review.conflicts.slice(0,20).map(({title,date,start,end})=>({title,date,start,end})),total:review.conflicts.length});
-      command={...parsed,overlapConfirmation:review.confirmation};
+      command={...withOverrides(parsed,input.overrides),overlapConfirmation:review.confirmation};
      }
     }
     try{revision=(await writeCommand(db,owner,{operationId:action.id,expectedRevision:current.revision,action:command})).revision;break}catch(error){if(!(error instanceof RevisionConflict)||attempt===2)throw error}
    }
   }
   await markApproved(db,owner,action,lease,revision,result);
+  if(input.overrides&&Object.keys(input.overrides).length)await rebaseSiblingGuards(db,owner,action.turnId);
   if(parsed.type==='google.event.create'||parsed.type==='google.event.deleteSeries'){try{await syncCalendar(db,owner,env,parsed.type==='google.event.create'?parsed.event.date:undefined)}catch{/* External creation is acknowledged; sync can be retried separately. */}}
  }catch(error){
   if(error instanceof AgentError&&error.code==='ACTION_CHANGED'){
