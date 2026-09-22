@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDatabase} from './sqlite-d1.mjs';
 import {writeCommand,readWorkspace,readNote} from '../db/repository.ts';
+import {todayInZone} from '../lib/orbit/dates.ts';
+// note.upsert stamps the server's today, and the readback compares that stamp with the wire date,
+// so a fixture pinned to a past date reports target_changed from the next midnight onwards.
+const today=todayInZone('Asia/Seoul');
 test('prepare lists canonical owner-scoped candidates without any receipt or note write',async()=>{const s=await setup();try{
  const before=await readWorkspace(s.db,'owner');
  const r=await call(s,'?prepareNote=1&workspaceId=TTEST&requesterId=UTEST');
@@ -32,7 +36,7 @@ const moduleUrl='../lib/orbit/slack/directives.ts';
 const token='test-only-integration-credential-1234567890';
 const project={id:'ofd',name:'Old Ferry Donut',goal:'Progress',due:'2099-01-01',color:'#4455cc',symbol:'O',priority:3,status:'active'};
 async function setup(){const service=await import(moduleUrl);const db=createDatabase();await writeCommand(db,'owner',{operationId:'seed',expectedRevision:0,action:{type:'project.upsert',project}});await db.prepare('INSERT INTO orbit_slack_credentials(token_hash,owner_id,workspace_id,requester_id,scope,expires_at,revoked) VALUES(?,?,?,?,?,?,0)').bind(await service.digest(token),'owner','TTEST','UTEST','directives:write',4102444800000).run();return {db,service}}
-const wire=()=>({operationKey:'origin:test',source:{platform:'slack',workspaceId:'TTEST',requesterId:'UTEST',channelId:'CTEST',messageTs:'1790043198.626399',eventId:'EvTEST'},providerStatus:'succeeded',providerError:'',change:{kind:'note',title:'Knowledge progress',text:'  first\n2) second\n한글 원문  ',date:'2026-09-22'},project:{id:'ofd'},binding:{contract:'orbit-slack-v2',authorized:true,ownerId:'owner',workspaceId:'TTEST',requesterId:'UTEST',projectId:'ofd'}});
+const wire=()=>({operationKey:'origin:test',source:{platform:'slack',workspaceId:'TTEST',requesterId:'UTEST',channelId:'CTEST',messageTs:'1790043198.626399',eventId:'EvTEST'},providerStatus:'succeeded',providerError:'',change:{kind:'note',title:'Knowledge progress',text:'  first\n2) second\n한글 원문  ',date:today},project:{id:'ofd'},binding:{contract:'orbit-slack-v2',authorized:true,ownerId:'owner',workspaceId:'TTEST',requesterId:'UTEST',projectId:'ofd'}});
 function request(path='',body,credential=token){return new Request('https://orbit.test/api/integrations/slack/directives'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+credential,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})}
 async function call(s,path='',body,credential){const response=await s.service.handleDirective(s.db,request(path,body,credential));return {status:response.status,data:await response.json()}}
 test('real canonical note and atomic receipt replay/readback',async()=>{assert.ok(await import(moduleUrl).catch(()=>null),'canonical Slack backend must exist');const s=await setup();try{const first=await call(s,'',wire());assert.equal(first.status,200,JSON.stringify(first.data));assert.equal(first.data.status,'completed');const note=await readNote(s.db,'owner',first.data.target.id);assert.equal(note.kind,'knowledge');assert.equal(note.body,wire().change.text);assert.equal((await call(s,'',wire())).data.id,first.data.id);assert.equal((await readWorkspace(s.db,'owner')).data.notes.length,1);assert.equal((await call(s,'?operationKey=origin%3Atest')).data.target.note.body,note.body);}finally{s.db.close()}});

@@ -126,7 +126,35 @@ test('a failed Hermes run retries the analysis with a smaller catalog and a new 
  await runAgent(db,'owner',{id:failing,message:briefMessage({date:addDays(date,1),energy:'normal'}),planning:{date:addDays(date,1),energy:'normal'}},env);
  for(let n=0;n<8;n++)await advanceAgent(db,'owner',failing,env);
  turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',failing).first();
- assert.equal(attempts,3);assert.equal(turn.status,'failed');const error=JSON.parse(turn.response_json).error;assert.match(error,/model overloaded/);assert.match(error,/3단계로 조절해도/);assert.equal((await readWorkspace(db,'owner')).data.proposals.length,1,'the earlier brief is kept');
+ assert.equal(attempts,3);assert.equal(turn.status,'failed');const error=JSON.parse(turn.response_json).error;assert.match(error,/model overloaded/);assert.match(error,/3단계로 조절해도/);assert.match(error,/규칙 기반 기본 계획/);
+ const plans=(await readWorkspace(db,'owner')).data.proposals;
+ assert.equal(plans.filter(p=>p.brief).length,1,'the earlier brief is kept');
+ const fallback=plans.find(p=>p.date===addDays(date,1));assert.ok(fallback&&!fallback.brief,'the failed day still gets a rule-based plan');
+}));
+
+test('a spent provider quota skips the retry ladder, names the limit and still leaves a rule-based plan',()=>fixture(async db=>{
+ await seed(db);await hermes(db);let posts=0;
+ globalThis.fetch=async(url,options={})=>{if(options.method==='POST'){posts++;return j({run_id:'run_1',status:'started'},202)}return j({object:'hermes.run',run_id:'run_1',status:'failed',error:'Codex provider quota exhausted (429); retry after 393141s'})};
+ const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);await complete(db,id);
+ const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
+ assert.equal(posts,1,'a spent quota is not retried with a smaller catalog');
+ assert.equal(turn.status,'failed');const error=JSON.parse(turn.response_json).error;
+ assert.match(error,/quota exhausted/);assert.match(error,/사용량 한도가 소진/);assert.doesNotMatch(error,/API 키/);assert.match(error,/규칙 기반 기본 계획/);
+ const plan=(await readWorkspace(db,'owner')).data.proposals.find(p=>p.date===date);
+ assert.ok(plan&&!plan.brief,'the day is planned by the deterministic planner');
+ assert.ok(plan.items.length>0,'the rule-based plan actually schedules the day');
+}));
+
+test('the rule-based fallback never replaces a plan that already exists for that day',()=>fixture(async db=>{
+ const snapshot=await seed(db);await hermes(db);
+ await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'proposal.generate',date,energy:'normal'}});
+ const before=(await readWorkspace(db,'owner')).data.proposals.find(p=>p.date===date);
+ globalThis.fetch=async(url,options={})=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):j({object:'hermes.run',run_id:'run_1',status:'failed',error:'⚠️ Provider authentication failed: invalid API key for openrouter'});
+ const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);await complete(db,id);
+ const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
+ assert.equal(turn.status,'failed');assert.doesNotMatch(JSON.parse(turn.response_json).error,/규칙 기반 기본 계획/);
+ const after=(await readWorkspace(db,'owner')).data.proposals.filter(p=>p.date===date);
+ assert.equal(after.length,1);assert.deepEqual(after[0],before,'the existing plan is untouched');
 }));
 
 test('provider authentication failures, external cancellation and approval waits are reported honestly without retries',()=>fixture(async db=>{

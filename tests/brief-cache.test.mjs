@@ -136,11 +136,15 @@ test('a deleted note never survives in any input, summary or evidence',()=>fixtu
  assert.ok(m.posts.every(p=>!p.body.input.includes('GONE_SENTINEL')&&!p.body.input.includes('note:bulk-7')));
  assert.deepEqual(recordSources(m),[]);assert.ok(m.posts.length>=1&&m.posts.length<=3);
  const input=synthesisInput(m);assert.equal(input.changes.deleted,1);assert.ok(input.changes.keys.includes('note/bulk-7'));
- const before=JSON.stringify((await readWorkspace(db,'owner')).data.proposals);
+ const before=JSON.stringify((await readWorkspace(db,'owner')).data.proposals.filter(p=>p.brief));
  mock({final:()=>{const c=content();c.priorities[0].evidence=['note:bulk-7'];return c}});
  const three=await run(db,addDays(date,2));
  assert.equal(three.turn.status,'failed');assert.match(JSON.parse(three.turn.response_json).error,/근거를 실제 기록에서 확인하지 못했습니다/);
- assert.equal(JSON.stringify((await readWorkspace(db,'owner')).data.proposals),before,'nothing published from a brief citing the deleted note');
+ const after=(await readWorkspace(db,'owner')).data.proposals;
+ assert.equal(JSON.stringify(after.filter(p=>p.brief)),before,'nothing published from a brief citing the deleted note');
+ const fallback=after.find(p=>p.date===addDays(date,2));
+ assert.ok(fallback&&!fallback.brief,'the rejected day falls back to the rule-based plan');
+ assert.ok(!JSON.stringify(after).includes('bulk-7')&&!JSON.stringify(after).includes('GONE_SENTINEL'),'the deleted note is cited nowhere, including the fallback');
 }));
 
 test('a task edit re-analyzes only its project unit',()=>fixture(async db=>{
