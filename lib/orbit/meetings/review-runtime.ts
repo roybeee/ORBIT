@@ -6,6 +6,8 @@ import {enqueueMeetingStatement,hasReadableMeeting} from './review.ts';
 import {driveAgent} from '../agent/driver.ts';
 import {collectNotifications} from '../notifications/store.ts';
 import {dateSchema} from '../validation.ts';
+import {addDays,todayInZone} from '../dates.ts';
+import type {WorkspaceData} from '../model.ts';
 import {findAction} from '../agent/repository.ts';
 import {applyAction} from '../reducer.ts';
 import {guardFor,recordFingerprint} from '../agent/action-guard.ts';
@@ -45,6 +47,11 @@ export async function advanceMeetingReviews(db:Database,owner:string,env?:Runtim
  }catch(e){await db.prepare("UPDATE orbit_meeting_reviews SET status='failed',error=?,updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status='queued'").bind(e instanceof Error?e.message:'회의록 분석 준비 실패',now,owner,row.note_id,row.revision).run();}
  return {active:true};
 }
+// Registered records a pending card may be folded into: open tasks and recent or upcoming local events.
+export function mergeCandidates(data:WorkspaceData){
+ const floor=addDays(todayInZone(data.preferences.timeZone),-30);
+ return {tasks:data.tasks.filter(t=>t.status!=='done').sort((a,b)=>a.due.localeCompare(b.due)).slice(0,300).map(t=>({id:t.id,title:t.title,projectId:t.projectId,due:t.due})),events:data.events.filter(e=>e.date>=floor&&!e.id.startsWith('google:')&&!e.id.startsWith('approved:')&&!e.id.startsWith('task-due:')).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start).slice(0,300).map(e=>({id:e.id,title:e.title,date:e.date,start:e.start,end:e.end}))};
+}
 export async function meetingReviewDetail(db:Database,owner:string,noteId:string){
  const note=await readNote(db,owner,noteId);
  const row=await db.prepare('SELECT r.*,t.status AS turn_status,t.response_json FROM orbit_meeting_reviews r LEFT JOIN orbit_agent_turns t ON t.owner_id=r.owner_id AND t.id=r.turn_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC LIMIT 1').bind(owner,noteId).first<any>();
@@ -52,7 +59,7 @@ export async function meetingReviewDetail(db:Database,owner:string,noteId:string
  const response=JSON.parse(row.response_json??'{}');
  const cards=await db.prepare('SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id JOIN orbit_meeting_reviews r ON r.owner_id=a.owner_id AND r.conversation_id=t.conversation_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC,a.created_at,a.rowid').bind(owner,noteId).all<any>();
  const data=(await readWorkspace(db,owner)).data;
- return {status:row.status==='queued'?'queued':row.turn_status??row.status,summary:response.text||row.summary||'',error:response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal}))};
+ return {status:row.status==='queued'?'queued':row.turn_status??row.status,summary:response.text||row.summary||'',error:response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal})),candidates:mergeCandidates(data)};
 }
 
 // Scheduled and import callers use the same bounded worker as the UI. Reading a
