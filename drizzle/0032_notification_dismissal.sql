@@ -1,0 +1,1 @@
+ALTER TABLE `orbit_notifications` ADD `dismissed_at` text;
