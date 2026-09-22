@@ -119,3 +119,33 @@ test('a card merged into an existing task cannot apply after that task changes',
  const current=(await readWorkspace(db,owner)).data.tasks.find(t=>t.id==='existing-task');await cmd(db,{type:'task.upsert',autoAssign:false,task:{...current,definition:'다른 사람이 바꿈'}});
  await assert.rejects(()=>decide(db,owner,{id:d.actions[0].id,decision:'approve'},env),/회의록 또는 연결 대상/);assert.equal((await readWorkspace(db,owner)).data.tasks[0].definition,'다른 사람이 바꿈');
 }finally{db.close()}});
+
+test('approving with edits registers the chosen name, colour and project without touching the rest of the proposal',async()=>{const db=createDatabase();try{
+ await seed(db);const d=await analyze(db,proposals());
+ const project=d.actions.find(a=>a.action.type==='project.upsert'),task=d.actions.find(a=>a.action.type==='task.upsert');
+ await decide(db,owner,{id:project.id,decision:'approve',overrides:{title:'바다 해외 파일럿',color:'#f83a22'}},env);
+ await decide(db,owner,{id:task.id,decision:'approve',overrides:{title:'파일럿 제안서 작성',color:'#7ae7bf',projectId:'oda'}},env);
+ const saved=(await readWorkspace(db,owner)).data;
+ const renamed=saved.projects.find(p=>p.name==='바다 해외 파일럿');
+ assert.ok(renamed,'renamed project registered');
+ assert.equal(renamed.color,'#f83a22');
+ assert.equal(renamed.goal,proposals()[0].action.project.goal,'untouched fields keep the proposed value');
+ assert.equal(saved.tasks.length,1);
+ assert.equal(saved.tasks[0].title,'파일럿 제안서 작성');
+ assert.equal(saved.tasks[0].color,'#7ae7bf');
+ assert.equal(saved.tasks[0].projectId,'oda','the chosen project wins over the proposed one');
+ assert.equal(saved.tasks[0].noteId,note.id,'the meeting citation survives the edit');
+}finally{db.close()}});
+
+test('an edit with a name or colour the proposal cannot carry registers nothing',async()=>{const db=createDatabase();try{
+ await seed(db);const d=await analyze(db,proposals());
+ const project=d.actions.find(a=>a.action.type==='project.upsert'),task=d.actions.find(a=>a.action.type==='task.upsert');
+ // A blank name cannot register a project, and the edit must leave the card approvable.
+ await assert.rejects(()=>decide(db,owner,{id:project.id,decision:'approve',overrides:{title:'   '}},env),e=>e.code==='ACTION_INVALID');
+ assert.equal((await readWorkspace(db,owner)).data.projects.length,1,'a refused edit registers nothing');
+ await decide(db,owner,{id:project.id,decision:'approve',overrides:{title:'바다 파일럿'}},env);
+ assert.ok((await readWorkspace(db,owner)).data.projects.find(p=>p.name==='바다 파일럿'),'the card is still approvable after a refusal');
+ // A task or event colour has to be one of the palette entries the app can render.
+ await assert.rejects(()=>decide(db,owner,{id:task.id,decision:'approve',overrides:{color:'#123456'}},env),e=>e.code==='ACTION_INVALID');
+ assert.equal((await readWorkspace(db,owner)).data.tasks.length,0,'a refused colour registers nothing');
+}finally{db.close()}});
