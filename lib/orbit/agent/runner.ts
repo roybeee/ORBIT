@@ -20,6 +20,7 @@ import { automaticProject, projectDraft, suggestProject, normalize } from '../cl
 import {z} from 'zod';
 import {briefContentSchema,type PlanningRequest} from '../brief/schema.ts';
 import {publishBrief} from '../brief/publish.ts';
+import {localPlanning} from '../brief/local-plan.ts';
 import {collectPlanningContext,completeBrief,planningInstructions,planningBudget,PLANNING_BUDGETS,type PlanningContext} from '../brief/context.ts';
 import {filesByIds} from '../attachments/storage.ts';
 import {hermesAttachmentInput} from '../attachments/hermes.ts';
@@ -109,7 +110,25 @@ async function discard(db:Database,owner:string,id:string,lease:string,message:s
 // Hermes reports why a run failed (provider errors are redacted upstream). Show it instead of a generic line.
 const hermesError=(result:Record<string,unknown>)=>{const raw=result.error;const text=typeof raw==='string'?raw:raw&&typeof raw==='object'?String((raw as {message?:unknown}).message??JSON.stringify(raw)):'';return text.replace(/\s+/g,' ').trim().slice(0,300)};
 const AUTH_FAILURE=/authentication failed|api key|unauthori[sz]ed|invalid.{0,20}key|\b40[13]\b/i;
+// A spent provider quota does not get better by sending the same catalog again, so it skips the
+// retry ladder like an auth failure does, and it earns its own hint: no API key is wrong.
+const QUOTA_FAILURE=/quota|usage limit|rate.?limit|\b429\b/i;
 const MAX_PLANNING_ATTEMPTS=3;
+// A planning run that cannot finish still owes the owner a day: fall back to the deterministic BRAINY
+// planner, the same one used when no Hermes is connected, before the turn is recorded as failed. An
+// existing plan for that date is never replaced — only a missing one is filled in.
+async function failPlanning(db:Database,owner:string,id:string,lease:string,job:Job,message:string){
+ if(!job.planning){await discard(db,owner,id,lease,message);return}
+ let note='';
+ try{
+  const current=await readWorkspace(db,owner);
+  if(!current.data.proposals.some(p=>p.date===job.planning!.date)){
+   await localPlanning(db,owner,id+':local',job.planning);
+   note=' 대신 규칙 기반 기본 계획을 준비했습니다.';
+  }
+ }catch{note=' 기본 계획 준비도 실패했습니다. 다시 요청해 주세요.'}
+ await discard(db,owner,id,lease,message+note);
+}
 // A failed planning run restarts from scratch with a smaller catalog: new Hermes session,
 // new idempotency scope, nothing published in between. Chat turns never retry silently.
 function retryPlanning(job:Job,note:string){job.attempts=[...(job.attempts??[]),note];job.budget=Math.min((job.budget??0)+1,PLANNING_BUDGETS.length-1);job.sessionId='orbit-'+crypto.randomUUID();job.phase='prepare';job.runId=undefined;job.attempted=false;job.request=undefined;job.round=0;job.invalid=0;job.history=[];job.reads=[];job.results=[];job.notes={};job.sources=[];job.plaudAttempted=false;job.planningContext=undefined;job.batch=undefined;job.analysisGeneration=undefined}
@@ -275,7 +294,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    // Escape hatches that need no successful status read: a stop request the gateway keeps failing,
    // and an absolute wall-clock limit. Neither publishes any card or brief.
    if(job.cancel&&(job.failures??0)>=2){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 헤르메스 실행 상태는 Mac에서 확인해 주세요. 변경사항은 반영하지 않았습니다.');return}
-   if(Date.now()-job.started>1800000){await discard(db,owner,id,row.turn_lease,'30분이 지나 실행을 종료했습니다. 최신 기록으로 다시 요청해 주세요.');return}
+   if(Date.now()-job.started>1800000){await failPlanning(db,owner,id,row.turn_lease,job,'30분이 지나 실행을 종료했습니다. 최신 기록으로 다시 요청해 주세요.');return}
    let result;
    try{result=job.provider==='openai'?{object:'hermes.run',run_id:job.runId,status:'completed',output:job.directOutput}:await hermesRequest<HermesRun>(config!,'/v1/runs/'+job.runId)}catch(error){
     // The gateway no longer knows this run (restart, retention expiry): a planning run restarts once
@@ -288,14 +307,14 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    if(['failed','cancelled'].includes(result.status)){
     const detail=hermesError(result);
     if(job.cancel){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.');return}
-    if(job.batch&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&job.batch.retries<2){retryBatch(job);await save('이 묶음만 다시 분석합니다.'+(detail?' · '+detail:''));return}
-    if(!job.batch&&job.planning&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&(job.attempts?.length??0)<MAX_PLANNING_ATTEMPTS-1){
+    if(job.batch&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&!QUOTA_FAILURE.test(detail)&&job.batch.retries<2){retryBatch(job);await save('이 묶음만 다시 분석합니다.'+(detail?' · '+detail:''));return}
+    if(!job.batch&&job.planning&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&!QUOTA_FAILURE.test(detail)&&(job.attempts?.length??0)<MAX_PLANNING_ATTEMPTS-1){
      retryPlanning(job,detail||'헤르메스가 이유 없이 실행을 실패했습니다');await save(`헤르메스 실행이 실패해 전송 분량을 조절해 전체 기록을 다시 분석합니다 (${(job.attempts?.length??0)+1}/${MAX_PLANNING_ATTEMPTS})${detail?' · '+detail:''}`);return;
     }
     const tried=job.attempts?.length?` 전송 분량을 ${job.attempts.length+1}단계로 조절해도 실패했습니다.`:'';
-    await discard(db,owner,id,row.turn_lease,result.status==='cancelled'
+    await failPlanning(db,owner,id,row.turn_lease,job,result.status==='cancelled'
      ?`헤르메스에서 실행이 취소되었습니다(Mac에서 중지했거나 gateway가 재시작됨).${detail?' · '+detail:''} 다시 요청해 주세요.`
-     :`헤르메스가 응답을 완료하지 못했습니다.${detail?' 헤르메스 오류: '+detail:''}${tried} ${AUTH_FAILURE.test(detail)?'Mac의 Hermes 모델·프로바이더 인증(API 키)을 확인해 주세요.':'Mac의 Hermes 실행 상태와 모델의 컨텍스트 한도를 확인하고 다시 요청해 주세요.'}`);
+     :`헤르메스가 응답을 완료하지 못했습니다.${detail?' 헤르메스 오류: '+detail:''}${tried} ${QUOTA_FAILURE.test(detail)?'Mac의 Hermes 프로바이더 사용량 한도가 소진되었습니다. 한도가 회복되면 다시 분석합니다.':AUTH_FAILURE.test(detail)?'Mac의 Hermes 모델·프로바이더 인증(API 키)을 확인해 주세요.':'Mac의 Hermes 실행 상태와 모델의 컨텍스트 한도를 확인하고 다시 요청해 주세요.'}`);
     return;
    }
    if(result.status!=='completed'){
@@ -486,7 +505,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   // Retain native run IDs across transport loss; publish no partial changes.
   if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_CAPACITY','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
   if(job.provider!=='openai')await recordSource(db,owner,'hermes',{state:'error',detail:'분석 단계를 완료하지 못했습니다. 실행 기록의 오류를 확인해 주세요.'});
-  await discard(db,owner,id,row.turn_lease,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'연결 상태를 확인해 주세요.') :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
+  await failPlanning(db,owner,id,row.turn_lease,job,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'연결 상태를 확인해 주세요.') :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
  }finally{
   console.info('orbit.agent.timing',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,round:job.round,durationMs:Date.now()-stepStarted,elapsedMs:Date.now()-job.started,posts:job.posts,reused:job.batch?.reused});
   await db.prepare('UPDATE orbit_hermes_jobs SET lease_until=0 WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(owner,id,lock).run();

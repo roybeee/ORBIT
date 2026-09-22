@@ -5,14 +5,10 @@ import {runAgent} from '../agent/runner.ts';
 import {syncCalendar} from '../agent/calendar.ts';
 import {AgentError} from '../agent/errors.ts';
 import type {Runtime} from '../agent/integrations.ts';
-import {briefMessage,type PlanningRequest} from './schema.ts';
+import {briefMessage} from './schema.ts';
+import {localPlanning} from './local-plan.ts';
+export {localPlanning} from './local-plan.ts';
 type PlanningAction=Extract<WorkspaceAction,{type:'proposal.generate'|'review.saveGenerate'}>;
-// Without a connected Hermes the deterministic BRAINY planner (Goal Laser first, rules, calibration)
-// still produces tomorrow's plan, so the evening review never ends without a next day.
-export async function localPlanning(db:Database,owner:string,operationId:string,planning:PlanningRequest){
- const current=await readWorkspace(db,owner);
- return writeCommand(db,owner,{operationId,expectedRevision:current.revision,action:{type:'proposal.generate',date:planning.date,energy:planning.energy}});
-}
 export async function startPlanningAction(db:Database,owner:string,command:{operationId:string;expectedRevision:number;action:PlanningAction},env:Runtime){
  const {action}=command,planning=action.type==='proposal.generate'?{date:action.date,energy:action.energy}:{date:addDays(action.review.date,1),energy:action.review.energy};
  // Resolve an acknowledged fallback before revision checks or a newly connected
