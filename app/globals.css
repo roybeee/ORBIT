@@ -464,3 +464,15 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .mission-overview.execution-overview{grid-template-columns:minmax(0,1fr)}
 .execution-overview .mission-hero{min-height:240px}
 @media(max-width:767px){.execution-overview .mission-hero{min-height:220px}.execution-overview .mission-copy{padding-block:20px}}
+
+/* Meeting evidence and approval share the existing Orbit surfaces. */
+.meeting-review {margin:1rem 0 1.5rem;padding:1rem;border:1px solid var(--border);border-radius:16px;background:var(--card)}
+.meeting-review h3 {display:flex;align-items:center;gap:.5rem;margin:0}
+.meeting-review-summary {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;padding:1rem 0;font-size:1rem}
+.meeting-review-card {margin-top:1rem;padding:1rem;border:1px solid var(--border);border-radius:12px}
+.meeting-review-card p,.meeting-review-card dd {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.meeting-review-card dl {display:grid;gap:.55rem;font-size:.9rem;margin:1rem 0}
+.meeting-review-card dl>div {display:grid;grid-template-columns:6rem minmax(0,1fr);gap:.5rem}
+.meeting-review-card dt {opacity:.7}.meeting-review-card dd {margin:0}
+.meeting-review-card form {display:grid;gap:.75rem;margin-top:1rem}
+.meeting-review .section-title {flex-wrap:wrap;gap:.5rem}

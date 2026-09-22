@@ -186,3 +186,7 @@ export const briefParts=sqliteTable('orbit_brief_parts',{
 export const calendarEdits=sqliteTable('orbit_calendar_edits',{
  ownerId:text('owner_id').notNull(),operationId:text('operation_id').notNull(),payloadJson:text('payload_json').notNull(),sourceCalendarId:text('source_calendar_id').notNull(),resultJson:text('result_json').notNull().default('{}'),leaseUntil:integer('lease_until').notNull().default(0),
 },t=>[primaryKey({columns:[t.ownerId,t.operationId]})]);
+
+export const meetingReviews=sqliteTable('orbit_meeting_reviews',{
+ ownerId:text('owner_id').notNull(),noteId:text('note_id').notNull(),revision:integer('revision').notNull(),turnId:text('turn_id').notNull(),conversationId:text('conversation_id').notNull(),status:text('status').notNull(),error:text('error').notNull().default(''),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.noteId,t.revision]}),index('idx_orbit_meeting_review_queue').on(t.ownerId,t.status,t.createdAt),uniqueIndex('idx_orbit_meeting_review_turn').on(t.ownerId,t.turnId)]);
