@@ -2,6 +2,14 @@
 
 **Local rework candidate; independent QA pending. NOT production-ready. Do not install/deploy.**
 
+Current repair adds [Google Tasks receipt-only recovery](TASK_RECEIPTS.md) without creating another provider or ORBIT task. It preserves the prior dual-auth/provisioning work and integrates verified canonical main `1f8d1bcf01be4d3d9cd77637ad88f8c56bb93d8a`. Historical statements below about unsupported tasks describe earlier candidates. No live installation, rollout or recovered production receipt is claimed here.
+
+## Bounded recovery update (supersedes historical evidence below)
+
+The scoped dual-header transport and hash-only pinned provisioning route are now implemented locally. The executable approved-operator procedure and identity prerequisites are in [PROVISIONING.md](PROVISIONING.md). It requires existing verified canonical identity, the existing private Sites gate, and a separate operator secret; it assumes no SQL console and grants no application authority from the gate. Built Worker HTTP/SQLite provisioning tests cover create/readback/lost-ACK replay/rotation/revocation and fail-closed authorization. These are local fixtures, not live deployment evidence.
+
+The final source/tree, fresh full-suite/plugin results, runtime pairing and release blockers are recorded in the recovery handoff `/tmp/t_44ee3a1f-next-handoff.md` and QA addendum `/tmp/t_44ee3a1f-integrated-independent-qa.md`. Do not treat older counts, old runtime defect descriptions or old base SHAs below as current acceptance. Runtime pairing is read-only staging `52e1e00805ca19ede14877e7de3a621d3861e95e`; parent-recovered independent bounded QA passed, but its full runtime suite still has 15 baseline failures. No production approval, provisioning, installation or deployment is claimed.
+
 Continuation preserves the original owner’s work and adds the real canonical backend plus minimal note preparation flow. Earlier rework parent: `635ec60b23afe7074b984f71339cc85f81674c3d`. Remote-main verification and latest validation are recorded immediately below; recheck before integration/release.
 
 ## Latest rework: exposed-tool gate and fresh-main reconciliation

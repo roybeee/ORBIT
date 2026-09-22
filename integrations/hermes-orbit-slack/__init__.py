@@ -9,6 +9,9 @@ from urllib import error, parse, request
 
 GUIDANCE = """새 ORBIT 메모는 쓰기 전에 orbit_slack_note_prepare로 canonical 후보를 준비하고 요청자의 정확한 승인 답변 뒤 request_id만으로 재개하세요. 준비 단계에는 provider_status를 넣지 마세요. 기존 사후 동기화 도구는 다음 규칙을 따릅니다. Slack 사용자의 일정·할 일·메모 변경을 실제로 수행/시도한 경우만 호출하세요. 모든 대화·첨부·비밀은 넣지 마세요. 출처는 런타임 자동 확인이므로 ID를 추측하지 마세요. 등록 위치·종류가 애매하면 alternatives에 후보를 넣으세요. needs_confirmation이면 반환된 approval_prompt로 요청자에게 프로젝트를 확인 질문하세요. 승인 문구를 대신 작성하거나 승인으로 간주하지 마세요. pending_source는 출처 미확인입니다. 부분 실패·provider_failed·readback 실패는 전체 성공이 아닙니다."""
 
+GUIDANCE += " Google Tasks 성공 영수증은 change에 kind=task, provider=google_tasks, 원문 text/due, 실제 providerTaskListId/providerTaskId를 넣으세요. 프로젝트를 추측하지 마세요. 기존 Google 항목은 읽기만 하며 receipt_only는 ORBIT 업무 생성이 아닌 접수 기록입니다."
+
+
 def encoded(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
 
@@ -50,7 +53,7 @@ def bounded(params):
     change = params.get('change')
     if not isinstance(change, dict) or len(encoded(payload).encode()) > 12000:
         raise ValueError('bounded_change_required')
-    allowed = {'kind', 'text', 'title', 'date', 'due', 'duration', 'definition', 'provider', 'providerEventId', 'start', 'end', 'timeZone', 'items'}
+    allowed = {'kind', 'text', 'title', 'date', 'due', 'duration', 'definition', 'provider', 'providerEventId', 'start', 'end', 'timeZone', 'items', 'providerTaskListId', 'providerTaskId', 'providerEtag', 'providerTaskStatus', 'providerUrl', 'notesSha256'}
     if set(change) - allowed:
         raise ValueError('unsupported_change_fields')
     kind = change.get('kind')
@@ -98,7 +101,11 @@ def source_for(origin, params):
 def http_json(url, token, method='GET', body=None):
     req = request.Request(url, data=encoded(body).encode() if body is not None else None,
                           headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}, method=method)
-    # Never follow redirects with an Authorization header.
+    return send_json(req)
+
+
+def send_json(req):
+    # Neither Slack nor ORBIT may forward credentials through redirects.
     class NoRedirect(request.HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
             return None
@@ -121,15 +128,73 @@ def scoped_setting(name):
 def orbit_request(method, payload=None, remote_id=None):
     endpoint = scoped_setting('ORBIT_SLACK_DIRECTIVE_URL')
     token = scoped_setting('ORBIT_SLACK_INGEST_KEY')
+    approved = scoped_setting('ORBIT_SLACK_APPROVED_ORIGIN')
+    gate = scoped_setting('ORBIT_SLACK_SITES_BEARER')
     url = parse.urlsplit(endpoint)
-    if url.scheme != 'https' or not url.netloc or url.username or url.query or url.fragment or not token:
+    pin = parse.urlsplit(approved)
+    if (url.scheme != 'https' or not url.netloc or url.username or url.password
+            or url.query or url.fragment or url.path != '/api/integrations/slack/directives'
+            or pin.scheme != 'https' or not pin.netloc or pin.username or pin.password
+            or pin.path or pin.query or pin.fragment or url.netloc != pin.netloc
+            or not token or not gate or any(c.isspace() for c in token + gate)):
         raise ValueError('orbit_configuration_required')
     if method == 'GET':
         endpoint += '?' + parse.urlencode(payload if payload is not None else {'id': remote_id})
         payload = None
-    return http_json(endpoint, token, method, payload)
+    # Only this origin-pinned ORBIT path receives the separately scoped host gate.
+    # The generic Slack helper above never reads or attaches this credential.
+    req = request.Request(endpoint, data=encoded(payload).encode() if payload is not None else None,
+        headers={'Authorization': 'Bearer ' + token, 'OAI-Sites-Authorization': 'Bearer ' + gate,
+                 'Content-Type': 'application/json'}, method=method)
+    return send_json(req)
+
+def google_task_get(task_list_id, task_id):
+    """GET only; explicit per-profile credential path, never ambient OAuth fallback."""
+    path = scoped_setting('ORBIT_SLACK_GOOGLE_TOKEN_FILE')
+    if not path or not Path(path).is_absolute():
+        raise ValueError('google_task_credentials_required')
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request as RefreshRequest
+    credentials = Credentials.from_authorized_user_file(path)
+    if credentials.token_uri != 'https://oauth2.googleapis.com/token':
+        raise ValueError('google_token_origin_mismatch')
+    if not credentials.valid:
+        credentials.refresh(RefreshRequest())
+    endpoint = 'https://tasks.googleapis.com/tasks/v1/lists/' + parse.quote(task_list_id, safe='') + '/tasks/' + parse.quote(task_id, safe='')
+    return http_json(endpoint, credentials.token)
+
+
+def task_result(change):
+    import re
+    for field in ('providerTaskListId', 'providerTaskId'):
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', change.get(field, '')):
+            raise ValueError('google_task_identity_required')
+    actual = google_task_get(change['providerTaskListId'], change['providerTaskId'])
+    if (actual.get('id') != change['providerTaskId'] or actual.get('title') != change['text']
+            or actual.get('due') != change['due'] + 'T00:00:00.000Z'
+            or actual.get('deleted') or actual.get('hidden')
+            or actual.get('status') not in ('needsAction', 'completed')
+            or not isinstance(actual.get('etag'), str) or not 1 <= len(actual['etag']) <= 200
+            or not re.fullmatch(r'https://tasks\.google\.com/task/[A-Za-z0-9_-]+(?:\?sa=\d+)?', actual.get('webViewLink', ''))
+            or not isinstance(actual.get('notes', ''), str)):
+        raise ValueError('google_task_readback_mismatch')
+    return {key: change[key] for key in ('kind', 'provider', 'text', 'due', 'providerTaskListId', 'providerTaskId')} | {
+        'providerEtag': actual['etag'], 'providerTaskStatus': actual['status'], 'providerUrl': actual['webViewLink'],
+        'notesSha256': hashlib.sha256(actual.get('notes', '').encode()).hexdigest()}
+
+
+def is_task_receipt(change):
+    return change.get('kind') == 'task' and change.get('provider') == 'google_tasks'
+
 
 def authorize_project(payload, origin):
+    if is_task_receipt(payload['change']):
+        binding = orbit_request('GET', {'resolveTaskReceipt': '1', 'workspaceId': origin['workspace_scope'], 'requesterId': origin['requesting_user']})
+        if (binding.get('contract') != 'orbit-slack-task-receipt-v1' or binding.get('authorized') is not True
+                or binding.get('workspaceId') != origin['workspace_scope'] or binding.get('requesterId') != origin['requesting_user']
+                or not isinstance(binding.get('ownerId'), str) or not binding['ownerId']):
+            raise ValueError('canonical_contract_unavailable')
+        return binding
     project_id = (payload.get('project') or {}).get('id')
     if not project_id:
         raise ValueError('canonical_binding_required')
@@ -145,7 +210,8 @@ def authorize_project(payload, origin):
 
 
 def verify_readback(data, wire):
-    if not wire.get('project', {}).get('id') or not wire.get('binding', {}).get('ownerId'):
+    task_receipt = is_task_receipt(wire['change'])
+    if (not task_receipt and not wire.get('project', {}).get('id')) or not wire.get('binding', {}).get('ownerId'):
         raise ValueError('canonical_binding_required')
     if data.get('operationKey') != wire.get('operationKey') or not wire.get('operationKey'):
         raise ValueError('readback_operation_mismatch')
@@ -157,6 +223,13 @@ def verify_readback(data, wire):
         if data.get('status') != 'provider_failed':
             raise ValueError('readback_mismatch')
         return 'provider_failed'
+    if task_receipt:
+        c = wire['change']
+        expected = {'id': c['providerTaskId'], 'taskListId': c['providerTaskListId'], 'title': c['text'], 'due': c['due'], 'status': c['providerTaskStatus'], 'etag': c['providerEtag'], 'url': c['providerUrl'], 'notesSha256': c['notesSha256'], 'ownerId': wire['binding']['ownerId']}
+        if (data.get('status') != 'completed' or data.get('receiptOnly') is not True
+                or data.get('target') != {'type': 'google_task', 'id': c['providerTaskId'], 'task': expected}):
+            raise ValueError('readback_target_mismatch')
+        return 'completed'
     if data.get('status') != 'completed' or not data.get('project', {}).get('id'):
         raise ValueError('readback_incomplete')
     if wire.get('project', {}).get('id') and data['project']['id'] != wire['project']['id']:
@@ -205,6 +278,14 @@ def deliver(key, payload, origin):
     stopped = cancellation(key, origin)
     if stopped:
         return stopped
+    if is_task_receipt(payload['change']):
+        try:
+            if payload.get('project') or payload.get('alternatives'):
+                raise ValueError('task_receipt_has_no_project')
+            change = task_result(payload['change']) if payload['provider_status'] == 'succeeded' else {field: payload['change'][field] for field in ('kind', 'provider', 'text', 'due')}
+            payload = dict(payload, change=change)
+        except Exception as exc:
+            return result('provider_readback_failed', request_id=key, error=type(exc).__name__)
     wire = {'operationKey': key, 'source': source_for(origin, {}), 'providerStatus': payload['provider_status'], 'providerError': payload['provider_error'], 'change': payload['change']}
     if payload.get('project'):
         wire['project'] = payload['project']
@@ -275,6 +356,8 @@ def deliver(key, payload, origin):
             return stopped
         state = verify_readback(readback, wire)
         reply = dict(result(state, request_id=key, receipt_id=remote_id, verified=True), success=state == 'completed')
+        if is_task_receipt(payload['change']):
+            reply.update(receipt_only=True, provider_mutated=False)
         return save_response(key, reply)
     except Exception as exc:
         reply = result('readback_failed' if remote_id else 'uncertain', request_id=key, partial_failure=payload['provider_status'] == 'succeeded', retryable=bool(remote_id), error=type(exc).__name__)
@@ -427,6 +510,10 @@ def sync_directive(params, **kwargs):
             origin = bound_origin()
             if origin:
                 source_for(origin, params)  # Do not discard mismatched source hints.
+            if is_task_receipt(payload['change']):
+                if payload.get('project') or payload.get('alternatives'):
+                    raise ValueError('task_receipt_has_no_project')
+                return _persist_directive(payload)
             if payload['change']['kind'] == 'note' and payload['provider_status'] == 'succeeded':
                 return prepare_note({key: payload[key] for key in ('change', 'project') if key in payload})
         return _persist_directive(params, **kwargs)

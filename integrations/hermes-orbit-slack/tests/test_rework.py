@@ -153,7 +153,7 @@ def test_concurrent_active_secret_scopes_never_borrow_environment(plugin, monkey
     from agent.secret_scope import set_secret_scope, reset_secret_scope
     monkeypatch.setenv('SLACK_BOT_TOKEN', 'default-slack')
     def run(n):
-        scope = {'ORBIT_SLACK_DIRECTIVE_URL': f'https://p{n}.example/directives', 'ORBIT_SLACK_INGEST_KEY': f'key{n}'} if n else {}
+        scope = {'ORBIT_SLACK_DIRECTIVE_URL': f'https://p{n}.example/api/integrations/slack/directives', 'ORBIT_SLACK_INGEST_KEY': f'key{n}', 'ORBIT_SLACK_APPROVED_ORIGIN': f'https://p{n}.example', 'ORBIT_SLACK_SITES_BEARER': f'gate{n}'} if n else {}
         token = set_secret_scope(scope)
         try:
             if not n:
@@ -162,10 +162,10 @@ def test_concurrent_active_secret_scopes_never_borrow_environment(plugin, monkey
                 with pytest.raises(ValueError, match='slack_readback_configuration_required'):
                     plugin.approval_message({})
                 return
-            assert plugin.orbit_request('GET', remote_id='r') == (f'https://p{n}.example/directives?id=r', f'key{n}')
+            assert plugin.orbit_request('GET', remote_id='r') == (f'https://p{n}.example/api/integrations/slack/directives?id=r', f'Bearer key{n}', f'Bearer gate{n}')
         finally:
             reset_secret_scope(token)
-    monkeypatch.setattr(plugin, 'http_json', lambda url, token, *args: (url, token))
+    monkeypatch.setattr(plugin, 'send_json', lambda req: (req.full_url, req.get_header('Authorization'), req.get_header('Oai-sites-authorization')))
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(run, [0, 1, 2]))
 

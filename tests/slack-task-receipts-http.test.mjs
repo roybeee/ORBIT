@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {register} from 'node:module';
+import {createDatabase} from './sqlite-d1.mjs';
+import {digest} from '../lib/orbit/slack/directives.ts';
+import {readWorkspace} from '../db/repository.ts';
+register('./cloudflare-loader.mjs',import.meta.url);
+const db=createDatabase();
+globalThis.__orbitCloudflareEnv={DB:db};
+globalThis.fetch=async()=>{throw Error('No provider call is permitted by receipt-only backend')};
+const {default:worker}=await import('../dist/server/index.js');
+test('built HTTP task receipt: real route, migrated SQLite, no external writes, lost ACK readback and replay',async()=>{try{
+ const token='built-task-receipt-only-123456789012345';
+ await db.prepare('INSERT INTO orbit_slack_credentials VALUES(?,?,?,?,?,?,?)').bind(await digest(token),'owner','TTEST','UTEST','directives:write',4102444800000,0).run();
+ const send=(query='',body)=>worker.fetch(new Request('https://orbit.test/api/integrations/slack/directives'+query,{method:body?'POST':'GET',headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),{DB:db,ASSETS:{fetch:async()=>new Response('',{status:404})}},{waitUntil(){},passThroughOnException(){}});
+ const before=await readWorkspace(db,'owner');
+ const binding=await (await send('?resolveTaskReceipt=1&workspaceId=TTEST&requesterId=UTEST')).json();
+ assert.equal(binding.contract,'orbit-slack-task-receipt-v1');
+ const wire={operationKey:'built-task-demo',source:{platform:'slack',workspaceId:'TTEST',requesterId:'UTEST',channelId:'CTEST',messageTs:'1790055097.465089',eventId:'EvTASK'},providerStatus:'succeeded',providerError:'',binding,change:{kind:'task',provider:'google_tasks',text:'Payment fixture',due:'2026-09-30',providerTaskListId:'list',providerTaskId:'task',providerEtag:'"fixture"',providerTaskStatus:'needsAction',providerUrl:'https://tasks.google.com/task/task',notesSha256:'0'.repeat(64)}};
+ const response=await send('',wire);assert.equal(response.status,200);const saved=await response.json();
+ assert.equal(saved.status,'completed');assert.equal(saved.receiptOnly,true);assert.equal(saved.target.task.title,wire.change.text);
+ assert.deepEqual(await (await send('?id='+saved.id)).json(),saved);
+ assert.deepEqual(await (await send('?operationKey=built-task-demo')).json(),saved);
+ assert.deepEqual(await (await send('',wire)).json(),saved);
+ assert.deepEqual(await readWorkspace(db,'owner'),before);
+ assert.equal((await db.prepare('SELECT COUNT(*) n FROM orbit_slack_directives').first()).n,1);
+}finally{db.close()}});
