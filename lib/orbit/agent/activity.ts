@@ -25,7 +25,7 @@ export function activityCategory(text:string){
 const hash=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const sessionSchema=z.object({id:z.string().min(1).max(250),source:z.string().max(100).nullish(),title:z.string().nullish(),preview:z.string().nullish(),last_active:z.union([z.string(),z.number()]).nullish(),started_at:z.union([z.string(),z.number()]).nullish(),ended_at:z.union([z.string(),z.number()]).nullish(),parent_session_id:z.string().nullish(),message_count:z.number().int().nonnegative().optional()});
 type Session=z.infer<typeof sessionSchema>;
-interface Cursor {connection?:string;messageVersion?:number;offset:number;pending:Session[];lastSync?:string;lastError?:string;cycles?:number;turns?:number;enabled?:boolean;omissions?:number;quarantine?:{id:string;signature:string;reason:string;retryAt:number}[]}
+interface Cursor {connection?:string;messageVersion?:number;offset:number;pending:Session[];lastSync?:string;lastError?:string;cycles?:number;turns?:number;enabled?:boolean;omissions?:number;quarantine?:{id:string;signature:string;reason:string;retryAt:number;session?:Session}[]}
 const sessionSignature=(s:Session)=>JSON.stringify([s.last_active,s.message_count,s.ended_at,s.title]);
 const defaults=():Cursor=>({offset:0,pending:[],enabled:true});
 const messageRoles=new Set(['user','assistant','tool','system','developer','function','session_meta']);
@@ -91,6 +91,18 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
    state.pending=parsed.data;state.offset=page.has_more===true?state.offset+20:0;if(!state.offset)state.cycles=(state.cycles??0)+1;
   }
   state.pending=state.pending.filter(s=>!state.quarantine?.some(q=>q.id===s.id&&q.signature===sessionSignature(s)&&q.retryAt>Date.now()));
+  // The pending queue refills one 20-session page at a time, so a quarantined session
+  // used to wait for the cursor to come round again — hours on a large archive, despite
+  // the 15 minute retry it promises. Expired entries rejoin the queue directly.
+  const due=(state.quarantine??[]).filter(q=>q.retryAt<=Date.now()&&!state.pending.some(s=>s.id===q.id)).slice(0,5);
+  for(const entry of due){
+   let session=entry.session;
+   if(!session){
+    try{session=sessionSchema.parse((await hermesRequest<{session:unknown}>(config,'/api/sessions/'+encodeURIComponent(entry.id))).session)}
+    catch(e){if(e instanceof AgentError&&e.code==='HERMES_MISSING'){state.quarantine=state.quarantine?.filter(q=>q.id!==entry.id);continue}throw e}
+   }
+   state.pending=[session,...state.pending].slice(0,100);
+  }
   // Skip an entire unchanged page in one tick; do not spend two minutes per unchanged session.
   for(let i=0;i<40&&state.pending.length;i++){
    const candidate=state.pending[0],key=await hash(connection+'\n'+candidate.id);
@@ -148,7 +160,7 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
   return {synced:true,pending:state.pending.length};
  }catch(e){
   if(sessionAttempt&&e instanceof AgentError&&e.code==='HERMES_FORMAT'){
-   state.quarantine=[...(state.quarantine??[]).filter(q=>q.id!==sessionAttempt!.id),{id:sessionAttempt.id,signature:sessionSignature(sessionAttempt),reason:e.message,retryAt:Date.now()+15*60000}].slice(-100);
+   state.quarantine=[...(state.quarantine??[]).filter(q=>q.id!==sessionAttempt!.id),{id:sessionAttempt.id,signature:sessionSignature(sessionAttempt),reason:e.message,retryAt:Date.now()+15*60000,session:sessionAttempt}].slice(-100);
    state.pending=state.pending.filter(s=>s.id!==sessionAttempt!.id);
   }
   state.lastError=e instanceof AgentError?e.message:'Hermes 기록 수집 실패 · 저장된 위치에서 다시 시도합니다.';await recordSource(db,owner,'hermes_activity',{state:'error',detail:state.lastError});throw e;

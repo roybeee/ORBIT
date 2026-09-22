@@ -99,6 +99,29 @@ test('quarantine reasons are grouped so the blocking upstream shape is visible',
  assert.match((await activityStatus(db,'owner')).lastError,/가장 많은 사유: Hermes 메시지 역할을 확인하지 못했습니다\. \(역할: unexpected\) \(1건\)/);
 }));
 
+test('an expired quarantine is retried without waiting for the session cursor to come round',()=>fixture(async db=>{
+ upstream([{id:1,role:'unexpected',content:'untrusted'}]);
+ await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT');
+ assert.equal((await activityStatus(db,'owner')).quarantined,1);
+ // Age the entry past its retry window and hide the session from the listing page, the
+ // way a large archive does once the cursor has moved on.
+ const row=await db.prepare('SELECT state_json FROM orbit_activity_sync WHERE owner_id=?').bind('owner').first();
+ const state=JSON.parse(row.state_json);
+ state.quarantine=state.quarantine.map(q=>({...q,retryAt:Date.now()-1000}));
+ state.pending=[];state.offset=40;
+ await db.prepare('UPDATE orbit_activity_sync SET state_json=? WHERE owner_id=?').bind(JSON.stringify(state),'owner').run();
+ globalThis.fetch=async url=>{
+  const u=new URL(url);
+  if(u.pathname==='/api/sessions')return Response.json({object:'list',data:[],has_more:false});
+  const offset=Number(u.searchParams.get('offset'));
+  const data=offset===0?[{id:7,role:'assistant',content:'형식이 고쳐진 뒤의 기록'}]:[];
+  return Response.json({object:'list',session_id:'slack-current',data,pagination:{offset,order:'oldest',limit:50,returned:data.length}});
+ };
+ await syncActivity(db,'owner',env);
+ assert.equal((await activityStatus(db,'owner')).quarantined,0,'a successful retry clears the quarantine');
+ assert.deepEqual((await rows(db)).map(m=>m.content),['형식이 고쳐진 뒤의 기록']);
+}));
+
 test('wrong pagination and oversized pages cannot assign incorrect positional identities',()=>fixture(async db=>{
  upstream([{role:'user',content:'wrong page'}],{pagination:{offset:10,order:'latest',returned:1}});
  await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT');assert.equal((await rows(db)).length,0);
