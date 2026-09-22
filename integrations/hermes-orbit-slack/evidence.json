@@ -1,0 +1,17 @@
+{
+  "pytest": {
+    "command": "PYTHONPATH=/home/hermes/.hermes/hermes-agent uv run --with pytest --python /home/hermes/.hermes/hermes-agent/venv/bin/python python -m pytest integrations/hermes-orbit-slack/tests -q",
+    "exit_code": 0,
+    "output": ".................................                                        [100%]\n33 passed in 2.31s"
+  },
+  "demo": {
+    "command": "PYTHONPATH=/home/hermes/.hermes/hermes-agent uv run --with pytest --python /home/hermes/.hermes/hermes-agent/venv/bin/python python integrations/hermes-orbit-slack/demo.py",
+    "exit_code": 0,
+    "output": "{\n  \"demo\": \"actual component / synthetic remote fixtures\",\n  \"production_verified\": false,\n  \"pending_before_approval\": \"needs_confirmation\",\n  \"restart_resume\": \"completed\",\n  \"replay\": \"completed\",\n  \"durable_request_rows\": 1,\n  \"receipt_posts\": 1,\n  \"origin_preserved\": true,\n  \"http_calls\": [\n    \"GET fixture Slack auth\",\n    \"GET fixture Slack approval\",\n    \"POST receipt\",\n    \"GET receipt and target\",\n    \"GET fixture Slack auth\",\n    \"GET fixture Slack approval\"\n  ]\n}"
+  },
+  "contract_probe": {
+    "command": "python3 integrations/hermes-orbit-slack/contract_probe.py",
+    "exit_code": 2,
+    "output": "{\"content_type\": \"text/plain; charset=UTF-8\", \"contract_verified\": false, \"http_status\": 403, \"json_object\": false, \"method\": \"GET\", \"note\": \"Read-only existence probe only; never proves POST, idempotency or target readback.\", \"path\": \"/api/integrations/slack/directives\"}"
+  }
+}
