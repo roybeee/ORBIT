@@ -1,4 +1,6 @@
-import {advanceMeetingReviews} from './meetings/review-runtime.ts';
+import {collectNotifications} from './notifications/store.ts';
+import {flushPushNotifications} from './notifications/push.ts';
+import {processMeetingReviews} from './meetings/review-runtime.ts';
 import {syncDiscord} from './discord/runtime.ts';
 import {syncMeetings} from './meetings/sync.ts';
 import {collectMetrics} from './metric-collector.ts';
@@ -32,6 +34,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  const lease=Date.now()+180000,claimed=await db.prepare('UPDATE orbit_daily_runtime SET lease_until=? WHERE owner_id=? AND lease_until<?').bind(lease,owner,Date.now()).run();if(claimed.meta?.changes!==1)return {busy:true,active:true};
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
+ await processMeetingReviews(db,owner,env).catch(()=>{});
  const discord=await syncDiscord(db,owner,env).catch(()=>({active:false}));
  let meetingsActive=false;
  const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active:active||discord.active||meetingsActive};};
@@ -41,7 +44,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  config.workFirst=true;
  // One independently checkpointed Plaud operation per housekeeping tick.
  meetingsActive=!!(await syncMeetings(db,owner,env).catch(()=>({active:false}))).active;
- await advanceMeetingReviews(db,owner,env).catch(()=>{});
+ await processMeetingReviews(db,owner,env).catch(()=>{});
  const capture=await activityStatus(db,owner);if(!capture.lastSync||Date.now()-Date.parse(capture.lastSync)>=120000)try{await syncActivity(db,owner,env);}catch{/* independent collector error is visible in source status */}
  // One bounded unit per tick. Collection happens before preparing a new brief.
  if(!config.syncAt||Date.now()-Date.parse(config.syncAt)>=900000){
@@ -65,5 +68,5 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  if(row){const state=JSON.parse(row.state_json);if(state.status==='queued'&&state.attempts<3){state.attempts++;try{const planning={date:target,energy:snapshot.data.reviews.find(r=>r.date===addDays(target,-1))?.energy??'normal' as const};try{await runAgent(db,owner,{id:state.id,message:briefMessage(planning),planning},env);state.status='running';}catch(e){if(e instanceof AgentError&&e.code==='HERMES_SETUP'){await localPlanning(db,owner,state.id+':local',planning);state.status='local';}else throw e;}}catch{state.message='자동 제안 준비 실패 · 연결을 확인한 뒤 내일 제안에서 다시 요청하세요.';if(state.attempts>=3)state.status='failed';}await db.prepare('UPDATE orbit_daily_runs SET state_json=?,updated_at=? WHERE owner_id=? AND date=?').bind(JSON.stringify(state),new Date().toISOString(),owner,target).run();return await finish(true);}}
  if(await advance())return await finish(true);
  return await finish(false);
- }finally{const at=new Date().toISOString();await db.prepare("UPDATE orbit_daily_runtime SET lease_until=0,last_tick=?,config_json=CASE WHEN ? THEN json_set(config_json,'$.lastSchedulerTick',?) ELSE config_json END WHERE owner_id=? AND lease_until=?").bind(at,options.scheduled?1:0,at,owner,lease).run();}
+ }finally{await collectNotifications(db,owner).catch(()=>{});await flushPushNotifications(db,owner).catch(()=>{});const at=new Date().toISOString();await db.prepare("UPDATE orbit_daily_runtime SET lease_until=0,last_tick=?,config_json=CASE WHEN ? THEN json_set(config_json,'$.lastSchedulerTick',?) ELSE config_json END WHERE owner_id=? AND lease_until=?").bind(at,options.scheduled?1:0,at,owner,lease).run();}
 }

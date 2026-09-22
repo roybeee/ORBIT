@@ -62,3 +62,17 @@ async function receiveShare(request){
   const id=crypto.randomUUID();await stageShare({id,createdAt:Date.now(),files:files.map(file=>({id:crypto.randomUUID(),file}))});return Response.redirect(new URL('/share?draft='+id,self.location.origin),303);
  }catch{return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orbit 공유</title><main style="font-family:system-ui;padding:32px;line-height:1.7"><h1>공유한 파일을 보관하지 못했습니다.</h1><p>파일 8개, 전체 150 MB 이내로 다시 공유해 주세요. 기기 저장 공간을 확인하고, 이전 공유 파일이 남아 있다면 먼저 정리해 주세요.</p><a href="/share">Orbit의 받은 파일 열기</a></main>',{status:503,headers:{'Content-Type':'text/html;charset=utf-8','Cache-Control':'no-store'}})}
 }
+
+self.addEventListener('push',event=>{
+ event.waitUntil((async()=>{let data={};try{data=event.data?.json()||{}}catch{}
+  const url=new URL(typeof data.href==='string'?data.href:'/?notifications=1',self.location.origin);
+  const href=url.origin===self.location.origin?url.href:new URL('/?notifications=1',self.location.origin).href;
+  await self.registration.showNotification(data.title||'ORBIT · 새 업무 알림',{body:data.body||'ORBIT에서 확인해 주세요.',icon:'/icons/orbit-192.png',badge:'/icons/orbit-192.png',tag:data.id||'orbit-update',data:{href}});
+  const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of windows)client.postMessage({type:'ORBIT_NOTIFICATION'});
+ })());
+});
+self.addEventListener('notificationclick',event=>{
+ event.notification.close();event.waitUntil((async()=>{const url=new URL(event.notification.data?.href||'/?notifications=1',self.location.origin);if(url.origin!==self.location.origin)return;
+  const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});const client=windows.find(c=>new URL(c.url).origin===self.location.origin);if(client){await client.navigate(url.href);await client.focus();}else await self.clients.openWindow(url.href);
+ })());
+});

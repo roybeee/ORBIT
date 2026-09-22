@@ -1,3 +1,5 @@
+import {after} from 'next/server';
+import {processMeetingReviews} from '@/lib/orbit/meetings/review-runtime';
 import {env} from 'cloudflare:workers';
 import {z} from 'zod';
 import {getDatabase} from '@/db/storage';
@@ -15,5 +17,6 @@ export async function POST(request:Request){try{const user=await owner(request),
  if(value.action==='sync')await syncMeetings(db,user.id,env,true);
  if(value.action==='settings')await setMeetingSync(db,user.id,value.enabled);
  if(value.action==='retag')await retagMeeting(db,user.id,value.id,value.projectId,value.keyword);
+ after(()=>processMeetingReviews(db,user.id,env).then(()=>{}));
  return json(await meetingStatus(db,user.id,env));
 }catch(e){return failure(e)}}

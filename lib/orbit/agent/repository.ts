@@ -1,3 +1,4 @@
+import {notificationStatement} from '../notifications/store.ts';
 import {readWorkspace} from '../../../db/repository.ts';
 import {guardFor} from './action-guard.ts';
 import {applyAction} from '../reducer.ts';
@@ -64,6 +65,7 @@ export async function resetAction(db:Database,owner:string,id:string,lease:strin
 export async function markApproved(db:Database,owner:string,action:AgentAction,lease:string,newRevision:number,result:unknown={}){
  await db.batch([
   db.prepare("UPDATE orbit_agent_actions SET state='approved',result_json=?,updated_at=? WHERE owner_id=? AND id=? AND state='applying' AND updated_at=?").bind(JSON.stringify(result),new Date().toISOString(),owner,action.id,lease),
+  notificationStatement(db,owner,{id:'action:'+action.id,kind:action.action.type==='agent.dispatch'?'info':'completed',title:action.action.type==='agent.dispatch'?'승인한 업무 실행 접수':'승인한 변경 반영 완료',body:action.title,href:action.guard?.meeting?'/?note='+encodeURIComponent(action.guard.meeting.noteId):'/?conversation='+encodeURIComponent(action.conversationId??'legacy'),createdAt:new Date().toISOString()},"EXISTS(SELECT 1 FROM orbit_agent_actions WHERE owner_id=? AND id=? AND state='approved')",[owner,action.id]),
   db.prepare("UPDATE orbit_agent_actions SET expected_revision=? WHERE owner_id=? AND turn_id=? AND state='pending' AND expected_revision=? AND EXISTS(SELECT 1 FROM orbit_workspaces WHERE owner_id=? AND revision=? AND mutation_id=?)").bind(newRevision,owner,action.turnId,action.expectedRevision,owner,newRevision,action.id),
  ]);
 }
