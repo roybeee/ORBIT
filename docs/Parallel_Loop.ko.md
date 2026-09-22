@@ -36,7 +36,7 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [머지
 
 - 브랜치가 최신 `main`을 포함하는지 확인하고(아니면 `sync.sh` 안내), 검증 기록이 없으면 검사를 다시 실행한다.
 - push 후 PR을 만든다(있으면 본문 갱신). 본문에 시작 기준 SHA, 병합 직전 `main` SHA, PR head, 소스 tree, 검증 결과가 자동으로 들어간다.
-- `gh pr merge --auto --merge`로 큐에 넣고 머지될 때까지 기다린 뒤, 새 `main` SHA와 tree를 출력한다. `DIRTY`(충돌)면 `sync.sh`를 안내하며 종료한다.
+- PR head의 `Validate Orbit`이 성공할 때까지 기다린 뒤에만 `gh pr merge --auto --merge`를 켠다(필수 검사가 없는 상태에서 `--auto`는 즉시 머지되므로). 머지될 때까지 기다리며 `BEHIND`면 `gh pr update-branch`로 최신 `main`을 반영해 CI를 다시 받고, `DIRTY`(충돌)면 `sync.sh`를 안내하며 종료한다. 끝나면 새 `main` SHA와 tree를 출력한다.
 
 ### 4. 현황 — `scripts/parallel/status.sh`
 
