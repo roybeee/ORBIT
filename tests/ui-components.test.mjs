@@ -121,3 +121,36 @@ test('project management opens on active projects and home never displays comple
   assert.doesNotMatch(html,/PROJECT_(COMPLETED|PLANNED|PAUSED)/);
  }
 });
+
+test('the home strip renders deterministically in demo/SSR',async()=>{
+ const {emptyWorkspace}=await vite.ssrLoadModule('/lib/orbit/model.ts');
+ const {TodayHome}=await vite.ssrLoadModule('/components/orbit/today-home.tsx');
+ const data=emptyWorkspace(),noop=()=>{},now=new Date('2026-09-19T01:00:00Z');
+ const props={data,today:'2026-09-19',now,busy:false,demo:true,pendingAI:0,onOpen:noop,navigate:noop,perform:async()=>true,onOpenTask:noop,onCreateTask:noop,onCreateProject:noop,onManage:noop,onTrash:noop};
+ const html=renderToStaticMarkup(React.createElement(TodayHome,props));
+ assert.match(html,/자료 수집/);assert.match(html,/계획 분석/);assert.match(html,/계획 준비 완료/);assert.match(html,/role="status"/);assert.match(html,/반영 기준 시각/);assert.match(html,/체험 화면/);
+ assert.doesNotMatch(html,/undefined/);assert.doesNotMatch(html,/상태 확인 중/);
+ assert.equal(html,renderToStaticMarkup(React.createElement(TodayHome,props)));
+});
+
+test('planSteps and localStamp are pure and deterministic',async()=>{
+ const {planSteps,localStamp,formatAt,MORNING_HOUR}=await vite.ssrLoadModule('/lib/orbit/brief/status-model.ts');
+ assert.equal(MORNING_HOUR,7);
+ assert.equal(localStamp('2026-09-21T21:30:00Z','Asia/Seoul'),'2026-09-22T06:30');assert.equal(localStamp('2026-09-21T23:30:00Z','Asia/Seoul'),'2026-09-22T08:30');
+ assert.ok(localStamp('2026-09-21T21:30:00Z','Asia/Seoul')<`2026-09-22T0${MORNING_HOUR}:00`);assert.equal(formatAt(null,'Asia/Seoul'),'—');assert.equal(formatAt('nope','Asia/Seoul'),'—');
+ const demo=planSteps(null,true,'Asia/Seoul');assert.deepEqual(demo.map(s=>s.state),['idle','idle','idle']);assert.match(demo[0].summary,/체험 화면/);
+ const pending=planSteps(null,false,'Asia/Seoul');assert.deepEqual(pending.map(s=>s.summary),['상태 확인 중','상태 확인 중','상태 확인 중']);
+ const metrics={version:'v',inline:false,leaves:10,reused:8,analyzed:2,merges:2,mergeReused:1,posts:3,changes:{added:1,modified:0,deleted:0,keys:[]}};
+ const status={now:'2026-09-22T02:40:00.000Z',target:{date:'2026-09-22',timeZone:'Asia/Seoul',eveningHour:21,afterEvening:false},
+  collection:{state:'ok',lastProgressAt:'2026-09-22T02:39:10.000Z',sources:[],pending:{plaudQueue:0,plaudFailed:0,plaudImports:0,activityPending:0,activityQuarantined:0,meetingReviews:0,mail:0,total:0}},
+  analysis:{state:'completed',turnId:'t',startedAt:'2026-09-21T17:01:00.000Z',lastProgressAt:'2026-09-21T17:20:00.000Z',progress:'',error:'',basisAt:'2026-09-21T17:01:05.000Z',sourceRevision:8,metrics},
+  plan:{state:'ready',date:'2026-09-22',readyAt:'2026-09-21T17:20:00.000Z',basisAt:'2026-09-21T17:01:05.000Z',cutoff:'2026-09-21',sourceRevision:8,currentRevision:9,durationMs:1140000,metrics,unconfirmed:{workspaceRevisions:0,noteRevisions:0,conversations:0,collection:0,total:0}},history:[]};
+ const ready=planSteps(status,false,'Asia/Seoul');assert.deepEqual(ready.map(s=>s.state),['done','done','done']);
+ assert.equal(ready[0].summary,'수집 완료');assert.match(ready[1].summary,/^분석 완료 /);assert.equal(ready[1].detail,'재사용 9/12 · Hermes 3회');assert.match(ready[2].summary,/^오늘 계획 준비됨 · /);assert.match(ready[2].detail,/^반영 기준 시각 .* · 2026-09-21까지 기록$/);
+ const stale=planSteps({...status,collection:{...status.collection,state:'partial',pending:{...status.collection.pending,plaudQueue:2,activityQuarantined:42,total:44}},plan:{...status.plan,state:'stale',unconfirmed:{workspaceRevisions:1,noteRevisions:0,conversations:0,collection:44,total:45}}},false,'Asia/Seoul');
+ assert.equal(stale[0].state,'active');assert.equal(stale[0].summary,'수집 중 · 미확인 자료 44건');assert.match(stale[0].detail,/ · 회의록 2 · 대화 42$/);assert.doesNotMatch(stale[0].detail,/검토 대기|메일/);
+ assert.equal(stale[2].state,'stale');assert.equal(stale[2].summary,'오늘 계획 준비됨 · 이후 변경 1건');
+ const tomorrow=planSteps({...status,target:{...status.target,date:'2026-09-23',afterEvening:true},analysis:{...status.analysis,state:'idle',metrics:null},plan:{...status.plan,state:'none',basisAt:null,cutoff:null}},false,'Asia/Seoul');
+ assert.equal(tomorrow[1].summary,'대기 중');assert.equal(tomorrow[1].detail,'21시 자동 준비');assert.equal(tomorrow[2].summary,'내일 계획 준비 전');assert.equal(tomorrow[2].detail,'반영 기준 시각 —');
+ assert.deepEqual(planSteps(status,false,'Asia/Seoul'),ready);
+});

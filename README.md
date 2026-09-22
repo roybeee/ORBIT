@@ -65,7 +65,7 @@ npm run build
 npm run test:smoke
 ```
 
-Use the Sites skills for development/hosting inside ChatGPT Work. The current Site identity and D1 binding are in `.openai/hosting.json`. `npm run db:generate` creates schema migrations. Migrations are applied by Sites publication; runtime handlers never create tables. The smoke test loads the built Worker with a test-only Cloudflare binding adapter.
+Use the Sites skills for development/hosting inside ChatGPT Work. The current Site identity and D1 binding are in `.openai/hosting.json`. `npm run db:generate` creates schema migrations. Migrations are applied by Sites publication; runtime handlers never create tables. The smoke test loads the built Worker with a test-only Cloudflare binding adapter. Migration 0029 adds the owner-scoped analysis cache (`orbit_analysis_cache`) and planning run telemetry (`orbit_brief_runs`); `GET /api/brief/status` reports collection, analysis and plan readiness for the home screen.
 
 The authenticated app deliberately does not fall back to a public dev identity or browser-only record storage. Local development must use the supported authenticated environment. Product dates default to Asia/Seoul; data timestamps and date-only values are kept distinct.
 
