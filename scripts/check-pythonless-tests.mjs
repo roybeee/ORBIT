@@ -7,6 +7,13 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 
+// The pinned test Python only exists for Linux (tests/test-python.mjs). Validate
+// Orbit runs this regression on ubuntu; on other hosts report the skip clearly
+// instead of failing `npm test` for every macOS or Windows worktree.
+if(process.platform!=='linux'){
+  console.log(`Python-less regression skipped on ${process.platform}: the pinned test Python is Linux-only and Validate Orbit runs it.`);
+  process.exit(0);
+}
 const root=mkdtempSync(join(tmpdir(),'orbit-pythonless-'));
 try {
   const bin=join(root,'bin');mkdirSync(bin);
