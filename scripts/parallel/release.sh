@@ -48,8 +48,13 @@ if [[ -n "${sites_remote}" ]]; then
   # The Sites source repository keeps its own history, so GitHub main is never a
   # fast-forward of it. Publish an exact-tree projection instead: one new commit
   # on top of the Sites main whose tree is exactly the verified GitHub tree.
+  # Redaction must not itself leak the secret. Interpolating the header into
+  # sed's command line would put the token in argv, where `ps` shows it to every
+  # process on the machine — the exact thing this script promises not to do.
+  # The pattern reaches sed through a file descriptor instead.
+  redact() { sed -f <(printf 's|%s|[REDACTED]|g\n' "${GIT_CONFIG_VALUE_0}") >&2; }
   log "fetching Sites ${ORBIT_MAIN_BRANCH}"
-  git fetch --quiet "${sites_remote}" "${ORBIT_MAIN_BRANCH}" 2>&1 | sed "s/${GIT_CONFIG_VALUE_0}/[REDACTED]/g" >&2 || true
+  git fetch --quiet "${sites_remote}" "${ORBIT_MAIN_BRANCH}" 2>&1 | redact || true
   if git rev-parse --verify --quiet FETCH_HEAD >/dev/null; then
     sites_head="$(git rev-parse FETCH_HEAD)"
     if [[ "$(tree_of "${sites_head}")" == "${tree}" ]]; then
@@ -63,7 +68,7 @@ if [[ -n "${sites_remote}" ]]; then
   fi
   if [[ "${projection}" != "${sites_head:-}" ]]; then
     log "pushing projection ${projection} (tree ${tree}) -> Sites ${ORBIT_MAIN_BRANCH}"
-    git push --quiet "${sites_remote}" "${projection}:refs/heads/${ORBIT_MAIN_BRANCH}" 2>&1 | sed "s/${GIT_CONFIG_VALUE_0}/[REDACTED]/g" >&2
+    git push --quiet "${sites_remote}" "${projection}:refs/heads/${ORBIT_MAIN_BRANCH}" 2>&1 | redact
   fi
   unset GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_0 GIT_CONFIG_COUNT
   sites_result="Sites source ${ORBIT_MAIN_BRANCH} = \`${projection}\` (exact tree ${tree}) at $(date -u +%H:%M:%SZ) UTC; publication (save version + deploy) still has to run: scripts/parallel/publish-sites.sh ${main}"
@@ -98,12 +103,13 @@ if [[ ${record_pr} == 1 ]]; then
     cd "../${ORBIT_WORKTREE_PREFIX}release-$(short "${main}")"
     git add "${record}"
     git commit --quiet -m "docs: record release $(short "${main}")"
-    git push --quiet -u "${ORBIT_REMOTE}" "${branch}"
-    gh pr create -R "${ORBIT_GITHUB_REPO}" --base "${ORBIT_MAIN_BRANCH}" --head "${branch}" --title "docs: record release $(short "${main}")" \
-      --body "Release record for GitHub main \`${main}\` (tree \`${tree}\`). Docs only." >/dev/null
-    gh pr merge -R "${ORBIT_GITHUB_REPO}" "${branch}" --auto --merge >/dev/null
+    # finish.sh owns pushing, waiting for the required check and merging. Calling
+    # `gh pr merge --auto` here would arm auto-merge before any check exists — the
+    # defect that merged PR #25 before its CI finished.
+    scripts/parallel/finish.sh --title "docs: record release $(short "${main}")" \
+      --skip-checks "docs-only release record"
   )
-  log "release record PR opened from ${branch}; it merges through the queue"
+  log "release record for $(short "${main}") merged; worktree ../${ORBIT_WORKTREE_PREFIX}release-$(short "${main}") can be removed"
 fi
 
 cat >&2 <<MSG

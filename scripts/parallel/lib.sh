@@ -68,8 +68,28 @@ NODE
 
 task_read() {
   # usage: task_read key  (prints empty string when absent)
-  [[ -f "${ORBIT_TASK_FILE}" ]] || { printf ''; return; }
-  node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]];process.stdout.write(v==null?"":String(v))' "${ORBIT_TASK_FILE}" "$1"
+  task_read_at "$(pwd)" "$1"
+}
+
+task_read_at() {
+  # usage: task_read_at <worktree-path> key  (prints empty string when absent)
+  local file="$1/${ORBIT_TASK_FILE}"
+  [[ -f "${file}" ]] || { printf ''; return; }
+  node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]];process.stdout.write(v==null?"":String(v))' "${file}" "$2" 2>/dev/null || printf ''
+}
+
+# The OPEN pull request for one head branch, or empty. `gh pr view <branch>`
+# falls back to a MERGED pull request when no open one exists, so a reused branch
+# name would re-attach to somebody else's finished work.
+open_pr_for() {
+  need gh
+  gh pr list -R "${ORBIT_GITHUB_REPO}" --head "$1" --state open --json number --jq '.[0].number // ""' 2>/dev/null || printf ''
+}
+
+# State of the most recent pull request for one head branch: OPEN | MERGED | CLOSED | empty.
+pr_state_of() {
+  command -v gh >/dev/null 2>&1 || { printf ''; return; }
+  gh pr list -R "${ORBIT_GITHUB_REPO}" --head "$1" --state all --limit 1 --json state --jq '.[0].state // ""' 2>/dev/null || printf ''
 }
 
 # Same gate as CI: typecheck, verified build (which runs the full suite), and the
