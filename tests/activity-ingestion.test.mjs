@@ -75,6 +75,14 @@ test('legacy missing-ID quarantine retries immediately after parser upgrade',()=
  assert.equal((await rows(db)).length,1);assert.equal((await activityStatus(db,'owner')).quarantined,0);
 }));
 
+test('Hermes session metadata carriers are stored hidden instead of failing the whole source',()=>fixture(async db=>{
+ upstream([{id:1,role:'user',content:'요청'},{id:2,role:'session_meta',content:null},{id:3,role:'assistant',content:'응답'}]);
+ await syncActivity(db,'owner',env);const data=await rows(db);
+ assert.deepEqual(data.map(m=>m.role),['user','session_meta','assistant']);
+ assert.equal(data[1].content,'[시스템 메시지 제외]');
+ assert.equal((await activityStatus(db,'owner')).quarantined,0);
+}));
+
 test('bad roles stay quarantined rather than being relabeled as user or assistant',()=>fixture(async db=>{
  upstream([{id:1,role:'unexpected',content:'untrusted'}]);
  await assert.rejects(()=>syncActivity(db,'owner',env),e=>e.code==='HERMES_FORMAT'&&/역할/.test(e.message));
