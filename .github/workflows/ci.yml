@@ -3,7 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  # The merge queue builds main + queued PRs together; this run gates the merge.
+  # Only reached if the repository ever moves to an organization and enables a
+  # merge queue; today the gate is a required check on an up-to-date head.
   merge_group:
 permissions:
   contents: read
