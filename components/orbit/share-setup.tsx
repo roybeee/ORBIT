@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import {useState} from 'react';
 import {LoaderCircle,RefreshCw} from 'lucide-react';
 import {usePwa} from './pwa-provider';
@@ -31,7 +32,7 @@ export function ShareSetup(){
    <li>계속 갱신되지 않으면 작성 중인 내용과 첨부를 먼저 저장한 후 Orbit 앱만 제거하고, Chrome에서 이 사이트를 열어 <strong>홈 화면에 추가 → 설치</strong>로 다시 설치하세요. Chrome의 사이트 데이터 삭제는 선택하지 마세요.</li>
   </ol>
   <p>설치 후 갤러리에서 JPG 또는 PNG 사진 한 장을 골라 공유 목록을 확인하세요.</p>
-  <a className="text-button" href="/?install=android&browser=chrome#agent">Chrome에서 Orbit 열고 설치</a>
+  <Link className="text-button" href="/?install=android&browser=chrome#agent">Chrome에서 Orbit 열고 설치</Link>
   <a className="text-button" href="https://web.dev/articles/manifest-updates#updates_on_chrome_for_android" target="_blank" rel="noreferrer">Google의 Android 앱 업데이트 안내</a>
  </section>;
 }

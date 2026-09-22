@@ -17,8 +17,13 @@ export function ProjectActions(props:Props){
   const [mode,setMode]=useState('menu'),[working,setWorking]=useState(false),[error,setError]=useState('');
   const [confirmation,setConfirmation]=useState<{revision:number;preview:ReturnType<typeof projectTrashPreview>}|null>(null);
   const [undo,setUndo]=useState<Receipt|null>(null),pending=useRef<Record<string,unknown>|null>(null),lock=useRef(false);
+  // Render-facing mirror of pending.current: refs must not be read during render.
+  const [hasPending,setHasPending]=useState(false);
   const project=snapshot.data.projects.find(p=>p.id===target?.id);
-  useEffect(()=>{if(target){setMode(target.mode);setError('');pending.current=null;setUndo(null);setConfirmation(target.mode==='delete'?{revision:snapshot.revision,preview:projectTrashPreview(snapshot.data,target.id)}:null)}},[target]);
+  // Reset the dialog state as soon as a new target arrives (adjusting state during render); the ref itself is cleared after commit.
+  const [seenTarget,setSeenTarget]=useState<Target|null>(null);
+  if(target!==seenTarget){setSeenTarget(target);if(target){setMode(target.mode);setError('');setHasPending(false);setUndo(null);setConfirmation(target.mode==='delete'?{revision:snapshot.revision,preview:projectTrashPreview(snapshot.data,target.id)}:null)}}
+  useEffect(()=>{if(target)pending.current=null},[target]);
   useEffect(()=>{onWorking(!!target||!!undo||working);return()=>onWorking(false)},[target,undo,working,onWorking]);
   function askDelete(){if(!target)return;setError('');setConfirmation({revision:snapshot.revision,preview:projectTrashPreview(snapshot.data,target.id)});setMode('delete')}
   function close(){if(working||pending.current)return;setUndo(null);onClose()}
@@ -27,17 +32,17 @@ export function ProjectActions(props:Props){
     if(!undo&&(!target||!project||!confirmation||confirmation.preview.error))return;
     lock.current=true;setWorking(true);setError('');
     const request=pending.current??{operationId:crypto.randomUUID(),expectedRevision:undo?snapshot.revision:confirmation!.revision,action:undo?'restore':'trash',...(undo?{trashIds:undo.ids}:{selection:confirmation!.preview.selection})};
-    pending.current=request;
+    pending.current=request;setHasPending(true);
     try{
       let ids:string[]=[];
       if(demo){
         if(undo){const selected=demoTrash.filter(t=>undo.ids.includes(t.id));if(selected.length!==undo.ids.length)throw new Error('휴지통이 변경되었습니다.');onSnapshot({...snapshot,revision:snapshot.revision+1,data:planDataRestore(snapshot.data,selected)});setDemoTrash(old=>old.filter(t=>!undo.ids.includes(t.id)))}
         else{const plan=planDataTrash(snapshot.data,confirmation!.preview.selection);const entries=plan.records.map((r,i)=>({id:request.operationId+':'+i,category:r.category,recordId:r.record.id,title:recordTitle(r.record),record:r.record,deletedAt:new Date().toISOString()}));ids=entries.map(r=>r.id);setDemoTrash(old=>[...entries,...old]);onSnapshot({...snapshot,revision:snapshot.revision+1,data:plan.next})}
       }else{const response=await agentRequest('/api/data','POST',request);onSnapshot(response.snapshot);ids=response.trashIds??[];}
-      pending.current=null;
+      pending.current=null;setHasPending(false);
       if(undo){toast.success('프로젝트와 연결된 항목을 복원했습니다.');setUndo(null);onClose()}
       else{const receipt={name:project!.name,ids};props.onDeleted(target!.id);onClose();toast.success('프로젝트를 휴지통으로 옮겼습니다.',{duration:12000,action:ids.length?{label:'실행 취소',onClick:()=>{if(lock.current||pending.current){toast('진행 중인 요청의 결과를 먼저 확인해 주세요.');return;}onClose();setError('');setUndo(receipt);setMode('undo')}}:undefined});}
-    }catch(e){const code=(e as {code?:string}).code;if(demo||['INPUT','CONFLICT','AUTH','SESSION_CHANGED','ORIGIN'].includes(code??''))pending.current=null;setError((e as Error).message||'처리 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.');}
+    }catch(e){const code=(e as {code?:string}).code;if(demo||['INPUT','CONFLICT','AUTH','SESSION_CHANGED','ORIGIN'].includes(code??'')){pending.current=null;setHasPending(false);}setError((e as Error).message||'처리 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.');}
     finally{lock.current=false;setWorking(false)}
   }
   const go=(run:()=>void)=>{onClose();run()};
@@ -53,8 +58,8 @@ export function ProjectActions(props:Props){
       {undo&&<p className="project-delete-explainer">프로젝트와 함께 삭제한 할 일·기록을 다시 가져옵니다. 이전 집중 타이머는 재개하지 않습니다.</p>}
       {confirmation?.preview.error&&!undo&&<div className="project-action-error" role="alert"><p>{confirmation.preview.error}</p><button className="text-button" onClick={()=>go(()=>props.onNavigate(confirmation.preview.view))}>연결 항목 확인<ChevronRight size={15}/></button></div>}
       {error&&<p className="project-action-error" role="alert">{error}</p>}
-      {error&&!pending.current&&<button className="text-button" disabled={working||busy} onClick={async()=>{await props.onRefresh();onClose();setUndo(null)}}>최신 목록으로 돌아가기</button>}
-      <div className="project-action-footer"><button className="secondary-button" disabled={working||!!pending.current} onClick={close}>취소</button><button className={undo?'primary-button':'project-delete-confirm'} disabled={working||busy||!undo&&!!confirmation?.preview.error} onClick={()=>void execute()}>{working?'처리 중…':pending.current?'처리 결과 다시 확인':undo?'복원하기':'휴지통으로 이동'}</button></div>
+      {error&&!hasPending&&<button className="text-button" disabled={working||busy} onClick={async()=>{await props.onRefresh();onClose();setUndo(null)}}>최신 목록으로 돌아가기</button>}
+      <div className="project-action-footer"><button className="secondary-button" disabled={working||hasPending} onClick={close}>취소</button><button className={undo?'primary-button':'project-delete-confirm'} disabled={working||busy||!undo&&!!confirmation?.preview.error} onClick={()=>void execute()}>{working?'처리 중…':hasPending?'처리 결과 다시 확인':undo?'복원하기':'휴지통으로 이동'}</button></div>
     </>}
   </DialogContent></Dialog>;
 }

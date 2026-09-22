@@ -20,6 +20,7 @@ export function ShareIntake(props:Props){
  const [open,setOpen]=useState(false),[drafts,setDrafts]=useState<ShareDraft[]>([]),[selected,setSelected]=useState<ShareDraft|null>(null),[error,setError]=useState(''),[saving,setSaving]=useState(false);
  const forgetSelection=()=>{setSelected(null);const url=new URL(location.href);url.searchParams.delete('draft');replacePopupRoute(null,url.pathname+url.search+url.hash)};
  async function refresh(){setError('');try{const list=(await sharedDrafts()).filter(d=>!d.ownerId||d.ownerId===props.ownerId);setDrafts(list);const id=new URL(location.href).searchParams.get('draft');setSelected(id?list.find(d=>d.id===id)??null:null)}catch{setError('공유 파일을 읽지 못했습니다. 파일 첨부 버튼으로 다시 선택해 주세요.')}}
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- the intake opens only on the /share route, which is known from location after mount
  useEffect(()=>{if(location.pathname==='/share'){setOpen(true);void refresh()}},[]);
  const close=()=>{setOpen(false);setSelected(null);const url=new URL(location.href);url.searchParams.delete('draft');replacePopupRoute(null,(url.pathname==='/share'?'/':url.pathname)+url.search+(url.hash||'#agent'))};
  return <>

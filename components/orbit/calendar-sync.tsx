@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {CalendarDays,RefreshCw,Link2} from 'lucide-react';
 import {Connections,agentRequest} from './agent/connections';
 import {createCalendarLiveSync,type CalendarSyncResult} from '@/lib/orbit/calendar-live';
@@ -9,7 +9,7 @@ export function CalendarSyncStatus({active,demo,loaded,date,timeZone,paused,work
  const [result,setResult]=useState<CalendarSyncResult>(),[checking,setChecking]=useState(false),[error,setError]=useState('');
  const [connections,setConnections]=useState<Connection[]|null>(null),[opening,setOpening]=useState(false);
  const context=useRef({active,demo,loaded,date,paused,workspaceBusy,onSynced,settings:!!connections});
- context.current={active,demo,loaded,date,paused,workspaceBusy,onSynced,settings:!!connections};
+ useLayoutEffect(()=>{context.current={active,demo,loaded,date,paused,workspaceBusy,onSynced,settings:!!connections}});
  const poller=useRef<ReturnType<typeof createCalendarLiveSync>|null>(null);
  useEffect(()=>{
   const sync=createCalendarLiveSync({

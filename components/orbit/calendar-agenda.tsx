@@ -1,6 +1,6 @@
 'use client';
 import {eventScope,eventScopeLabels} from '@/lib/orbit/event-details';
-import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownUp, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
 import type { CalendarEvent, Project, Preferences, Task } from '@/lib/orbit/model';
 import {categoryOf,calendarItemColor,categoryLabels} from '@/lib/orbit/calendar-categories';
@@ -29,7 +29,7 @@ type Preview = { event: CalendarEvent; delta: number; saving?: boolean };
 
 export function CalendarAgenda(props: Props) {
   const root = useRef<HTMLDivElement>(null), latest = useRef(props), session = useRef<Session | null>(null);
-  latest.current = props;
+  useLayoutEffect(() => { latest.current = props; });
   const [preview, setPreview] = useState<Preview | null>(null);
   const [deleting, setDeleting] = useState<{id:string;offset:number;ready:boolean;saving?:boolean}|null>(null);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
