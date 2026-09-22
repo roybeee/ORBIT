@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue builds main + queued PRs together; this run gates the merge.
+  merge_group:
 permissions:
   contents: read
 concurrency:
@@ -19,5 +21,15 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Fetch the integration base for the migration check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          if [ -n "$BASE_SHA" ] && ! echo "$BASE_SHA" | grep -Eq '^0+$'; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            echo "MIGRATION_BASE=$BASE_SHA" >> "$GITHUB_ENV"
+          fi
+      - name: Migration history is append-only and consistent
+        run: node scripts/check-migrations.mjs ${MIGRATION_BASE:+--base "$MIGRATION_BASE"}
       - run: npm run typecheck
       - run: npm test

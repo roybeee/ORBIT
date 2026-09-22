@@ -1,8 +1,10 @@
+import {sourceTree} from './app-version.ts';
 /** Machine-only release verification. This never creates a user identity. */
 export async function deploymentHealth(
   request: Request,
   configuredToken: unknown,
   build: string,
+  tree: string = 'unknown',
 ): Promise<Response> {
   const headers = {
     'Cache-Control': 'private, no-store',
@@ -24,5 +26,5 @@ export async function deploymentHealth(
   if (!/^[\w.:-]{1,100}$/.test(build)) {
     return Response.json({error: 'Build unavailable'}, {status: 503, headers});
   }
-  return Response.json({status: 'ok', build}, {headers});
+  return Response.json({status: 'ok', build, tree: sourceTree(tree)}, {headers});
 }

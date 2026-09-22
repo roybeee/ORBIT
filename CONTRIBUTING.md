@@ -5,7 +5,8 @@
 3. Implement only the agreed slice; keep the lockfile and existing toolchain.
 4. Run `npm run typecheck`, `npm run test:planner`, `npm run test:storage`, `npm run test:notes`, `npm run build`, `npm run test:smoke`.
 5. Open a PR describing the user behavior, evidence and any data migration.
-6. Review and merge, then release the verified source version. Do not automatically publish from every PR.
+6. Review, then enable auto-merge (`gh pr merge <n> --auto --merge`); `main` only accepts a PR whose head is up to date with `main` and green on `Validate Orbit`, so a PR that falls behind is re-synced and re-validated before it lands. Release the verified source version with `scripts/parallel/release.sh` and confirm it with `verify-deploy.sh`. Do not automatically publish from every PR.
+7. For parallel work, one worktree per task: `scripts/parallel/start.sh <slug>` → develop → `sync.sh` → `finish.sh`. See `docs/Parallel_Loop.ko.md`.
 
 For scheduling/approval or persistence changes, add a test only when it resolves a concrete risk. Do not mirror implementation with trivial tests or create tests for cosmetic edits.
 
