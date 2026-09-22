@@ -1,6 +1,6 @@
 import {AgentError} from '../agent/errors.ts';
 export class DiscordError extends AgentError {retryAfter:number;constructor(status:number,retryAfter=0){super(status===429?'Discord 요청이 많아 잠시 후 다시 연결합니다.':status===401?'Discord 봇 토큰을 확인하세요.':status===403?'Discord 채널 권한과 Message Content Intent를 확인하세요.':'Discord 응답을 확인하지 못했습니다.','DISCORD_UPSTREAM',502);this.retryAfter=retryAfter;}}
-export async function discordRequest(token:string,path:string,method='GET',body?:unknown):Promise<any>{
+export async function discordRequest<T=unknown>(token:string,path:string,method='GET',body?:unknown):Promise<T>{
  if(!/^\/(?:users|channels|guilds|oauth2)\//.test(path))throw new Error('Unsupported Discord path');
  let response:Response;try{response=await fetch('https://discord.com/api/v10'+path,{method,redirect:'error',signal:AbortSignal.timeout(8000),headers:{Authorization:'Bot '+token,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});}catch{throw new DiscordError(503);}
  const raw=await response.text();if(raw.length>2000000)throw new DiscordError(502);let value;try{value=raw?JSON.parse(raw):{};}catch{throw new DiscordError(502);}

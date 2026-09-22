@@ -5,7 +5,7 @@ import {taskCalendarEvent,googleItemColor} from '../calendar-categories.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {readWorkspace,type Database} from '../../../db/repository.ts';
 import {accessToken,fetchJson,type Runtime} from './integrations.ts';
-import {zonedInstant} from './calendar.ts';
+import {zonedInstant,type GoogleCalendarEntry,type GoogleEvent} from './calendar.ts';
 import {AgentError} from './errors.ts';
 
 export interface CalendarDelivery {
@@ -59,7 +59,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   const headers={Authorization:`Bearer ${token}`};
   // Bind receipts to the actual Google calendar, so reconnecting another account
   // cannot silently copy an already attempted event into that account.
-  const calendar=await fetchJson('https://www.googleapis.com/calendar/v3/users/me/calendarList/primary',{headers},6000);
+  const calendar=await fetchJson<GoogleCalendarEntry>('https://www.googleapis.com/calendar/v3/users/me/calendarList/primary',{headers},6000);
   if(!calendar.response.ok||typeof calendar.data.id!=='string')throw new AgentError('Google 계정 확인이 필요합니다. 연결 관리에서 다시 연결해 주세요.','RECONNECT',409);
   if(state.calendarId&&state.calendarId!==calendar.data.id)throw new AgentError('이 일정을 등록한 Google 계정과 다릅니다. 원래 계정을 다시 연결해 주세요.','CONFLICT',409);
   state.calendarId=calendar.data.id;
@@ -82,7 +82,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
    if(result.meta?.changes!==1)throw new AgentError('일정이 변경되었습니다. 다시 확인해 주세요.','CONFLICT',409);
    lease=next;
   };
-  const current=await fetchJson(base+'/'+googleId,{headers},6000);
+  const current=await fetchJson<GoogleEvent>(base+'/'+googleId,{headers},6000);
   let remote=current.data;
   if(payload){payload.description=event?.description??remote.description??(task?'Orbit 프로젝트 할 일 · 날짜 기준, 시간 미지정':'Orbit에서 등록한 일정');payload.extendedProperties.private={...remote.extendedProperties?.private,...payload.extendedProperties.private};}
   if(!payload){
@@ -104,14 +104,14 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
      throw new AgentError('Google에서 일정이 변경되었습니다. 양쪽 내용을 확인한 뒤 조정해 주세요.','CONFLICT',409);
     if(state.lastDetails!==undefined&&!previousDetails.includes(detailsSignature(remote)))throw new AgentError('Google에서 메모나 일정 구분이 변경되었습니다. 양쪽 내용을 확인한 뒤 조정해 주세요.','CONFLICT',409);
     await beforeMutation();
-    const patched=await fetchJson(base+'/'+googleId+'?sendUpdates=none',{method:'PATCH',headers:{...headers,'Content-Type':'application/json','If-Match':remote.etag},body:JSON.stringify(payload)},6000);
+    const patched=await fetchJson<GoogleEvent>(base+'/'+googleId+'?sendUpdates=none',{method:'PATCH',headers:{...headers,'Content-Type':'application/json','If-Match':remote.etag},body:JSON.stringify(payload)},6000);
     if(!patched.response.ok)throw new AgentError(patched.response.status===412?'Google 일정이 변경되어 덮어쓰지 않았습니다.':'Google 수정 반영을 확인하지 못했습니다. 자동으로 다시 확인합니다.','CALENDAR',502);
     remote=patched.data;
    }
   }else if(current.response.status===404){
    if(state.verifiedAt)throw new AgentError('Google에서 기존 일정을 찾을 수 없습니다. 새 일정으로 등록해 주세요.','CONFLICT',409);
    await beforeMutation();
-   const created=await fetchJson(base+'?sendUpdates=none',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...payload,id:googleId,extendedProperties:{private:{...payload.extendedProperties.private,orbitAction:actionId,orbitEventId:state.eventId}},reminders:{useDefault:true}})},6000);
+   const created=await fetchJson<GoogleEvent>(base+'?sendUpdates=none',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...payload,id:googleId,extendedProperties:{private:{...payload.extendedProperties.private,orbitAction:actionId,orbitEventId:state.eventId}},reminders:{useDefault:true}})},6000);
    if(!created.response.ok)throw new AgentError('Google 등록 결과를 확인하지 못했습니다. 중복 없이 다시 확인합니다.','CALENDAR',502);
    remote=created.data;
   }else throw new AgentError(current.response.status===410?'Google에서 삭제된 일정입니다. 새 일정으로 등록해 주세요.':'Google 일정 확인에 실패했습니다. 연결 상태를 확인해 주세요.','CALENDAR',502);

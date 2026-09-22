@@ -17,19 +17,21 @@ export async function hermesConfig(db:Database,owner:string,env:Runtime){
  if(!config?.endpoint||!config.token)throw new AgentError('연결에서 헤르메스 주소와 연결 암호를 먼저 등록해 주세요.','HERMES_SETUP',409);
  return config;
 }
-export async function hermesRequest(config:HermesConfig,path:string,init:RequestInit={}){
- const {response,data}=await fetchJson(config.endpoint+path,{...init,headers:{...init.headers,Authorization:`Bearer ${config.token}`,'Content-Type':'application/json'}},12000);
+export type HermesCapabilities={object?:unknown;platform?:unknown;features?:{run_submission?:unknown;run_status?:unknown;run_stop?:unknown;run_steer?:unknown;run_approval_response?:unknown;approval_events?:unknown;runs_idempotency?:{enabled?:unknown;supported?:unknown;durable?:unknown;retention_seconds?:unknown}}};
+export type HermesRun={object?:unknown;run_id?:unknown;status:string;output?:unknown;error?:unknown;approval?:{request_id?:unknown;description?:unknown;command?:unknown;choices?:unknown}};
+export async function hermesRequest<T=Record<string,unknown>>(config:HermesConfig,path:string,init:RequestInit={}):Promise<T>{
+ const {response,data}=await fetchJson<T>(config.endpoint+path,{...init,headers:{...init.headers,Authorization:`Bearer ${config.token}`,'Content-Type':'application/json'}},12000);
  if(response.status===429)throw new AgentError('헤르메스 동시 실행 한도에 도달해 대기 중입니다. 다른 대화는 계속 사용할 수 있으며 자동으로 재시도합니다.','HERMES_CAPACITY',503);
  if(!response.ok)throw new AgentError(response.status===401||response.status===403?'헤르메스 연결 암호를 확인해 주세요.':response.status===404?'헤르메스 실행 기능을 찾지 못했습니다. 최신 gateway와 연결 주소를 확인해 주세요.':response.status===429||response.status===409?'헤르메스가 다른 작업을 처리 중입니다. 잠시 후 다시 확인합니다.':'헤르메스가 요청을 완료하지 못했습니다. Mac의 gateway 상태를 확인해 주세요.',response.status===401||response.status===403?'HERMES_AUTH':response.status===404?'HERMES_MISSING':'HERMES_UPSTREAM',502);
  return data;
 }
 export async function verifyHermes(config:HermesConfig){
- const caps=await hermesRequest(config,'/v1/capabilities');
+ const caps=await hermesRequest<HermesCapabilities>(config,'/v1/capabilities');
  if(caps.object!=='hermes.api_server.capabilities'||caps.platform!=='hermes-agent'||!caps.features?.run_submission||!caps.features?.run_status||!caps.features?.run_stop||!caps.features?.runs_idempotency||caps.features.runs_idempotency.enabled===false||caps.features.runs_idempotency.supported===false)throw new AgentError('Hermes Agent의 실행·상태 조회·중지·중복 방지 기능이 필요합니다. Mac에서 Hermes를 업데이트하고 gateway를 시작해 주세요.','HERMES_VERSION',422);
  // Check the authenticated native agent, never just an unauthenticated health page.
  const {response}=await fetchJson(config.endpoint+'/v1/capabilities',{},12000);
  if(![401,403].includes(response.status))throw new AgentError('헤르메스에 연결 암호 보호를 설정한 뒤 다시 연결해 주세요.','HERMES_AUTH',422);
- const models=await hermesRequest(config,'/v1/models');
+ const models=await hermesRequest<{data?:{id?:unknown}[]}>(config,'/v1/models');
  return typeof models.data?.[0]?.id==='string'?models.data[0].id.slice(0,100):'Hermes';
 }
 export const validRunId=(value:unknown):value is string=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(value);

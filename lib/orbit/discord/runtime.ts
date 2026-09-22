@@ -37,7 +37,7 @@ export async function deliverDiscord(db:Database,owner:string,config:DiscordConf
  if(row.attempts>=4){await db.prepare("UPDATE orbit_discord_outbox SET status='failed' WHERE owner_id=? AND id=?").bind(owner,row.id).run();state.lastError='Discord 알림 전달 실패 · 연결과 채널 권한을 확인하세요.';return true;}
  await db.prepare("UPDATE orbit_discord_outbox SET status='sending',attempts=attempts+1,next_at=? WHERE owner_id=? AND id=?").bind(row.status==='sending'?row.next_at:Date.now(),owner,row.id).run();
  try{
-  const result=await discordRequest(config.token,`/channels/${config.channelId}/messages`,'POST',{content:row.content,nonce:row.id.replaceAll('-','').slice(0,24),enforce_nonce:true,allowed_mentions:{parse:[]}});
+  const result=await discordRequest<{id?:unknown}>(config.token,`/channels/${config.channelId}/messages`,'POST',{content:row.content,nonce:row.id.replaceAll('-','').slice(0,24),enforce_nonce:true,allowed_mentions:{parse:[]}});
   if(typeof result.id!=='string')throw new DiscordError(502);
   await db.prepare("UPDATE orbit_discord_outbox SET status='sent',message_id=? WHERE owner_id=? AND id=?").bind(result.id,owner,row.id).run();state.lastSent=stamp();return true;
  }catch(error){

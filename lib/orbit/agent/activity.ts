@@ -30,6 +30,7 @@ const sessionSignature=(s:Session)=>JSON.stringify([s.last_active,s.message_coun
 const defaults=():Cursor=>({offset:0,pending:[],enabled:true});
 const messageRoles=new Set(['user','assistant','tool','system','developer','function']);
 const localMessageId=(position:number)=>`orbit-position:${String(position).padStart(12,'0')}`;
+type MessagePage={session_id:string;data:unknown[]};
 function messagePage(value:Record<string,unknown>,offset:number){
  if(!value||typeof value!=='object'||Array.isArray(value)||value.object!=='list'||!Array.isArray(value.data)||value.data.length>50||typeof value.session_id!=='string'||!value.session_id)throw new AgentError('Hermes 대화 원문 형식을 확인하지 못했습니다.','HERMES_FORMAT',502);
  const pagination=value.pagination as Record<string,unknown>|undefined;
@@ -96,7 +97,7 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
    else{
     let offset=old?Math.max(0,old.message_offset-3):0;
     let page;
-    try{page=await hermesRequest(config,`/api/sessions/${encodeURIComponent(session.id)}/messages?limit=50&offset=${offset}&order=oldest`);}catch(e){
+    try{page=await hermesRequest<MessagePage>(config,`/api/sessions/${encodeURIComponent(session.id)}/messages?limit=50&offset=${offset}&order=oldest`);}catch(e){
      if(e instanceof AgentError&&e.code==='HERMES_MISSING'){state.pending.shift();state.omissions=(state.omissions??0)+1;return {omitted:true};}throw e;
     }
     messagePage(page,offset);
@@ -106,7 +107,7 @@ export async function syncActivity(db:Database,owner:string,env:Runtime){
      session=sessionSchema.parse(canonical.session);id=await hash(connection+'\n'+session.id);
      old=await db.prepare('SELECT * FROM orbit_activity_sessions WHERE owner_id=? AND id=?').bind(owner,id).first<{message_offset:number;signature:string;project_id:string|null;category:string;manual:number;summary:string}>();
      offset=old?Math.max(0,old.message_offset-3):0;
-     page=await hermesRequest(config,`/api/sessions/${encodeURIComponent(session.id)}/messages?limit=50&offset=${offset}&order=oldest`);
+     page=await hermesRequest<MessagePage>(config,`/api/sessions/${encodeURIComponent(session.id)}/messages?limit=50&offset=${offset}&order=oldest`);
      messagePage(page,offset);
      if(page.session_id!==session.id)throw new AgentError('압축된 대화가 변경되어 다음 수집에서 다시 확인합니다.','HERMES_FORMAT',502);
      signature=JSON.stringify([session.last_active,session.message_count,session.ended_at,session.title]);
