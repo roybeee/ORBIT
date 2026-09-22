@@ -1,3 +1,4 @@
+import {notify} from '../notifications/store.ts';
 import {registrationOverlap} from '../overlap-review.ts';
 import {guardMatches} from './action-guard.ts';
 import {z} from 'zod';
@@ -22,6 +23,7 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   const result=await db.prepare("UPDATE orbit_agent_actions SET state=?,note=?,revisit_date=?,updated_at=? WHERE owner_id=? AND id=? AND state=?").bind(state,input.reason?.trim()??'',input.revisitDate??null,new Date().toISOString(),owner,input.id,action.state).run();if(result.meta?.changes!==1)throw new AgentError('제안 상태가 변경됐습니다.','CONFLICT',409);return;
  }
  if(action.state==='approved')return;
+ if(action.guard?.meeting?.needsDue)throw new AgentError('회의록 결재안에서 마감일을 지정한 뒤 승인해 주세요.','MEETING_DUE',422);
  const lease=await claimAction(db,owner,input.id);
  try{
   const parsed=parseAction(action.action);let revision=action.expectedRevision,result:unknown={};
@@ -64,6 +66,7 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
    }catch(refreshError){if(!(refreshError instanceof AgentError&&['HERMES_SETUP','BUSY'].includes(refreshError.code)))throw refreshError;throw new AgentError('관련 기록이 변경되었습니다. 연결 또는 진행 중인 대화를 확인한 뒤 이 카드에서 다시 시도하면 최신 제안을 준비합니다.','ACTION_CHANGED',409)}
   }
   await resetAction(db,owner,action.id,lease);
+  if(!(error instanceof AgentError&&['CALENDAR_OVERLAP','ACTION_CHANGED','MEETING_CHANGED','BUSY','INPUT'].includes(error.code)))await notify(db,owner,{id:'action-failed:'+action.id+':'+lease,kind:'failed',title:'승인한 변경 처리 실패',body:action.title+' · '+(error instanceof Error?error.message:'등록 상태를 확인해 주세요.'),href:action.guard?.meeting?'/?note='+encodeURIComponent(action.guard.meeting.noteId):'/?conversation='+encodeURIComponent(action.conversationId??'legacy'),createdAt:new Date().toISOString()}).catch(()=>{});
   throw error;
  }
 }

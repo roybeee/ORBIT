@@ -4,7 +4,7 @@ import type {Runtime} from './integrations.ts';
 export const DEFAULT_CHAT_MODEL='gpt-5.6-luna';
 export function directChatConfigured(env:Runtime){return !!env.OPENAI_API_KEY?.trim()&&env.ORBIT_DIRECT_CHAT_ENABLED!=='false'}
 export function chatModel(env:Runtime){return env.ORBIT_CHAT_MODEL?.trim()||DEFAULT_CHAT_MODEL}
-export type ModelRequest={input:string;instructions:string;conversation_history:{role:'user'|'assistant';content:string}[]};
+export type ModelRequest={outputTokens?:number;input:string;instructions:string;conversation_history:{role:'user'|'assistant';content:string}[]};
 
 // This transport can only produce a proposal/read envelope. It has no write tools.
 // A timeout is deliberately terminal: Responses submission idempotency is not assumed.
@@ -15,7 +15,7 @@ export async function directModelReply(env:Runtime,request:ModelRequest,model:st
   const response=await fetch('https://api.openai.com/v1/responses',{
    method:'POST',cache:'no-store',redirect:'error',signal:controller.signal,
    headers:{Authorization:'Bearer '+env.OPENAI_API_KEY.trim(),'Content-Type':'application/json'},
-   body:JSON.stringify({model,store:false,instructions:request.instructions+'\nReturn only the JSON envelope. For routine requests be concise. Never execute a change or claim a proposal has already been saved.',input:[...request.conversation_history,{role:'user',content:request.input}],text:{format:{type:'json_object'}},max_output_tokens:6000,...(/^gpt-(5|6)/.test(model)?{reasoning:{effort:'low'}}:{})}),
+   body:JSON.stringify({model,store:false,instructions:request.instructions+'\nReturn only the JSON envelope. For routine requests be concise. Never execute a change or claim a proposal has already been saved.',input:[...request.conversation_history,{role:'user',content:request.input}],text:{format:{type:'json_object'}},max_output_tokens:request.outputTokens??6000,...(/^gpt-(5|6)/.test(model)?{reasoning:{effort:'low'}}:{})}),
   });
   if(!response.ok)throw new AgentError(response.status===401||response.status===403?'OpenAI 연결 권한을 확인해 주세요.':response.status===429?'빠른 대화의 사용량 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.':'빠른 대화 응답을 받지 못했습니다. 다시 시도해 주세요.','OPENAI_UPSTREAM',502);
   const raw=await response.text();if(raw.length>1000000)throw new AgentError('응답이 너무 큽니다. 요청을 나눠 주세요.','OPENAI_FORMAT',422);

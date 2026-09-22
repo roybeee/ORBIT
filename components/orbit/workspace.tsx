@@ -90,6 +90,7 @@ import {Choice} from './choice';
 import {WorkspaceSettings} from './workspace-settings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
+import {NotificationCenter} from './notifications';
 import { Toaster, toast } from 'sonner';
 import { focusIds } from '@/lib/orbit/derived';
 import {PlaudPanel} from '@/components/orbit/plaud-panel';
@@ -304,6 +305,8 @@ function WorkspaceContent({
   const cosmic=useCosmicMotion();
   const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh, acceptSnapshot } =
     useWorkspace(demo, ownerId);
+  const notificationLinkOpened=useRef(false);
+  useEffect(()=>{if(!loaded||notificationLinkOpened.current)return;notificationLinkOpened.current=true;const q=new URLSearchParams(location.search);if(q.get('note'))setDetail({kind:'note',id:q.get('note')!});else if(q.get('task'))setDetail({kind:'task',id:q.get('task')!});},[loaded]);
   useEffect(()=>{const changed=()=>{if(!hasPending)void refresh()};window.addEventListener('orbit-meeting-approved',changed);return()=>window.removeEventListener('orbit-meeting-approved',changed)},[hasPending,refresh]);
   const data = snapshot.data,
     preferences = data.preferences;
@@ -1016,7 +1019,7 @@ function WorkspaceContent({
             <ChevronRight size={13} />
             <strong>{primaryNavigation.some(n=>n.id===view)?primaryView(view).label:navigation.find((n) => n.id === view)?.label}</strong>
           </div>
-          <div className="top-actions"><CityThemeButton/><AppearanceShortcut/>
+          <div className="top-actions"><NotificationCenter key={ownerId} ownerId={ownerId} demo={demo}/><CityThemeButton/><AppearanceShortcut/>
             <button className="icon-button" onClick={openSettings} aria-label="설정 열기"><Settings2 size={20}/></button>
 
             {loaded && (

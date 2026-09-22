@@ -1,5 +1,5 @@
 import type { Database } from '../../db/repository.ts';
-import { advanceAgent } from './agent/runner.ts';
+import { driveAgent } from './agent/driver.ts';
 import { advanceOrder, listOrders } from './agent/orders.ts';
 import { orderActive } from './agent/orders-schema.ts';
 import {flushCalendarOutbox,hasCalendarDeliveryWork} from './agent/calendar-outbox.ts';
@@ -12,7 +12,7 @@ export async function advanceRuntimeWork(db: Database, owner: string, env: Runti
   const stops = await db.prepare('SELECT id FROM orbit_agent_orders WHERE owner_id=? AND stop_requested=1').bind(owner).all<{id:string}>();
   const orders = (await listOrders(db, owner)).filter(o => orderActive(o.status) && (o.status !== 'waiting_for_approval' || !o.approval || Date.now()-Date.parse(o.updatedAt)>=60000 || stops.results.some(s=>s.id===o.id)));
   const work: {id:string;run:()=>Promise<unknown>}[] = [
-    ...jobs.results.map(j => ({id:'chat:'+j.turn_id, run:()=>advanceAgent(db,owner,j.turn_id,env)})),
+    ...jobs.results.map(j => ({id:'chat:'+j.turn_id, run:()=>driveAgent(db,owner,j.turn_id,env,{maxMs:12000})})),
     ...orders.map(o => ({id:'order:'+o.id, run:()=>advanceOrder(db,owner,o.id,env,{action:'poll',id:o.id})})),
   ].sort((a,b)=>a.id.localeCompare(b.id));
   if(await hasCalendarDeliveryWork(db,owner))work.push({id:'calendar',run:async()=>{

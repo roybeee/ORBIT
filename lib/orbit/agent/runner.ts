@@ -1,4 +1,4 @@
-import {meetingInstructions,meetingProposals,type MeetingAnalysis} from '../meetings/review.ts';
+import {meetingInstructions,meetingContract,meetingProposals,type MeetingAnalysis} from '../meetings/review.ts';
 import {registrationOverlap} from '../overlap-review.ts';
 import {linkEventProject} from '../project-context.ts';
 import {unsupportedHandoff,handoffCorrection} from './execution-claims.ts';
@@ -41,7 +41,7 @@ export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 type Message={role:'user'|'assistant';content:string};
 type ReadRequest={tool:string;arguments:Record<string,unknown>};
 interface Job {
- meeting?:MeetingAnalysis;
+ meeting?:MeetingAnalysis; meetingRepairs?:number;
  provider?:'hermes'|'openai'; model?:string; directOutput?:string;
  basis?:WorkspaceBasis; revalidations?:number; refreshActionId?:string;
  batch?:BatchState; analysisGeneration?:string;
@@ -49,7 +49,7 @@ interface Job {
  evidence?:EvidenceRegistry;
  retryAt?:number; capacityWaits?:number; planning?:PlanningRequest; planningContext?:PlanningContext; plaudAttempted?:boolean; budget?:number; attempts?:string[]; failures?:number;
  attachmentIds?:string[]; phase:'prepare'|'submit'|'poll'|'read'; connectionId:string; sessionId:string; sessionKey:string;
- started:number; round:number; revision:number; request?:{input:string;instructions:string;conversation_history:Message[];session_id:string};
+ started:number; round:number; revision:number; request?:{outputTokens?:number;input:string;instructions:string;conversation_history:Message[];session_id:string};
  history:Message[]; runId?:string; attempted?:boolean; cancel?:boolean; invalid:number;
  reads:ReadRequest[]; results:unknown[]; notes:Record<string,number>; sources:AgentSource[];
 }
@@ -91,7 +91,7 @@ Use an empty proposals array for a normal answer or question. Never put tool cal
 async function getJob(db:Database,owner:string,id:string){return db.prepare('SELECT * FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,id).first<JobRow>()}
 function packed(job:Job){const value=JSON.stringify(job);if(new TextEncoder().encode(value).length>1500000)throw new AgentError('참고 기록이 너무 많습니다. 회의나 프로젝트를 하나씩 요청해 주세요.','CONTEXT_SIZE',422);return value}
 type FinalReply=Extract<z.infer<typeof replySchema>,{kind:'final'}>;
-function setRequest(job:Job,input:string){job.request={input,instructions:job.orderRepair?instructions+'\nFor this turn ONLY return kind order_links as specified in the input. Do not rewrite the work order or return kind final.':job.planning?instructions+'\n\n'+planningInstructions:instructions,conversation_history:job.history,session_id:job.sessionId};if(job.meeting)job.request.instructions+='\n\n'+meetingInstructions;if(job.refreshActionId)job.request.instructions+=' This is a refresh of ONE previously reviewed proposal. Read current records and preserve its original target and user-authorized scope. Never execute or approve it. Return a fresh approval card only if still appropriate; otherwise explain why no change is needed.';job.runId=undefined;job.directOutput=undefined;job.attempted=false;job.phase='submit'}
+function setRequest(job:Job,input:string){job.request={input,instructions:job.orderRepair?instructions+'\nFor this turn ONLY return kind order_links as specified in the input. Do not rewrite the work order or return kind final.':job.planning?instructions+'\n\n'+planningInstructions:instructions,conversation_history:job.history,session_id:job.sessionId};if(job.meeting){job.request.instructions=meetingContract+'\n\n'+meetingInstructions;job.request.outputTokens=12000;}if(job.refreshActionId)job.request.instructions+=' This is a refresh of ONE previously reviewed proposal. Read current records and preserve its original target and user-authorized scope. Never execute or approve it. Return a fresh approval card only if still appropriate; otherwise explain why no change is needed.';job.runId=undefined;job.directOutput=undefined;job.attempted=false;job.phase='submit'}
 function setBatchRequest(job:Job,input:string){
  job.history=[];job.round=0;job.invalid=0;job.sessionId='orbit-'+crypto.randomUUID();job.started=Date.now();
  setRequest(job,input);job.request!.instructions=batchInstructions;
@@ -332,13 +332,14 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    }
    if(parsed.kind==='brief')throw new AgentError('원페이지 분석은 내일 제안 화면에서 시작해 주세요.','INPUT',422);
    const snapshot=await readWorkspace(db,owner),pending=await pendingActions(db,owner),connected=await connections(db,owner,env);
-   if(unsupportedHandoff(parsed.text,await listOrders(db,owner))){
+   if(!job.meeting&&unsupportedHandoff(parsed.text,await listOrders(db,owner))){
     parsed.text=handoffCorrection(parsed.proposals.some(p=>parseAction(p.action).type==='agent.dispatch'));
    }
    if(job.meeting){
     const meta=snapshot.data.notes.find(n=>n.id===job.meeting!.noteId);
     if(!meta||(meta.revision??1)!==job.meeting.revision)throw new AgentError('회의록이 변경되었습니다. 최신 원문으로 다시 분석해 주세요.','MEETING_CHANGED',409);
     const note=await readNote(db,owner,meta.id,job.meeting.revision);
+    await db.prepare('UPDATE orbit_meeting_reviews SET summary=? WHERE owner_id=? AND turn_id=?').bind(parsed.text,owner,id).run();
     const previous=(await listAgent(db,owner,undefined,turn.conversation_id)).actions;
     parsed.proposals=await meetingProposals(note,snapshot.data,parsed.proposals,previous);
     parsed.evidence=[...new Set([...(parsed.evidence??[]),...job.sources.map(x=>x.id!).filter(Boolean)])];
@@ -401,7 +402,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
       proposal.reason+=' · 겹치는 일정이 있어 등록 전 별도 승인이 필요합니다.';
      }else projected=applyAction(projected,action);
     }
-    const guard=await guardFor(action,before);if(job.meeting){guard.meeting=job.meeting;guard.values['notes:'+job.meeting.noteId]=job.basis?.['notes:'+job.meeting.noteId]??null;}
+    const guard=await guardFor(action,before);if(job.meeting){guard.meeting={...job.meeting,...(proposal.reason.includes('[마감일 확인 필요]')?{needsDue:true}:{})};guard.values['notes:'+job.meeting.noteId]=job.basis?.['notes:'+job.meeting.noteId]??null;}
     cards.push({id:crypto.randomUUID(),turnId:id,title:proposal.title,reason:proposal.reason,action,guard,expectedRevision:snapshot.revision,state:'pending',note:'',revisitDate:null,createdAt:new Date().toISOString()});
    }
    await finishTurn(db,owner,id,row.turn_lease,{text:parsed.text,sources:selectedSources},cards,job.refreshActionId);
@@ -443,6 +444,13 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    await save(!job.reads.length?'조회한 기록을 헤르메스에 전달합니다.':'요청한 참고 기록을 이어서 조회합니다.');
   }
  }catch(error){
+  if(job.meeting&&error instanceof AgentError&&['MEETING_FORMAT','MEETING_EVIDENCE','MEETING_SCOPE','HERMES_FORMAT','OPENAI_FORMAT','OPENAI_INCOMPLETE','OPENAI_NETWORK','OPENAI_UPSTREAM','INPUT'].includes(error.code)&&(job.meetingRepairs??0)<2){
+   job.meetingRepairs=(job.meetingRepairs??0)+1;
+   const input=job.request?.input??'';
+   job.history=[];job.sessionId='orbit-'+crypto.randomUUID();
+   setRequest(job,input+'\nSERVER VALIDATION: '+error.message+'\nCorrect the response using ONLY the supplied facts and exact action schemas. Return the entire summary and all proposals again. No changes were applied. Do not ask the user to fix a schema error.');
+   await save('요약을 보존하고 결재안 형식을 자동 보정하고 있습니다.');return;
+  }
   if(job.planning&&error instanceof AgentError&&error.code==='CONFLICT'&&(job.revalidations??0)<2){const latest=await getJob(db,owner,id);if(latest&&!latest.cancel_requested&&(await readWorkspace(db,owner)).revision!==job.revision){await revalidate();return;}}
   if(error instanceof AgentError&&error.code==='HERMES_CAPACITY'&&job.phase==='submit'){
    job.capacityWaits=(job.capacityWaits??0)+1;job.retryAt=Date.now()+Math.min(60000,5000*2**Math.min(job.capacityWaits-1,4));job.attempted=false;
@@ -451,7 +459,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   // Retain native run IDs across transport loss; publish no partial changes.
   if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_CAPACITY','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
   if(job.provider!=='openai')await recordSource(db,owner,'hermes',{state:'error',detail:'분석 단계를 완료하지 못했습니다. 실행 기록의 오류를 확인해 주세요.'});
-  await discard(db,owner,id,row.turn_lease,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
+  await discard(db,owner,id,row.turn_lease,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'연결 상태를 확인해 주세요.') :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
  }finally{
   console.info('orbit.agent.timing',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,round:job.round,durationMs:Date.now()-stepStarted,elapsedMs:Date.now()-job.started});
   await db.prepare('UPDATE orbit_hermes_jobs SET lease_until=0 WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(owner,id,lock).run();
