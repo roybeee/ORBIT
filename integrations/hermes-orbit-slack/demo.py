@@ -9,7 +9,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 sys.path.insert(0, str(Path(__file__).parent / 'tests'))
 from test_plugin import PAYLOAD, load, origin
@@ -35,6 +35,11 @@ def main():
             self.respond({'id': 'fixture-receipt'})
         def do_GET(self):
             path = urlsplit(self.path).path
+            query = parse_qs(urlsplit(self.path).query)
+            if 'resolveProjectId' in query:
+                calls.append('GET fixture canonical authorization')
+                self.respond({'contract':'orbit-slack-v2','authorized':True,'projectId':query['resolveProjectId'][0], 'workspaceId':query['workspaceId'][0], 'requesterId':query['requesterId'][0], 'ownerId':'fixture-owner'})
+                return
             if path == '/api/auth.test':
                 calls.append('GET fixture Slack auth')
                 self.respond({'ok': True, 'team_id': 'T_TEST'})
@@ -45,7 +50,7 @@ def main():
                 calls.append('GET receipt and target')
                 self.respond({'id': 'fixture-receipt', 'status': 'completed', **saved,
                               'target': {'id': 'fixture-task', 'type': 'task', 'task': {
-                                  'id': 'fixture-task', 'projectId': 'project-a',
+                                  'id': 'fixture-task', 'projectId': 'project-a', 'ownerId':'fixture-owner',
                                   'title': PAYLOAD['change']['text'], 'due': PAYLOAD['change']['due']}}})
     with tempfile.TemporaryDirectory(prefix='orbit-demo-') as home:
         os.environ['HERMES_HOME'] = home

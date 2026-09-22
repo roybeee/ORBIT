@@ -10,12 +10,17 @@ def load():
     spec.loader.exec_module(module)
     return module
 
+def fixture_binding(payload, origin):
+    return {'contract':'orbit-slack-v2', 'authorized':True, 'projectId':payload['project']['id'], 'workspaceId':origin['workspace_scope'], 'requesterId':origin['requesting_user'], 'ownerId':'fixture-owner'}
+
 @pytest.fixture
 def plugin(tmp_path, monkeypatch):
     monkeypatch.setenv('HERMES_HOME', str(tmp_path))
     monkeypatch.setenv('ORBIT_SLACK_DIRECTIVE_URL', 'https://orbit.example/api/integrations/slack/directives')
     monkeypatch.setenv('ORBIT_SLACK_INGEST_KEY', 'test-key')
-    return load()
+    module = load()
+    monkeypatch.setattr(module, 'authorize_project', fixture_binding)
+    return module
 
 def test_schema_does_not_require_model_to_supply_identity(plugin):
     schema = plugin.SCHEMA['parameters']
@@ -50,7 +55,7 @@ def test_autofill_posts_and_reads_exact_target(plugin, monkeypatch):
         calls.append(method)
         if method == 'POST':
             stored.update(payload)
-        return {'id':'receipt-1', 'status':'completed', **stored, 'target':{'id':'task-1', 'type':'task', 'task':{'id':'task-1','title':'가맹 준비','due':'2026-09-22','projectId':'project-a'}}}
+        return {'id':'receipt-1', 'status':'completed', **stored, 'target':{'id':'task-1', 'type':'task', 'task':{'id':'task-1','title':'가맹 준비','due':'2026-09-22','projectId':'project-a','ownerId':'fixture-owner'}}}
     monkeypatch.setattr(plugin, 'orbit_request', remote, raising=False)
     with origin():
         reply = json.loads(plugin.sync_directive(PAYLOAD))
@@ -75,7 +80,7 @@ def test_ambiguity_approval_is_durable_and_exactly_once(plugin, monkeypatch):
         if method == 'POST':
             posted.append(payload)
             saved.update(payload)
-        return {'id':'receipt-a','status':'completed',**saved,'target':{'type':'task','id':'task-a','task':{'id':'task-a','projectId':'project-a','title':'가맹 준비','due':'2026-09-22'}}}
+        return {'id':'receipt-a','status':'completed',**saved,'target':{'type':'task','id':'task-a','task':{'id':'task-a','projectId':'project-a','ownerId':'fixture-owner','title':'가맹 준비','due':'2026-09-22'}}}
     monkeypatch.setattr(plugin, 'orbit_request', remote)
     with origin():
         pending = json.loads(plugin.sync_directive(dict(PAYLOAD, alternatives=options)))
@@ -84,6 +89,7 @@ def test_ambiguity_approval_is_durable_and_exactly_once(plugin, monkeypatch):
     assert len(pending['candidates']) == 2
     # Restart module; both proposal and selected choice must survive.
     restarted = load()
+    monkeypatch.setattr(restarted, 'authorize_project', fixture_binding)
     monkeypatch.setattr(restarted, 'orbit_request', remote)
     monkeypatch.setattr(restarted, 'approval_message', lambda current: {'text':f"ORBIT 승인 {pending['request_id']} 1",'user':'U_TEST','ts':current['message_ts']}, raising=False)
     with origin(event='Ev-approval', client='client-approval', ts='1790000000.000003'):
@@ -152,7 +158,7 @@ def test_readback_failure_retries_get_without_second_post(plugin, monkeypatch):
         calls.append(method)
         if method == 'POST': saved.update(payload)
         if method == 'GET' and fail[0]: raise OSError('read unavailable')
-        return {'id':'r1','status':'completed',**saved,'target':{'id':'t1','type':'task','task':{'id':'t1','title':'가맹 준비','due':'2026-09-22','projectId':'project-a'}}}
+        return {'id':'r1','status':'completed',**saved,'target':{'id':'t1','type':'task','task':{'id':'t1','title':'가맹 준비','due':'2026-09-22','projectId':'project-a','ownerId':'fixture-owner'}}}
     monkeypatch.setattr(plugin, 'orbit_request', remote)
     with origin():
         first = json.loads(plugin.sync_directive(PAYLOAD))
@@ -170,7 +176,7 @@ def test_incremental_aliases_keep_one_request(plugin, monkeypatch, sequence):
         with origin(event=event, client=client):
             keys.append(json.loads(plugin.sync_directive(PAYLOAD))['request_id'])
     assert len(set(keys)) == 1
-    assert calls == ['POST']
+    assert calls == ['POST', 'GET', 'GET']
 
 @pytest.mark.parametrize('change', [{'kind':'task','text':{'secret':'nested'},'due':'2026-09-22'}, {'kind':'mystery','text':'x'}, {'kind':'note','title':'x','text':'x','date':'bad'}, {'kind':'task','text':'x','due':'2026-09-22','attachments':['raw']}])
 def test_invalid_or_unbounded_changes_rejected_before_storage(plugin, change):
@@ -195,6 +201,7 @@ def test_unbound_pending_survives_restart_without_transmission(plugin, monkeypat
     monkeypatch.setattr(plugin, 'orbit_request', lambda *a, **kw: pytest.fail('must not send'))
     first = json.loads(plugin.sync_directive(PAYLOAD))
     restarted = load()
+    monkeypatch.setattr(restarted, 'authorize_project', fixture_binding)
     second = json.loads(restarted.sync_directive(PAYLOAD))
     assert first['state'] == second['state'] == 'pending_source'
     assert first['request_id'] == second['request_id']
@@ -211,7 +218,7 @@ def test_wrong_readback_never_reports_success(plugin, monkeypatch, tamper):
             saved.update(payload)
             return {'id': 'r1'}
         reply = {'id':'r1','status':'completed', **saved,
-                 'target':{'id':'t1','type':'task','task':{'id':'t1','projectId':'project-a','title':'가맹 준비','due':'2026-09-22'}}}
+                 'target':{'id':'t1','type':'task','task':{'id':'t1','projectId':'project-a','ownerId':'fixture-owner','title':'가맹 준비','due':'2026-09-22'}}}
         reply[tamper] = 'wrong' if tamper == 'id' else {}
         return reply
     monkeypatch.setattr(plugin, 'orbit_request', remote)

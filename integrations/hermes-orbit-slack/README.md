@@ -1,89 +1,64 @@
 # Trusted Slack directive receipt candidate — t_44ee3a1f
 
-**Independent QA artifact; NOT production-ready. Do not install/deploy this candidate.**
+**Local rework candidate; independent QA pending. NOT production-ready. Do not install/deploy.**
 
-Recovered the prior owner's uncommitted implementation in the same task worktree. Original base: `9be7744990f1dbd530f03c97f95e456ed9358614`. Fetched and verified GitHub `origin/main` against `ls-remote`, then fast-forwarded the worktree without discarding the integration to `d26db5c4b1b4a35f9da0748f886a6c86eaa850f0`.
+This bounded recovery finalizes the existing owner’s rework after timeout; it adds no further features. Rework parent: `635ec60b23afe7074b984f71339cc85f81674c3d`; recorded task base: `d26db5c4b1b4a35f9da0748f886a6c86eaa850f0`. This finalization did not fetch/rebase or assert current remote-main alignment. That must be rechecked before any integration/release.
 
-## Implemented and exercised locally
+## Locally exercised repairs (not full acceptance)
 
-- Tool identity is optional to the model and is resolved from bound gateway ContextVars plus the profile-scoped Slack event ledger. Environment-variable fallback is not trusted.
-- Runtime workspace, requester, channel, thread **and message timestamp** must match the ledger. Supplied source aliases cannot override it. The recovery added a failing regression and fixed the missing message timestamp check.
-- Bounded change payloads and proposal alternatives survive module reload in SQLite. Provider exception text is not persisted; a fixed failure category is stored.
-- Ambiguous candidate proposals do not POST until an exact approval command is read back from the requester in the original thread. Copied, bot-authored, edited, wrong-owner and wrong-route approvals fail closed. Recovery also fixed approval of a root message in its reply thread, with a RED→GREEN regression.
-- The selected proposal and original source are retained. Successful local replay returns the persisted receipt without another POST. A failed GET can retry GET without repeating POST. Failed provider status never yields overall success.
-- Source/change/project/target/receipt readback tampering fails verification.
-- Missing source is stored as `pending_source`, with no network transmission. Unknown POST outcome is `uncertain`, never automatically re-POSTed.
+- **Credential scope:** ORBIT endpoint/key and Slack token use Hermes secret scopes. An active scope missing a credential does not borrow process-global credentials. Concurrent scope fixtures exercise distinct configurations and missing-scope failures.
+- **Original-request cancellation:** approval/resume and dispatch/readback consult the original ledger cancellation fence, persist cancellation and preserve it across module reload. Tests cover cancellation before approval and during approval readback. This is not an atomic fence around a remote mutation: cancellation after the final local check can race a POST, requiring server reconciliation.
+- **Canonical binding:** dispatch requires a project ID and an authorized `orbit-slack-v2` binding matching workspace, requester, project and owner. Name-only requests and missing/misbound contracts fail closed before POST. Target owner and note date join existing source/change/project/receipt/target checks. This validates a proposed contract against fixtures; it does not supply a canonical backend or independently fetch the target outside its receipt response.
+- **Durable recovery:** persisted `operationKey` and immutable wire binding permit GET-only reconciliation of an uncertain POST. Lost-ACK and child-process-exit tests recover against synthetic remote state without a second POST. Delayed error/confirmation responses cannot overwrite a terminal completion in tested interleavings.
+- **Safer incomplete transitions:** an identical unbound→bound retry retains the original request ID and one row, returning `source_promotion_required` rather than creating a duplicate. Backend-generated approval retains its receipt and returns `receipt_transition_required`, rather than clearing the receipt and POSTing again. These are fail-closed guards, not completed promotion/approval workflows.
+- **Approval wording:** explicitly limits the gate to this ORBIT candidate’s receipt; does not imply already-attempted provider mutations were prevented or rolled back.
 
-## Real local demo, explicit fixture boundary
+Existing protections remain: trusted gateway context plus profile-scoped ledger identity (including message timestamp), bounded payloads, exact requester/thread Slack approval readback, durable proposal selection, no model-supplied identity override, no raw provider exception persistence, and no overall success for a failed provider.
 
-`demo.py` imports the actual plugin and actual Hermes ledger/session-context implementation. It uses a temporary HERMES_HOME and real SQLite files, reloads the plugin, runs a loopback HTTP server, executes the actual HTTP client, approval reader, receipt POST and target GET, and asserts exactly one POST across the successful replay scenario.
+## Actual validation from this finalization
 
-**Slack and ORBIT responses are synthetic fixtures, not the production backend, and no real provider is changed.** Only the HTTP destination is redirected in the harness. All synthetic identities are labelled test data; they are not the requester’s channel/message identity. Demonstrated output:
+`evidence.json` is generated by `verify.py` and includes exact commands, exit codes, captured output and SHA-256 hashes of Python artifacts. It replaces stale 33-test evidence. It explicitly records `production_verified: false`, synthetic remote boundaries and independent QA pending.
 
-- `pending_before_approval: needs_confirmation`
-- `restart_resume: completed`, `replay: completed`
-- `durable_request_rows: 1`, `receipt_posts: 1`, `origin_preserved: true`
-- `production_verified: false`
+- Plugin pytest: **50 passed in 5.19s**.
+- Loopback demo: **passed**; `needs_confirmation → module reload → completed → replay completed`, **one durable row, one receipt POST, original source preserved**.
+- Typecheck: **exit 0**, `npx --no-install tsc --noEmit --incremental false`.
+- Node tests: **633 passed, 0 failed**, using `node --experimental-strip-types --test` over `tests/*.test.mjs`.
+- Full build-bearing `npm test` and dependency installation were **not rerun** in this bounded finalization. Earlier runs are historical evidence, not validation of this exact rework.
+- No production probe was run during this finalization.
 
-This proves the component path, not end-to-end production integration or general exactly-once delivery.
+The demo imports the actual plugin, Hermes ledger/session context, uses temporary HERMES_HOME and real SQLite, and sends HTTP to a loopback server. **All Slack, canonical authorization and ORBIT receipt/target responses are synthetic fixtures. No real provider is changed.** The child-process crash test also uses synthetic persisted remote state, not a production crash/recovery exercise. Most plugin tests replace the authorization reader with a fixture; dedicated tests and the demo exercise the real reader against synthetic responses.
 
-## Contract validation: BLOCKED
+## Remaining acceptance / release gates
 
-Read-only authenticated GET to the configured `/api/integrations/slack/directives?id=contract-probe-nonexistent-t_44ee3a1f` returned **HTTP 403**, `text/plain; charset=UTF-8`, not JSON. No credentials, response bodies or actual records were printed. Redirect following is disabled. A 403 is an access-layer observation: it does **not** establish whether the production route exists behind that layer.
+1. **Queued gateway trusted source — unresolved runtime defect.** Prior independent QA reproduced inherited message A with queued origin B causing `runtime_source_mismatch` in actual gateway dispatch. No gateway source changes were made; timestamp checks remain strict. Complete envelope propagation and real queued dispatch tests are still required.
+2. **Upstream alias collisions — unresolved dependency defect.** Prior QA reproduced the installed ledger returning on the first alias without attaching later aliases and silently accepting contradictory combinations. Stable-timestamp plugin tests do not repair/prove ledger completeness. Coordinate a dependency fix and pin its verified revision.
+3. **Multiple instructions per message — unimplemented.** One request per source still rejects a distinct second payload as `payload_conflict`. Ordered per-instruction identities, independent receipts/approval/retry and duplicate-versus-replay handling are required.
+4. **Automatic ambiguity approval before any provider write — unimplemented.** This is a post-attempt receipt tool with caller-supplied alternatives, not a prepare/classify/resolve→approve→execute orchestration. Provider status is model supplied, not independently verified. No claim that all ambiguities are detected or provider side effects are prevented.
+5. **Canonical backend — absent implementation, not merely an access blocker.** The recorded canonical source has no `app/api/integrations/slack/directives/route.ts` implementing this contract. Need an agreed API, tenant authorization, append-only persistence migration, atomic/idempotent receipt/target writes and independent server tests. The proposed v2 binding and operation-key behavior below are not production guarantees.
+6. **Recovery — partial.** Authenticated same-request source promotion, explicit existing-receipt approval transition and legacy-row reconciliation remain blocked. Operation-key GET works only if a server implements it; missing/mismatched reconciliation must not trigger a new POST. General distributed exactly-once delivery, concurrent approvals, retention, connection lifetime and empty/invalid backend proposal behavior still need QA.
+7. **Production access — unresolved.** The prior owner and independent QA observed authenticated read-only GET returning **HTTP 403**, `text/plain`, not JSON. This finalization did not reproduce it. A 403 alone does not establish whether a route exists behind the access layer. Resolve access and verify authenticated real receipt/target behavior under release authorization; no production POST has been attempted here.
+8. **Real Slack approval/runtime — unverified.** Slack token scopes, actual approval readback and gateway dispatch need authorized end-to-end testing. Requester `U0B2R5WL206` and thread `1790043198.626399` are supplied task context; actual channel/current-message IDs remain unknown and were not invented or substituted with fixture identities.
+9. **Knowledge-base destination — unsupported.** Returns `destination_blocked`; no adapter or write proof.
+10. **Independent QA and release — pending.** This local commit is a handoff candidate, not a passed independent review, merged source, refreshed live plugin or deployed feature.
 
-The freshly verified canonical source has **no** `app/api/integrations/slack/directives/route.ts` or implementation of this contract. The historical integration was not imported wholesale. Live plugin/source was not changed. Consequently, the following candidate assumptions are unverified:
+## Proposed fixture contract (backend must implement and verify)
 
-1. `POST endpoint` accepts `{source, providerStatus, providerError, change, project?}` and returns a stable `{id}`. `source` includes platform, channelId, workspaceId, requesterId, messageTs, and available eventId/clientMsgId/threadId.
-2. `GET endpoint?id=...` returns that exact `id`, source, change and providerStatus. A completed result supplies canonical `project.id` and the actual task/note target: id, type and entity with matching projectId and requested values.
-3. A failed provider receipt reads back as `provider_failed`. Ambiguity reads back as `needs_confirmation` with bounded canonical project-ID candidates.
-4. Server authorization maps integration credentials + Slack identity to the correct tenant/owner. Backend receipt/target updates and alias handling must be atomic and idempotent. None of these server guarantees are supplied by this artifact.
+- `GET endpoint?resolveProjectId=...&workspaceId=...&requesterId=...` must return `{contract:"orbit-slack-v2", authorized:true, projectId, workspaceId, requesterId, ownerId}` with authenticated tenant/owner enforcement, not merely echoed input.
+- `POST endpoint` accepts `{operationKey, source, providerStatus, providerError, change, project, binding}` and returns a stable `{id}`. Source includes platform, channelId, workspaceId, requesterId, messageTs and available eventId/clientMsgId/threadId.
+- `GET endpoint?operationKey=...` reconciles the same durable operation to a receipt with matching wire fields; it must not create a second operation.
+- `GET endpoint?id=...` returns the exact receipt/source/change/providerStatus/operationKey/binding/project and actual target entity. A completed target must match ID/type/project/owner/requested values (including note date). Failed provider state is `provider_failed`. Backend confirmation retains its original receipt; a write transition API is not implemented here.
 
-## Missing acceptance / release blockers
+## Reproduce locally
 
-- **Production/backend contract and authenticated real receipt/target readback:** unavailable (403; canonical implementation absent). Requires an agreed current-main API, tenant authorization, append-only persistence migration and independent server integration tests. No production POST was attempted.
-- **Exactly-once recovery after an uncertain POST:** deliberately fail-closed, not automatic recovery. Needs backend idempotency/reconciliation by durable source identity. A local lock alone cannot prove distributed exactly-once behavior.
-- **Pending-source promotion:** an unbound durable request cannot yet be safely attached to a later trusted origin. It remains pending, and the current message suggests a fresh request. That does NOT satisfy no-duplicate same-request resume; a safe origin-binding protocol is still required.
-- **Automatic project/type/location ambiguity detection before provider writes:** caller-supplied alternatives are supported, but this is a post-attempt receipt tool. It does not intercept provider writes, infer all ambiguities, or provide a preflight/approval orchestration hook. Model-supplied provider status is not independently provider-verified here.
-- **Knowledge-base destination:** explicit `destination_blocked`; no knowledge-base write adapter. Do not claim that choice was saved.
-- **Slack production approval readback:** scopes/token access and gateway dispatch of approval messages are not verified against a real Slack event. No real channel/message IDs were supplied in this task; none were invented.
-- **Alias collision/incremental-alias completeness:** local sequence tests exercise the actual installed ledger with a stable message timestamp. They do not prove the upstream ledger attaches every new alias or detects all contradictory alias combinations. Plugin does not modify that ledger.
-- Further QA should examine concurrent approval/readback recovery, retention and cancellation, connection lifetime, and backend-generated empty/invalid proposals before promotion.
-
-## Independent verifier commands
-
-From this task's checkout (or a clean checkout of its commit):
-
-```bash
-cd /home/hermes/parallel-projects/orbit/.worktrees/t_44ee3a1f
-export PYTHONPATH=/home/hermes/.hermes/hermes-agent
-uv run --with pytest --python /home/hermes/.hermes/hermes-agent/venv/bin/python \
-  python -m pytest integrations/hermes-orbit-slack/tests -q
-uv run --with pytest --python /home/hermes/.hermes/hermes-agent/venv/bin/python \
-  python integrations/hermes-orbit-slack/demo.py
-npm run install:ci
-npm run typecheck
-npm test
-```
-
-The tested Hermes dependency HEAD is `4db2300592d902a9cb6b7f7f15ae08b8ea25f361`; it must expose `gateway.slack_event_ledger` and `gateway.session_context`. Tests/demo use temporary profile state and do not touch the live plugin. `pytest` is explicitly supplied by `uv`; it is not assumed installed globally.
-
-Optional authorized **read-only** production re-probe with the existing environment configuration:
+From this task checkout, with dependencies already installed:
 
 ```bash
-python3 integrations/hermes-orbit-slack/contract_probe.py
+python3 integrations/hermes-orbit-slack/verify.py --full \
+  --output /tmp/t_44ee3a1f-independent-evidence.json
 ```
 
-The probe always exits 2 because reading an intentionally nonexistent ID cannot establish full contract compatibility. It reports metadata only. Do not treat a later 200 or 404 alone as release approval. Do not copy credentials into reports or git.
+Without `--full`, only plugin pytest and loopback demo run. The verifier uses `uv run --with pytest`; defaults are `HERMES_SOURCE=/home/hermes/.hermes/hermes-agent` and `HERMES_PYTHON=/home/hermes/.hermes/hermes-agent/venv/bin/python`. Override these for another machine. Tested dependency HEAD: `4db2300592d902a9cb6b7f7f15ae08b8ea25f361`; tests require its `gateway.slack_event_ledger`, `gateway.session_context` and `agent.secret_scope`. The dependency’s recorded HEAD is not proof of a clean tree or a fixed runtime. Tests/demo redirect profile state to temporary directories. No build/deploy command or production probe is part of the verifier.
 
-## Verification obtained
+## Scope and rollback
 
-- Plugin tests: **33 passed** after the recovery fixes.
-- Local loopback component demo: passed all assertions.
-- `npm run install:ci`: passed (initial typecheck/test attempt lacked installed dependencies; corrected by canonical installer).
-- `npm run typecheck`: exit 0.
-- `npm test`: exit 0, including verified build and cold/warm Python-less setup checks. Full local logs: `/tmp/t_44ee3a1f-typecheck.log`, `/tmp/t_44ee3a1f-npm-test.log`, `/tmp/t_44ee3a1f-install.log`.
-- Read-only remote contract probe: exit 2 / HTTP 403 / unverified.
-
-## Rollback and scope
-
-Nothing was deployed, restarted, pushed or merged; no Kanban/profile/live-plugin changes were made. Only this task branch's integration files were added. To discard this candidate in a downstream branch, revert its integration commit; do not reset shared main. There is no production data rollback to perform. If this is ever installed after completing the blockers, preserve its durable pending/uncertain database through rollback so earlier requests cannot be silently reissued.
+Only this task worktree’s integration files were finalized. No live plugin/profile/Hermes source changes, push, deploy, restart, production calls or Kanban mutations were performed. To discard the rework downstream, revert its local rework commit; the preceding candidate remains non-production-ready. Do not reset shared main. There is no production data rollback. If an independently approved future version is installed, preserve pending/uncertain SQLite state on rollback to avoid silently reissuing earlier requests.

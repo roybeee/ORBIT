@@ -40,6 +40,7 @@ def database():
     os.chmod(folder / 'requests.sqlite3', 0o600)
     conn.row_factory = sqlite3.Row
     conn.execute('CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, origin TEXT, payload TEXT NOT NULL, state TEXT NOT NULL, choices TEXT NOT NULL DEFAULT "[]", selected TEXT, remote_id TEXT, response TEXT)')
+    conn.execute('CREATE TABLE IF NOT EXISTS request_wires (id TEXT PRIMARY KEY, wire TEXT NOT NULL)')
     return conn
 
 def bounded(params):
@@ -110,17 +111,46 @@ def http_json(url, token, method='GET', body=None):
         raise ValueError('invalid_response')
     return value
 
+def scoped_setting(name):
+    from agent.secret_scope import current_secret_scope, get_secret
+    scope = current_secret_scope()
+    # Even single-profile scope misses must not borrow another process credential.
+    return (scope.get(name, '') if scope is not None else get_secret(name, ''))
+
+
 def orbit_request(method, payload=None, remote_id=None):
-    endpoint = os.environ.get('ORBIT_SLACK_DIRECTIVE_URL', '')
-    token = os.environ.get('ORBIT_SLACK_INGEST_KEY', '')
+    endpoint = scoped_setting('ORBIT_SLACK_DIRECTIVE_URL')
+    token = scoped_setting('ORBIT_SLACK_INGEST_KEY')
     url = parse.urlsplit(endpoint)
     if url.scheme != 'https' or not url.netloc or url.username or url.query or url.fragment or not token:
         raise ValueError('orbit_configuration_required')
     if method == 'GET':
-        endpoint += '?' + parse.urlencode({'id': remote_id})
+        endpoint += '?' + parse.urlencode(payload if payload is not None else {'id': remote_id})
+        payload = None
     return http_json(endpoint, token, method, payload)
 
+def authorize_project(payload, origin):
+    project_id = (payload.get('project') or {}).get('id')
+    if not project_id:
+        raise ValueError('canonical_binding_required')
+    binding = orbit_request('GET', {'resolveProjectId': project_id,
+        'workspaceId': origin['workspace_scope'], 'requesterId': origin['requesting_user']})
+    if (binding.get('contract') != 'orbit-slack-v2' or binding.get('authorized') is not True
+            or binding.get('projectId') != project_id
+            or binding.get('workspaceId') != origin['workspace_scope']
+            or binding.get('requesterId') != origin['requesting_user']
+            or not isinstance(binding.get('ownerId'), str) or not binding['ownerId']):
+        raise ValueError('canonical_contract_unavailable')
+    return binding
+
+
 def verify_readback(data, wire):
+    if not wire.get('project', {}).get('id') or not wire.get('binding', {}).get('ownerId'):
+        raise ValueError('canonical_binding_required')
+    if data.get('operationKey') != wire.get('operationKey') or not wire.get('operationKey'):
+        raise ValueError('readback_operation_mismatch')
+    if data.get('binding') != wire['binding']:
+        raise ValueError('readback_owner_mismatch')
     if data.get('source') != wire['source'] or data.get('change') != wire['change'] or data.get('providerStatus') != wire['providerStatus']:
         raise ValueError('readback_mismatch')
     if wire['providerStatus'] == 'failed':
@@ -138,27 +168,80 @@ def verify_readback(data, wire):
     if not target.get('id') or target.get('type') != kind or entity.get('id') != target['id'] or entity.get('projectId') != data['project']['id']:
         raise ValueError('readback_target_missing')
     expected = {'title': change['text'], 'due': change['due']} if kind == 'task' else {'title': change['title'], 'body': change.get('text') if change['kind'] == 'note' else '\n'.join(f'{i + 1}) {text}' for i, text in enumerate(change['items']))}
+    expected['ownerId'] = wire['binding']['ownerId']
+    if change['kind'] != 'task':
+        expected['date'] = change['date']
     if any(entity.get(key) != value for key, value in expected.items()):
         raise ValueError('readback_target_mismatch')
     return 'completed'
 
+def cancellation(key, origin):
+    from gateway.slack_event_ledger import get_origin, origin_is_cancelled
+    correlation = origin['correlation_id']
+    if not get_origin(correlation) or origin_is_cancelled(correlation):
+        reply = result('cancelled', request_id=key, reconciliation_required=True)
+        with database() as db:
+            db.execute('UPDATE requests SET state=?,response=? WHERE id=?', ('cancelled', encoded(reply), key))
+        return reply
+    with database() as db:
+        row = db.execute('SELECT state,response FROM requests WHERE id=?', (key,)).fetchone()
+    if row and row['state'] == 'cancelled':
+        return json.loads(row['response'])
+    return None
+
+
+def save_response(key, reply):
+    # First terminal result wins over delayed transient responses. Cancellation
+    # can still supersede completion via the live ledger fence.
+    with database() as db:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute("UPDATE requests SET state=?,response=? WHERE id=? AND state NOT IN ('completed','provider_failed','cancelled')", (reply['state'], encoded(reply), key))
+        row = db.execute('SELECT response FROM requests WHERE id=?', (key,)).fetchone()
+        return json.loads(row['response'])
+
+
 def deliver(key, payload, origin):
-    wire = {'source': source_for(origin, {}), 'providerStatus': payload['provider_status'], 'providerError': payload['provider_error'], 'change': payload['change']}
+    stopped = cancellation(key, origin)
+    if stopped:
+        return stopped
+    wire = {'operationKey': key, 'source': source_for(origin, {}), 'providerStatus': payload['provider_status'], 'providerError': payload['provider_error'], 'change': payload['change']}
     if payload.get('project'):
         wire['project'] = payload['project']
+    try:
+        wire['binding'] = authorize_project(payload, origin)
+    except Exception as exc:
+        return result('blocked_contract', request_id=key, error=type(exc).__name__)
     # Commit the dispatch claim before I/O. A crash without a receipt ID remains
     # uncertain, never silently re-POSTed. Backend reconciliation is required.
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT * FROM requests WHERE id=?', (key,)).fetchone()
-        if row['state'] == 'completed' or row['state'] == 'provider_failed':
+        previous = db.execute('SELECT wire FROM request_wires WHERE id=?', (key,)).fetchone()
+        if previous and previous['wire'] != encoded(wire):
+            return result('binding_conflict', request_id=key)
+        if not previous and row['state'] not in ('pending', 'approved'):
+            return result('legacy_reconciliation_required', request_id=key)
+        db.execute('INSERT OR IGNORE INTO request_wires VALUES(?,?)', (key, encoded(wire)))
+        if row['state'] in ('completed', 'provider_failed', 'cancelled'):
             return json.loads(row['response'])
-        if row['state'] in ('sending', 'uncertain') and not row['remote_id']:
-            return result('uncertain', request_id=key, error='백엔드 접수 여부 확인이 필요합니다. 재전송하지 않았습니다.')
+        reconcile = row['state'] in ('sending', 'uncertain') and not row['remote_id']
         remote_id = row['remote_id']
         db.execute('UPDATE requests SET state=? WHERE id=?', ('sending', key))
     try:
+        if reconcile:
+            found = orbit_request('GET', {'operationKey': key})
+            if any(found.get(field) != wire.get(field) for field in ('operationKey', 'source', 'change', 'project', 'binding', 'providerStatus')):
+                raise ValueError('reconciliation_mismatch')
+            remote_id = found.get('id')
+            if not isinstance(remote_id, str) or not 1 <= len(remote_id) <= 200:
+                remote_id = None
+                raise ValueError('reconciliation_receipt_missing')
+            with database() as db:
+                db.execute('UPDATE requests SET remote_id=? WHERE id=?', (remote_id, key))
         if not remote_id:
+            stopped = cancellation(key, origin)
+            if stopped:
+                return stopped
             posted = orbit_request('POST', wire)
             remote_id = posted.get('id')
             if not isinstance(remote_id, str) or not remote_id or len(remote_id) > 200:
@@ -175,19 +258,23 @@ def deliver(key, payload, origin):
             if not isinstance(candidates, list) or len(candidates) > 8 or any(not isinstance(item, str) or not 1 <= len(item) <= 100 for item in candidates):
                 raise ValueError('invalid_candidates')
             choices = [{'label': item, 'destination': 'orbit', 'project': {'id': item}, 'change': payload['change']} for item in candidates]
+            stopped = cancellation(key, origin)
+            if stopped:
+                return stopped
             with database() as db:
-                db.execute('UPDATE requests SET state=?, choices=? WHERE id=?', ('needs_confirmation', encoded(choices), key))
-            return confirmation(key, choices)
+                db.execute('BEGIN IMMEDIATE')
+                db.execute("UPDATE requests SET choices=? WHERE id=? AND state NOT IN ('completed','provider_failed','cancelled')", (encoded(choices), key))
+            return save_response(key, confirmation(key, choices))
+        stopped = cancellation(key, origin)
+        if stopped:
+            return stopped
         state = verify_readback(readback, wire)
         reply = dict(result(state, request_id=key, receipt_id=remote_id, verified=True), success=state == 'completed')
-        with database() as db:
-            db.execute('UPDATE requests SET state=?, response=? WHERE id=?', (state, encoded(reply), key))
-        return reply
+        return save_response(key, reply)
     except Exception as exc:
         reply = result('readback_failed' if remote_id else 'uncertain', request_id=key, partial_failure=payload['provider_status'] == 'succeeded', retryable=bool(remote_id), error=type(exc).__name__)
-        with database() as db:
-            db.execute('UPDATE requests SET state=?,response=? WHERE id=?', (reply['state'], encoded(reply), key))
-        return reply
+        stopped = cancellation(key, origin)
+        return stopped or save_response(key, reply)
 
 def choices_for(payload):
     choices = payload.get('alternatives', [])
@@ -206,11 +293,11 @@ def choices_for(payload):
 def confirmation(key, choices):
     lines = [f'{index + 1}. {item["label"]} / {item["destination"]} / {item["change"].get("kind", "미확인")} / {encoded(item.get("project"))}' for index, item in enumerate(choices)]
     prompt = '등록 후보를 확인해 주세요.\n' + '\n'.join(lines)
-    prompt += f'\n요청자 본인이 이 스레드에 정확히 `ORBIT 승인 {key} 번호`로 답해 주세요. 승인 전에는 실행하지 않습니다.'
+    prompt += f'\n요청자 본인이 이 스레드에 정확히 `ORBIT 승인 {key} 번호`로 답해 주세요. 이 ORBIT 후보의 접수는 승인 전 실행하지 않습니다. 이미 시도된 외부 제공자 작업은 되돌리지 않습니다.'
     return result('needs_confirmation', request_id=key, confirmation_required=True, candidates=choices, approval_prompt=prompt)
 
 def approval_message(origin):
-    token = os.environ.get('SLACK_BOT_TOKEN', '')
+    token = scoped_setting('SLACK_BOT_TOKEN')
     if not token:
         raise ValueError('slack_readback_configuration_required')
     auth = http_json('https://slack.com/api/auth.test', token)
@@ -240,8 +327,14 @@ def resume(key):
         raise ValueError('approval_scope_mismatch')
     if current['correlation_id'] == original['correlation_id']:
         raise ValueError('fresh_approval_required')
+    stopped = cancellation(key, original)
+    if stopped:
+        return stopped
     choices = json.loads(row['choices'])
     message = approval_message(current)
+    stopped = cancellation(key, original)
+    if stopped:
+        return stopped
     if message.get('user') != current['requesting_user'] or message.get('ts') != current['message_ts'] or message.get('bot_id') or message.get('subtype') or message.get('edited'):
         raise ValueError('approval_not_original_human_message')
     # Exact anchored grammar, not a model-supplied "approved" boolean or copied quote.
@@ -255,9 +348,11 @@ def resume(key):
         if row['selected'] and row['selected'] != encoded(selected):
             raise ValueError('approval_conflict')
         if not row['selected']:
+            if row['remote_id']:
+                return result('receipt_transition_required', request_id=key, receipt_id=row['remote_id'])
             if row['state'] != 'needs_confirmation':
                 raise ValueError('request_not_awaiting_approval')
-            db.execute('UPDATE requests SET selected=?,state=?,remote_id=NULL WHERE id=?', (encoded(selected), 'approved', key))
+            db.execute('UPDATE requests SET selected=?,state=? WHERE id=?', (encoded(selected), 'approved', key))
     if selected['destination'] != 'orbit':
         return result('destination_blocked', request_id=key, error='지식베이스 쓰기 어댑터는 미구현입니다. 저장하지 않았습니다.')
     payload = json.loads(row['payload'])
@@ -274,9 +369,12 @@ def sync_directive(params, **kwargs):
         choices = choices_for(payload)
         origin = bound_origin()
         source = source_for(origin, params) if origin else None
-        key = 'origin:' + origin['correlation_id'] if origin and source else 'unbound:' + hashlib.sha256(encoded(payload).encode()).hexdigest()
+        unbound_key = 'unbound:' + hashlib.sha256(encoded(payload).encode()).hexdigest()
+        key = 'origin:' + origin['correlation_id'] if origin and source else unbound_key
         with database() as db:
             db.execute('BEGIN IMMEDIATE')
+            if source and db.execute('SELECT 1 FROM requests WHERE id=?', (unbound_key,)).fetchone():
+                return encoded(result('source_promotion_required', request_id=unbound_key))
             db.execute('INSERT OR IGNORE INTO requests(id,origin,payload,state,choices) VALUES(?,?,?,?,?)', (key, encoded(origin) if source else None, encoded(payload), 'pending_source' if not source else ('needs_confirmation' if choices else 'pending'), encoded(choices)))
             row = db.execute('SELECT * FROM requests WHERE id=?', (key,)).fetchone()
             if row['payload'] != encoded(payload):
