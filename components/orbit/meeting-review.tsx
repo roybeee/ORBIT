@@ -10,7 +10,10 @@ export function MeetingReview({noteId,revision,demo,onChanged}:{noteId:string;re
  const [dates,setDates]=useState<Record<string,string>>({}),[merging,setMerging]=useState(''),[targets,setTargets]=useState<Record<string,string>>({});
  const [data,setData]=useState<Review|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(''),[held,setHeld]=useState(''),[reason,setReason]=useState(''),[date,setDate]=useState(''),[notice,setNotice]=useState(''),[overlap,setOverlap]=useState<{id:string;overlapConfirmation:string;conflicts:{title:string;date:string;start:number;end:number}[]}|null>(null);
  const load=useCallback(async()=>{const d=await agentRequest('/api/meetings/review?noteId='+encodeURIComponent(noteId));setData(d);return d as Review},[noteId]);
- useEffect(()=>{if(demo)return;let alive=true;setData(null);setError('');const get=async()=>{try{const d=await agentRequest('/api/meetings/review?noteId='+encodeURIComponent(noteId));if(alive)setData(d)}catch(e){if(alive)setError((e as Error).message)}};void get();const timer=setInterval(()=>void get(),5000);return()=>{alive=false;clearInterval(timer)}},[noteId,revision,demo]);
+ const reviewKey=noteId+':'+revision;
+ const [loadedKey,setLoadedKey]=useState(reviewKey);
+ if(loadedKey!==reviewKey){setLoadedKey(reviewKey);if(!demo){setData(null);setError('')}}
+ useEffect(()=>{if(demo)return;let alive=true;const get=async()=>{try{const d=await agentRequest('/api/meetings/review?noteId='+encodeURIComponent(noteId));if(alive)setData(d)}catch(e){if(alive)setError((e as Error).message)}};void get();const timer=setInterval(()=>void get(),5000);return()=>{alive=false;clearInterval(timer)}},[noteId,revision,demo]);
  async function analyze(){setBusy('analysis');setError('');try{setData(await agentRequest('/api/meetings/review','POST',{noteId,retry:true}));setNotice('요약과 결재안을 준비하고 있습니다.')}catch(e){setError((e as Error).message)}finally{setBusy('')}}
  async function decide(item:AgentAction,decision:'approve'|'defer'|'reject'|'reconsider',confirmation?:string){
   if(busy)return;setBusy(item.id);setError('');setNotice('');

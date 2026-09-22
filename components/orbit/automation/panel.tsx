@@ -42,7 +42,9 @@ export function AutomationPanel({snapshot,perform,busy,demo,visible,onAsk}:{snap
     if(!storeId&&next.capabilities?.stores.length)setStoreId(next.capabilities.stores[0].id);
   }
   useEffect(()=>{if(!visible||demo)return;let live=true;const update=()=>refresh().catch(e=>{if(live)setError(e.message)});void update();const timer=setInterval(()=>void update(),15000);return()=>{live=false;clearInterval(timer)}},[visible,demo,storeId,month]);
-  useEffect(()=>{setResolveNote('');setConfirmedStopped(false)},[summary?.id]);
+  const [resolvedRunId,setResolvedRunId]=useState(summary?.id);
+  if(resolvedRunId!==summary?.id){setResolvedRunId(summary?.id);setResolveNote('');setConfirmedStopped(false)}
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the previous run's detail error is cleared before the selected run's detail is requested
   useEffect(()=>{if(!visible||tab!=='runs'||!summary)return;let live=true;setDetailError('');agentRequest('/api/automation?runId='+summary.id).then(result=>{if(live)setRunDetail(result.run)}).catch(e=>{if(live)setDetailError(e.message)});return()=>{live=false}},[visible,tab,summary?.id,summary?.updatedAt]);
   async function action(body:unknown){setWorking(true);try{const result=await agentRequest('/api/automation','POST',body);await refresh();return result}catch(e){toast.error((e as Error).message);return null}finally{setWorking(false)}}
   async function connect(){const result=await action({action:'connect',token:token.trim()});if(result){setToken('');toast.success('ODA 자동화 연결을 확인했습니다.')}}

@@ -3,7 +3,7 @@ import {Classifications} from '../phase2/classifications';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {NoteLibrary} from '../note-library';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {BookOpen,Network,RefreshCw,Link2,LoaderCircle,Search,ArrowUpRight} from 'lucide-react';
 import {Connections,agentRequest} from '../agent/connections';
 import type {Connection} from '@/lib/orbit/agent/types';
@@ -14,7 +14,8 @@ import {normalize} from '@/lib/orbit/classify';
 export function WikiLibrary({onAsk,data,revision,demo,busy,onRefresh,onOpen,perform,initialKind=''}:{initialKind?:string;onAsk:(text:string)=>void;data:WorkspaceData;revision:number;perform:(a:WorkspaceAction,message?:string)=>Promise<boolean>;demo:boolean;busy:boolean;onRefresh:()=>Promise<void>;onOpen:(kind:'note'|'task'|'event',id:string)=>void}){
  const [mode,setMode]=useState<'graph'|'list'|'search'>('search'),[selected,setSelected]=useState(''),[query,setQuery]=useState(''),[loading,setLoading]=useState(!demo),[syncing,setSyncing]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[connecting,setConnecting]=useState(false),[connections,setConnections]=useState<Connection[]>([]),[zoom,setZoom]=useState(1);
  const [projectId,setProjectId]=useState(''),[tag,setTag]=useState(''),[documentKind,setDocumentKind]=useState(initialKind);
- const refresh=useRef(onRefresh);refresh.current=onRefresh;const lock=useRef(false),busyRef=useRef(busy);busyRef.current=busy;
+ const refresh=useRef(onRefresh),lock=useRef(false),busyRef=useRef(busy);
+ useLayoutEffect(()=>{refresh.current=onRefresh;busyRef.current=busy},[onRefresh,busy]);
  async function sync(){if(demo||lock.current||busyRef.current)return;lock.current=true;setSyncing(true);setError('');try{const result=await agentRequest('/api/wiki','POST',{action:'sync'});setMessage(result.warnings?.length?result.warnings.join(' / '):result.mail?.connected?`메일 ${result.mail.count}개 추가 · ${result.mail.more?'최근 30일 기록을 계속 가져오는 중':'최근 수집 완료'}`:'일정 확인 완료 · Gmail을 연결하면 메일도 수집합니다.');await refresh.current()}catch(e){setError((e as Error).message)}finally{lock.current=false;setSyncing(false)}}
  useEffect(()=>{if(demo)return;let active=true;void (async()=>{try{const result=await agentRequest('/api/wiki','POST',{action:'bootstrap'});if(result.imported)await refresh.current();if(active){const status=await agentRequest('/api/integrations');setConnections(status.connections);await sync()}}catch(e){if(active)setError((e as Error).message)}finally{if(active)setLoading(false)}})();const timer=setInterval(()=>{if(document.visibilityState==='visible')void sync()},60000);return()=>{active=false;clearInterval(timer)}},[demo]);
  const wiki=data.notes.filter(n=>n.kind==='wiki'),active=wiki.find(n=>n.id===selected),q=normalize(query);

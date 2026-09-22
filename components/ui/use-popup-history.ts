@@ -10,11 +10,12 @@ export function pushPopupRoute(state:unknown,url:string){popupStack().push(state
 export function replacePopupRoute(state:unknown,url:string){popupStack().replace(state,url);}
 
 export function usePopupHistory({open,defaultOpen,onOpenChange,children,historyPriority=0}:{open?:boolean;defaultOpen?:boolean;onOpenChange?:(open:boolean)=>void;children?:ReactNode;historyPriority?:number}){
- const id=useRef(Symbol()),parent=useContext(PopupParent);
+ const [id]=useState(()=>Symbol()),parent=useContext(PopupParent);
  const [internal,setInternal]=useState(defaultOpen??false);
  const shown=open??internal;
  const change=(value:boolean)=>{if(open===undefined)setInternal(value);onOpenChange?.(value);};
- const latest=useRef(change);latest.current=change;
- useLayoutEffect(()=>{if(shown)return popupStack().register(()=>latest.current(false),{id:id.current,parent,priority:historyPriority});},[shown,parent,historyPriority]);
- return {open:shown,onOpenChange:change,children:createElement(PopupParent.Provider,{value:id.current},children)};
+ const latest=useRef(change);
+ useLayoutEffect(()=>{latest.current=change});
+ useLayoutEffect(()=>{if(shown)return popupStack().register(()=>latest.current(false),{id,parent,priority:historyPriority});},[shown,parent,historyPriority,id]);
+ return {open:shown,onOpenChange:change,children:createElement(PopupParent.Provider,{value:id},children)};
 }
