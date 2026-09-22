@@ -6,6 +6,7 @@ import {advanceMeetingReviews,meetingReviewDetail,requestMeetingReview} from '..
 import {advanceAgent} from '../lib/orbit/agent/runner.ts';
 import {decide} from '../lib/orbit/agent/decisions.ts';
 import {meetingProposals} from '../lib/orbit/meetings/review.ts';
+import {mergeMeetingProposals,mergedNotePrefix} from '../lib/orbit/meetings/merge.ts';
 import {importRecording} from '../lib/orbit/meetings/store.ts';
 import {projectTimeline} from '../lib/orbit/project-context.ts';
 const owner='meeting-owner',env={OPENAI_API_KEY:'fixture-only',ORBIT_CHAT_MODEL:'gpt-5.6-luna'};
@@ -47,3 +48,42 @@ test('source changes after analysis cannot apply a stale project update',async()
 test('Plaud import queues text without waiting for Plaud summary, idempotently; long split sources each get a review',async()=>{const db=createDatabase();try{const record={id:'plaud-test',title:'녹음',started:'2026-09-22',duration:10,transcript:'원문',summary:'',pending:true};await importRecording(db,owner,record);assert.equal((await db.prepare('SELECT count(*) AS n FROM orbit_meeting_reviews').first()).n,1);await importRecording(db,owner,{...record,transcript:'가'.repeat(190000),summary:'회의',pending:false});const n=(await db.prepare('SELECT count(*) AS n FROM orbit_meeting_reviews').first()).n;assert.equal(n,4);await importRecording(db,owner,{...record,transcript:'가'.repeat(190000),summary:'회의',pending:false});assert.equal((await db.prepare('SELECT count(*) AS n FROM orbit_meeting_reviews').first()).n,n)}finally{db.close()}});
 test('forged evidence and external execution cannot become meeting approval cards',async()=>{const db=createDatabase();try{await seed(db);const data=(await readWorkspace(db,owner)).data;await assert.rejects(()=>meetingProposals(note,data,[{...proposals()[0],source:{line:1,quote:'없는 발언'}}],[]),/원문 근거/);await assert.rejects(()=>meetingProposals(note,data,[{...proposals()[0],action:{type:'agent.dispatch',title:'메일 전송',instruction:'메일 전송',projectId:null,taskIds:[]}}],[]),/일정·할 일·프로젝트/)}finally{db.close()}});
 test('overlapping meeting requires explicit second confirmation',async()=>{const db=createDatabase();try{await seed(db);await cmd(db,{type:'event.upsert',event:{id:'existing',title:'기존 일정',date:'2099-01-06',start:600,end:660,kind:'meeting',projectId:'oda'}});const p=proposals()[2];p.action.event.projectId='oda';const d=await analyze(db,[p]);assert.equal(d.status,'completed',d.error);let confirmation;await assert.rejects(()=>decide(db,owner,{id:d.actions[0].id,decision:'approve'},env),e=>{confirmation=e.details?.overlapConfirmation;return e.code==='CALENDAR_OVERLAP'});assert.equal((await readWorkspace(db,owner)).data.events.length,1);await decide(db,owner,{id:d.actions[0].id,decision:'approve',overlapConfirmation:confirmation},env);assert.equal((await readWorkspace(db,owner)).data.events.length,2)}finally{db.close()}});
+const line=n=>({line:n,quote:source.split('\n')[n-1]});
+const task=(id,title,extra={})=>({title,reason:title+' 근거',source:line(1),action:{type:'task.upsert',autoAssign:false,task:{id,title,projectId:'oda',status:'todo',duration:30,due:'2099-01-05',impact:3,focus:false,definition:title+' 완료 기준',...extra}}});
+const event=(id,title,start,end,date='2099-01-06')=>({title,reason:title+' 근거',source:line(3),action:{type:'event.upsert',event:{id,title,projectId:'oda',date,start,end,kind:'meeting'}}});
+test('merging two task cards combines content into one pending card; the other is marked merged and cannot be reused',async()=>{const db=createDatabase();try{
+ await seed(db);const d=await analyze(db,[task('a','물류사 단가 문의'),task('b','물류사 공급 조건 확인',{duration:45,due:'2099-01-03',impact:4}),event('e1','웰스토리 미팅',600,660),event('e2','추가 물류사 소개',660,720)]);
+ assert.equal(d.status,'completed',d.error);assert.equal(d.actions.length,4);
+ const [a,b,e1,e2]=d.actions;
+ await mergeMeetingProposals(db,owner,note.id,a.id,b.id);
+ let detail=await meetingReviewDetail(db,owner,note.id);const merged=detail.actions.find(x=>x.id===a.id),gone=detail.actions.find(x=>x.id===b.id);
+ assert.equal(merged.state,'pending');assert.equal(merged.title,'물류사 단가 문의');assert.equal(merged.action.task.duration,75);assert.equal(merged.action.task.due,'2099-01-03');assert.equal(merged.action.task.impact,4);
+ assert.match(merged.action.task.definition,/물류사 단가 문의 완료 기준/);assert.match(merged.action.task.definition,/\[통합\] 물류사 공급 조건 확인: 물류사 공급 조건 확인 완료 기준/);assert.match(merged.reason,/\[통합된 결재안\] 물류사 공급 조건 확인/);assert.match(merged.reason,/물류사 공급 조건 확인 근거/);
+ assert.equal(gone.state,'rejected');assert.equal(gone.note,mergedNotePrefix+'물류사 단가 문의');assert.equal(detail.actions.filter(x=>x.state==='pending').length,3);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,b.id),/통합할 회의 결재안이 아닙니다/);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,e1.id),/같은 종류/);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,a.id),/서로 다른 결재안/);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,'other-note',e1.id,e2.id),/통합할 회의 결재안이 아닙니다/);
+ await mergeMeetingProposals(db,owner,note.id,e1.id,e2.id);
+ detail=await meetingReviewDetail(db,owner,note.id);const meeting=detail.actions.find(x=>x.id===e1.id);
+ assert.equal(meeting.action.event.start,600);assert.equal(meeting.action.event.end,720);assert.match(meeting.action.event.description,/\[통합\] 추가 물류사 소개/);assert.equal(detail.actions.find(x=>x.id===e2.id).state,'rejected');
+ await decide(db,owner,{id:a.id,decision:'approve'},env);await decide(db,owner,{id:e1.id,decision:'approve'},env);
+ const saved=(await readWorkspace(db,owner)).data;assert.equal(saved.tasks.length,1);assert.equal(saved.tasks[0].duration,75);assert.match(saved.tasks[0].definition,/\[통합\]/);assert.equal(saved.events.length,1);assert.equal(saved.events[0].end,720);
+ await assert.rejects(()=>decide(db,owner,{id:b.id,decision:'approve'},env),/이미 적용|상태/);assert.equal((await readWorkspace(db,owner)).data.tasks.length,1);
+}finally{db.close()}});
+test('merging resolves a missing due date from the other card and keeps it required when both lack one',async()=>{const db=createDatabase();try{
+ await seed(db);const undated=(id,title)=>{const t=task(id,title);delete t.action.task.due;return t};
+ const d=await analyze(db,[undated('a','단가 문의'),task('b','공급 조건',{due:'2099-01-09'}),undated('c','샘플 요청'),undated('x','견적 정리')]);
+ assert.equal(d.status,'completed',d.error);const [a,b,c,x]=d.actions;assert.equal(a.guard.meeting.needsDue,true);
+ await mergeMeetingProposals(db,owner,note.id,a.id,b.id);
+ let merged=(await meetingReviewDetail(db,owner,note.id)).actions.find(i=>i.id===a.id);
+ assert.equal(merged.guard.meeting.needsDue,false);assert.equal(merged.action.task.due,'2099-01-09');assert.doesNotMatch(merged.reason,/\[마감일 확인 필요\]/);assert.match(merged.reason,/2099-01-09/);
+ await decide(db,owner,{id:a.id,decision:'approve'},env);assert.equal((await readWorkspace(db,owner)).data.tasks[0].due,'2099-01-09');
+ await mergeMeetingProposals(db,owner,note.id,c.id,x.id);merged=(await meetingReviewDetail(db,owner,note.id)).actions.find(i=>i.id===c.id);
+ assert.equal(merged.guard.meeting.needsDue,true);await assert.rejects(()=>decide(db,owner,{id:c.id,decision:'approve'},env),/마감일을 지정/);
+}finally{db.close()}});
+test('a merged card cannot be applied after the source changes',async()=>{const db=createDatabase();try{
+ await seed(db);const d=await analyze(db,[task('a','단가 문의'),task('b','공급 조건')]);const [a,b]=d.actions;await mergeMeetingProposals(db,owner,note.id,a.id,b.id);
+ const meta=await readNote(db,owner,note.id);await cmd(db,{type:'note.upsert',note:{...meta,body:source+'\n추가 논의'},expectedNoteRevision:meta.revision});
+ await assert.rejects(()=>decide(db,owner,{id:a.id,decision:'approve'},env),/회의록 또는 연결 대상/);await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,b.id));assert.equal((await readWorkspace(db,owner)).data.tasks.length,0);
+}finally{db.close()}});
