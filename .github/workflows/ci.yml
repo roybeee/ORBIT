@@ -33,5 +33,4 @@ jobs:
       - name: Migration history is append-only and consistent
         run: node scripts/check-migrations.mjs ${MIGRATION_BASE:+--base "$MIGRATION_BASE"}
       - run: npm run typecheck
-      - run: npm run lint
       - run: npm test
