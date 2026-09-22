@@ -1,6 +1,6 @@
 # Canonical Slack directive backend — unreleased candidate
 
-Fresh remote default branch verified against `git ls-remote`: `d26db5c4b1b4a35f9da0748f886a6c86eaa850f0`. Existing task commits preserved. No deployment or real user write has been performed.
+Fresh remote default branch verified against `git ls-remote`: `1739316ef0a2f345c1aab2d935e3b3df283beaea`. Existing task commits preserved. No deployment or real user write has been performed.
 
 ## Implemented
 
@@ -17,7 +17,7 @@ Fresh remote default branch verified against `git ls-remote`: `d26db5c4b1b4a35f9
 
 ## Provisioning and migration (release operator only)
 
-Append-only generated migration: `drizzle/0028_volatile_adam_destine.sql`, plus `drizzle/meta/0028_snapshot.json` and updated journal. Adds `orbit_slack_credentials` and `orbit_slack_directives`; does not seed credentials or user data. Apply through the canonical approved release migration path, not runtime table creation.
+Append-only generated migration: `drizzle/0029_woozy_mikhail_rasputin.sql`, plus `drizzle/meta/0029_snapshot.json` and updated journal. Adds `orbit_slack_credentials` and `orbit_slack_directives`; does not seed credentials or user data. Apply through the canonical approved release migration path, not runtime table creation.
 
 An approved operator must generate a cryptographically random credential (at least 32 random bytes, base64url), retain it only in the existing scoped secret configuration, and provision only its SHA-256 digest with a verified canonical owner ID, verified Slack workspace and requester IDs, literal scope `directives:write`, explicit future epoch-millisecond expiry and `revoked=0`. There is deliberately no unauthenticated registration endpoint or automatic posted-owner enrollment. Neither task context nor this document supplies a verified owner/workspace/channel mapping. Revoke with `revoked=1`; rotation must preserve the verified principal. No provisioning was performed here.
 
@@ -31,7 +31,7 @@ After `npm run build`, `node --experimental-strip-types --test tests/slack-direc
 
 The local note-only core now supports `orbit_slack_note_prepare`: read-only `GET ?prepareNote=1&workspaceId=...&requesterId=...` resolves up to eight actual owner-scoped canonical candidates (optional exact `projectId`). Name-only input never silently selects a destination. The plugin durably freezes the original note and candidates, prompts for exact requester approval even for one explicit project, and uses the existing authenticated Slack readback + original cancellation fence before execute. Execute reauthorizes the selected project, POSTs once, and verifies the canonical note via GET; uncertain dispatch uses operation-key reconciliation. Preparation makes no backend receipt or note write. The legacy wire's `providerStatus=succeeded` in this note path requests local ORBIT execution; it does not attest to an external provider attempt. Only canonical readback establishes completion.
 
-`tests/test_note_backend.py` uses actual gateway ledger/context, the actual plugin and real TypeScript/SQLite service over a test-only stdin transport. Slack auth/message readback responses are fixtures, NOT real Slack verification. It proves ambiguity causes zero note/receipt writes, a different requester cannot approve, and the verified requester choice produces one exact-text canonical note with one POST across replay. The built Worker HTTP test separately covers route dispatch.
+`tests/test_note_backend.py` uses actual gateway ledger/context, real SDK full discovery and registry dispatch of BOTH exposed tools, and the real TypeScript/SQLite service over a test-only stdin transport. Successful legacy note calls are routed through canonical preparation, not directly to POST. A dispatch-level selected-choice fence denies stale unapproved notes. Already approved identical retries do not require a new approval; failed-provider receipts create no note and preserve their receipt-only behavior. There is no trustworthy new-note destination-intent binding in this candidate beyond verified requester selection; project access and model assertions alone do not establish intent. Slack auth/message readback responses are fixtures, NOT real Slack verification. It proves ambiguity causes zero note/receipt writes, a different requester cannot approve, and the verified requester choice produces one exact-text canonical note with one POST across replay. The built Worker HTTP test separately covers route dispatch.
 
 This is NOT the whole deployed workflow. Legacy backend `needs_confirmation` receipt transitions still return `receipt_transition_required`; do not clear receipts or change operation keys. Preparation avoids that legacy transition by not creating a remote receipt before approval. General provider/classifier orchestration, task/calendar/provider adapters and filesystem KB writes remain unsupported. The backend trusts the scoped caller's approval/provenance attestation, not an independently verified server-side Slack approval token.
 

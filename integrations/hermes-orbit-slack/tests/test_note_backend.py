@@ -29,20 +29,24 @@ def backend():
     assert child.returncode == 0
 
 @pytest.fixture
-def registered(plugin, tmp_path):
-    """Actual SDK manifest discovery, loader and scoped tool registry."""
+def registered(plugin, tmp_path, monkeypatch):
+    """Actual SDK discovery, config enablement, loader and scoped tool registry."""
     import shutil
+    import hermes_cli.plugins as sdk
     from hermes_cli.plugins import PluginManager
     from tools.registry import registry
     folder = tmp_path / 'plugins' / 'orbit-slack-directive-sync'
     folder.mkdir(parents=True)
     for name in ('__init__.py', 'plugin.yaml'):
         shutil.copy(Path(__file__).parents[1] / name, folder / name)
+    (tmp_path / 'config.yaml').write_text('plugins:\n  enabled: [orbit-slack-directive-sync]\n')
+    # Isolate unrelated plugin sources only; use the real full discovery path.
+    monkeypatch.setattr(sdk, 'get_bundled_plugins_dir', lambda: tmp_path / 'empty-bundled')
+    monkeypatch.setattr(sdk, 'discover_entrypoint_manifests', lambda: [])
+    monkeypatch.delenv('HERMES_ENABLE_PROJECT_PLUGINS', raising=False)
     manager = PluginManager(scope_key=str(tmp_path))
-    manifests = manager._scan_directory(folder.parent, source='user')
-    assert len(manifests) == 1
-    manager._load_plugin(manifests[0])
-    loaded = manager._plugins[manifests[0].key or manifests[0].name]
+    manager.discover_and_load()
+    loaded = manager._plugins['orbit-slack-directive-sync']
     assert loaded.enabled and not loaded.error, loaded.error
     try:
         yield loaded, registry
@@ -77,13 +81,64 @@ def test_registered_tools_cannot_bypass_ambiguous_note_gate(registered, monkeypa
         approvals.append(current)
         return {'text':f"ORBIT 승인 {pending['request_id']} 1", 'user':'U_TEST', 'ts':current['message_ts']}
     monkeypatch.setattr(loaded.module, 'approval_message', approval)
+    with origin(event='Ev-other', client='other', user='OTHER', ts='1790000000.000004'):
+        wrong = json.loads(registry.dispatch(tool, {'request_id':pending['request_id']}))
+    assert wrong['state'] == 'rejected' and not approvals
+    assert 'POST' not in calls and remote('INSPECT')['receipts']['n'] == 0
     with origin(event='Ev-approval', client='approval', ts='1790000000.000003'):
         done = json.loads(registry.dispatch(tool, {'request_id':pending['request_id']}))
         replay = json.loads(registry.dispatch(tool, {'request_id':pending['request_id']}))
     assert approvals and done['success'] and replay['success'], (done, replay)
+    monkeypatch.setattr(loaded.module, 'approval_message', lambda _: pytest.fail('do not reapprove the same authorized operation'))
+    with origin():
+        authorized_replay = json.loads(registry.dispatch(tool, params))
+    assert authorized_replay['success'], authorized_replay
     actual = remote('INSPECT')
     assert calls.count('POST') == actual['receipts']['n'] == 1
     assert actual['workspace']['data']['notes'][0]['body'] == NOTE['change']['text']
+
+
+@pytest.mark.parametrize('extra', [
+    {'alternatives':[]},
+    {'alternatives':[{'label':'model-approved', 'destination':'orbit', 'project':{'id':'project-a'}, 'change':NOTE['change']}]},
+])
+def test_legacy_model_alternatives_are_not_write_authority(registered, monkeypatch, backend, extra):
+    loaded, registry = registered
+    remote, calls = backend
+    monkeypatch.setattr(loaded.module, 'orbit_request', remote)
+    with origin():
+        reply = json.loads(registry.dispatch('orbit_slack_directive_sync', dict(NOTE, provider_status='succeeded', project={'id':'project-a'}, **extra)))
+    assert reply['state'] == 'needs_confirmation'
+    assert reply['candidates'][0]['label'] == 'Same name'
+    assert 'POST' not in calls and remote('INSPECT')['receipts']['n'] == 0
+
+
+def test_failed_legacy_note_is_receipt_only_without_creation_approval(registered, monkeypatch, backend):
+    loaded, registry = registered
+    remote, calls = backend
+    monkeypatch.setattr(loaded.module, 'orbit_request', remote)
+    monkeypatch.setattr(loaded.module, 'approval_message', lambda _: pytest.fail('no creation to approve'))
+    with origin():
+        reply = json.loads(registry.dispatch('orbit_slack_directive_sync', dict(NOTE, provider_status='failed', project={'id':'project-a'})))
+    assert reply['state'] == 'provider_failed' and reply['verified'] and not reply['success']
+    actual = remote('INSPECT')
+    assert actual['workspace']['data']['notes'] == []
+    assert calls.count('POST') == actual['receipts']['n'] == 1
+
+
+def test_stale_pending_note_cannot_dispatch_without_durable_selection(plugin, monkeypatch, backend):
+    p = load()
+    remote, calls = backend
+    monkeypatch.setattr(p, 'orbit_request', remote)
+    with origin():
+        current = p.bound_origin()
+        key = 'origin:' + current['correlation_id']
+        payload = p.bounded(dict(NOTE, project={'id':'project-a'}, provider_status='succeeded'))
+        with p.database() as db:
+            db.execute('INSERT INTO requests(id,origin,payload,state) VALUES(?,?,?,?)', (key,p.encoded(current),p.encoded(payload),'pending'))
+        reply = p.deliver(key, payload, current)
+    assert reply['state'] == 'approval_required'
+    assert 'POST' not in calls and remote('INSPECT')['receipts']['n'] == 0
 
 
 def test_note_prepare_tool_is_registered(plugin):

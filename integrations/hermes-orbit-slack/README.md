@@ -4,11 +4,17 @@
 
 Continuation preserves the original owner’s work and adds the real canonical backend plus minimal note preparation flow. Earlier rework parent: `635ec60b23afe7074b984f71339cc85f81674c3d`. Remote-main verification and latest validation are recorded immediately below; recheck before integration/release.
 
-## Latest continuation: canonical note preparation (supersedes historical validation below)
+## Latest rework: exposed-tool gate and fresh-main reconciliation
 
-Backend preserved in commit `d6a2f4c`; refreshed remote main and ls-remote both verified `d26db5c4b1b4a35f9da0748f886a6c86eaa850f0`. Added candidate-only GET and registered `orbit_slack_note_prepare` tool: provide `{change:{kind:"note",title,text,date}, project?:{id|name}}`, then show the returned approval prompt. It always requires requester approval, including exact project input. Resume with `{request_id}` only; the existing Slack readback gate authorizes execution. No note/receipt POST occurs during preparation, and candidate selection comes from canonical owner-scoped projects rather than model alternatives. See `BACKEND.md` for trust boundaries and remaining gates.
+Fresh `origin/main` and `ls-remote` both verified `1739316ef0a2f345c1aab2d935e3b3df283beaea`; merged without discarding earlier work. Main's `0028_flowery_queen_noir` migration and snapshot are unchanged. Slack tables were regenerated as append-only `0029_woozy_mikhail_rasputin`.
 
-Latest actual validation: 52 plugin tests passed (including actual TypeScript/SQLite backend bridge); `npm run typecheck` and full build-bearing `npm test` passed. Existing `evidence.json` and the counts below are historical and do not describe this continuation. Slack readback remains a test fixture; no production verification or deployment occurred.
+Both exposed tools now use canonical preparation for successful note requests. Legacy `provider_status=succeeded` and a model-supplied `project.id` do not establish destination intent or authorize note creation. Legacy alternatives cannot opt out. A lower-level dispatch fence also rejects note creation without a durable selected choice, including stale pre-gate rows. Failed-provider receipts remain non-creating and do not need this note-creation approval. Already authorized same-source/same-payload retries reuse the durable selection without asking again.
+
+This is **not a policy that every operation needs a new approval forever**. There is currently no trusted source-to-destination intent binding for new notes: the backend's project-access binding proves ownership/access, not that the requester selected that destination. Even exact model-supplied IDs therefore need verification in this candidate. A future unambiguous fast path must supply a trustworthy canonical intent binding; do not infer one from model inputs or provider status.
+
+Actual SDK `PluginManager.discover_and_load()` with isolated temporary configuration loads the checked-in manifest, registers both tools and dispatches both through the real scoped registry into the actual TypeScript service and SQLite. Regression observed the old legacy path create a note without approval (RED); both entry points now produce zero notes/receipts/POSTs before selection, reject a different requester, then persist one exact note with idempotent replay. Slack approval readback is a fixture, not live Slack evidence. The stdin bridge replaces transport only, not the backend. No generic task/calendar provider support is claimed.
+
+Validation: full build-bearing `npm test` passed **650 Node tests**, then the Pythonless Node rerun; `npm run typecheck` exit 0. Plugin suite and current rework evidence are recorded in `/tmp/t_44ee3a1f-rework-evidence.json`. Earlier `evidence.json` and counts below are historical. No push, deploy, live plugin/profile changes or production calls. Independent re-QA and all release gates remain pending.
 
 ## Locally exercised repairs (historical, not full acceptance)
 
