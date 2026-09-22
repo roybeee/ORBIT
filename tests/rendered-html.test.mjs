@@ -168,6 +168,12 @@ test('daily brief routes require ownership, validate the date and fall back to t
  const workspace=await (await request('/api/workspace',{headers})).json();assert.equal(workspace.data.proposals.find(p=>p.date==='2026-10-01').laser.status,'none');
 });
 
+test('the plan status route requires ownership and reports readiness without caching',async()=>{
+ assert.equal((await request('/api/brief/status')).status,401);
+ const r=await request('/api/brief/status',{headers:identity('status-http')});assert.equal(r.status,200);assert.match(r.headers.get('cache-control'),/no-store/);
+ const status=await r.json();for(const key of ['target','collection','analysis','plan','history'])assert.ok(key in status,key);assert.equal(status.plan.state,'none');
+});
+
 test('the packaged workspace atomically creates a keyword project and moves its task with a replay-safe response',async()=>{
  const headers={...identity('classified-owner'),'content-type':'application/json',origin:'https://orbit.test'};
  const post=async(expectedRevision,action,operationId=randomUUID())=>request('/api/workspace',{method:'POST',headers,body:JSON.stringify({expectedRevision,operationId,action})});

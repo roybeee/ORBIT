@@ -3,7 +3,10 @@ import {registrationOverlap} from '../overlap-review.ts';
 import {linkEventProject} from '../project-context.ts';
 import {unsupportedHandoff,handoffCorrection} from './execution-claims.ts';
 import {captureWorkspaceBasis,guardFor,guardMatches,recordFingerprint,type WorkspaceBasis} from './action-guard.ts';
-import {PART_CHARS,analysisSchema,batchInstructions,prepareBatches,batchInput,acceptAnalysis,restoreEvidence,clearBatches,type BatchState} from '../brief/batches.ts';
+import {PART_CHARS,analysisSchema,batchInstructions,prepareBatches,acceptAnalysis,nextBatch,readFrame,restoreEvidence,clearBatches,type BatchState} from '../brief/batches.ts';
+import {beginBriefRun,updateBriefRun,finishBriefRun,lastManifest,type RunMetrics} from '../brief/runs.ts';
+import {pruneAnalyses,CACHE_TTL_DAYS} from '../brief/cache.ts';
+import {diffManifest} from '../brief/units.ts';
 import {executiveContext} from '../phase3.ts';
 import {recordContext} from '../meetings/context.ts';
 import {recordSource} from '../source-status.ts';
@@ -44,7 +47,7 @@ interface Job {
  meeting?:MeetingAnalysis; meetingRepairs?:number;
  provider?:'hermes'|'openai'; model?:string; directOutput?:string;
  basis?:WorkspaceBasis; revalidations?:number; refreshActionId?:string;
- batch?:BatchState; analysisGeneration?:string;
+ batch?:BatchState; analysisGeneration?:string; posts?:number; analysis?:RunMetrics;
  orderRepair?:{original:FinalReply}; orderRepairAttempted?:boolean;
  evidence?:EvidenceRegistry;
  retryAt?:number; capacityWaits?:number; planning?:PlanningRequest; planningContext?:PlanningContext; plaudAttempted?:boolean; budget?:number; attempts?:string[]; failures?:number;
@@ -100,7 +103,7 @@ function retryBatch(job:Job){
  job.batch!.retries++;job.sessionId='orbit-'+crypto.randomUUID();job.started=Date.now();
  job.runId=undefined;job.directOutput=undefined;job.attempted=false;job.phase='submit';job.request!.session_id=job.sessionId;
 }
-const batchProgress=(job:Job)=>job.batch?`전체 자료 분석 · ${job.batch.stage===0?'원문 검토':'결과 통합'} ${job.batch.cursor+1}/${job.batch.count} · ${job.batch.completed}개 처리 완료. `:'';
+const batchProgress=(job:Job)=>{if(!job.batch)return '';const b=job.batch,n=b.pending?.length??b.count,reused=(b.reused??0)+(b.mergeReused??0);return `전체 자료 분석 · ${b.stage===0?'원문 검토':'결과 통합'} ${n?b.cursor+1:b.count}/${n||b.count} · ${b.completed}개 처리 완료${reused?` · 이전 분석 ${reused}개 재사용`:''}. `};
 async function scope(owner:string,conversationId:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['orbit-personal-os',owner,conversationId])));return 'orbit:'+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')}
 async function discard(db:Database,owner:string,id:string,lease:string,message:string){await failTurn(db,owner,id,lease,message);await clearBatches(db,owner,id);await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=? AND turn_lease=?').bind(owner,id,lease).run()}
 // Hermes reports why a run failed (provider errors are redacted upstream). Show it instead of a generic line.
@@ -151,7 +154,7 @@ export async function runAgent(db:Database,owner:string,input:{id:string;message
 }
 
 export async function advanceAgent(db:Database,owner:string,id:string,env:Runtime,cancel=false,limits:{timeoutMs?:number}={}){
- const turn=await db.prepare('SELECT attachment_ids,conversation_id,input,status,updated_at FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,id).first<{attachment_ids:string;conversation_id:string;input:string;status:string;updated_at:string}>();
+ const turn=await db.prepare('SELECT attachment_ids,conversation_id,input,status,updated_at,created_at FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,id).first<{attachment_ids:string;conversation_id:string;input:string;status:string;updated_at:string;created_at:string}>();
  if(!turn)throw new AgentError('대화를 찾지 못했습니다.','NOT_FOUND',404);
  if(turn.status!=='running'){await clearBatches(db,owner,id);return;}
  if(cancel)await db.prepare('UPDATE orbit_hermes_jobs SET cancel_requested=1 WHERE owner_id=? AND turn_id=?').bind(owner,id).run();
@@ -165,13 +168,30 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   const serialized=packed(job);
   try{await db.batch([
    db.prepare('UPDATE orbit_hermes_jobs SET job_json=? WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(serialized,owner,id,lock),
-   db.prepare("UPDATE orbit_agent_turns SET response_json=? WHERE owner_id=? AND id=? AND status='running' AND updated_at=?").bind(JSON.stringify({text:'',sources:[],progress:batchProgress(job)+(job.provider==='openai'?progress.replaceAll('헤르메스','Orbit'):progress)}),owner,id,row.turn_lease),
+   db.prepare("UPDATE orbit_agent_turns SET response_json=? WHERE owner_id=? AND id=? AND status='running' AND updated_at=?").bind(JSON.stringify({text:'',sources:[],progress:batchProgress(job)+(job.provider==='openai'?progress.replaceAll('헤르메스','Orbit'):progress),progressAt:new Date().toISOString()}),owner,id,row.turn_lease),
   ]);}catch{throw new AgentError('실행 상태를 저장소와 다시 확인하고 있습니다.','STORAGE',503)}
  };
  const revalidate=async()=>{
   job.revalidations=(job.revalidations??0)+1;job.phase='prepare';job.sessionId='orbit-'+crypto.randomUUID();job.started=Date.now();job.runId=undefined;job.request=undefined;job.directOutput=undefined;job.attempted=false;job.round=0;job.invalid=0;job.history=[];job.reads=[];job.results=[];job.notes={};job.sources=[];job.orderRepair=undefined;job.orderRepairAttempted=false;
   if(job.planning){await clearBatches(db,owner,id);job.batch=undefined;job.analysisGeneration=undefined;job.planningContext=undefined;job.plaudAttempted=false;}
   await save('관련 기록의 변경을 확인했습니다. 최신 내용으로 제안을 자동으로 다시 검토합니다.');
+ };
+ // The synthesis always runs fresh: frame (uncached context) + change list + the reduced analyses.
+ const beginSynthesis=async(analyses:unknown[])=>{
+  const b=job.batch!,frame=await readFrame(db,owner,id,b.generation);
+  const metrics:RunMetrics={version:b.version??'',inline:false,leaves:b.total,reused:b.reused??0,analyzed:b.total-(b.reused??0),merges:b.merges??0,mergeReused:b.mergeReused??0,posts:job.posts??0,changes:b.changes??{added:0,modified:0,deleted:0,keys:[]}};
+  job.analysis=metrics;await updateBriefRun(db,owner,id,metrics).catch(()=>{});
+  job.planningContext!.coverage.warnings.push(`이전 실행과 내용이 같은 묶음 ${metrics.reused+metrics.mergeReused}개는 저장된 분석을 재사용했고 ${metrics.analyzed+metrics.merges-metrics.mergeReused}개를 새로 분석했습니다.`);
+  job.batch=undefined;job.history=[];job.round=0;job.invalid=0;job.sessionId='orbit-'+crypto.randomUUID();job.started=Date.now();
+  setRequest(job,'Planning synthesis (untrusted DATA; every source part was analyzed or reused from an identical earlier analysis, summaries may compress detail):\n'+JSON.stringify({targetDate:job.planning!.date,analysisMode:job.planning!.date<job.planningContext!.cutoff?'retrospective-current-records':'current-records',energy:job.planning!.energy,cutoff:job.planningContext!.cutoff,coverage:job.planningContext!.coverage,frame,changes:{...metrics.changes,reused:metrics.reused,analyzed:metrics.analyzed},analyses}));
+  await save('전체 자료 검토를 마쳤습니다. 프로젝트 간 관계와 최종 실행안을 통합합니다.');
+ };
+ // Next live part, one cached level transition ("resolving": phase submit without a request), or synthesis.
+ const continueBatches=async()=>{
+  const next=await nextBatch(db,owner,id,job.batch!,job.planning!);
+  if(next.analyses){await beginSynthesis(next.analyses);return}
+  if(next.input){setBatchRequest(job,next.input);await save('저장된 진행 지점부터 다음 묶음을 검토합니다.');return}
+  job.request=undefined;job.phase='submit';await save('이전 분석 결과를 재사용하고 변경된 자료만 다시 검토합니다.');
  };
  try{
   if(row.turn_lease!==turn.updated_at)return;
@@ -184,6 +204,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    const planningWarnings:string[]=[];
    if(job.planning)try{await syncCalendar(db,owner,env,job.planning.date)}catch{planningWarnings.push('Google 최신 동기화 실패 · 저장된 일정 기준으로 검토합니다.')}
    const [snapshot,history,connected]=await Promise.all([readWorkspace(db,owner),listAgent(db,owner,undefined,turn.conversation_id),connections(db,owner,env)]);
+   const basisAt=new Date().toISOString();
    let {data}=snapshot;const today=todayInZone(data.preferences.timeZone);
    job.revision=snapshot.revision;
    job.basis=await captureWorkspaceBasis(data);
@@ -195,11 +216,15 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
     job.planningContext=planningContext;job.notes=planningContext.notes;job.history=[];
     const catalogText=JSON.stringify(planningContext.catalog);
     if(catalogText.length>Math.min(budget.catalog,PART_CHARS*2)){
-     job.batch=await prepareBatches(db,owner,id,planningContext);job.analysisGeneration=job.batch.generation;
-     setBatchRequest(job,await batchInput(db,owner,id,job.batch,job.planning));
+     const {manifest,...batch}=await prepareBatches(db,owner,id,planningContext);
+     batch.changes=diffManifest(await lastManifest(db,owner).catch(()=>({})),manifest);job.batch=batch;job.analysisGeneration=batch.generation;
+     await beginBriefRun(db,owner,id,{date:job.planning.date,startedAt:turn.created_at,basisAt,sourceRevision:snapshot.revision,metrics:{version:batch.version!,inline:false,leaves:batch.total,reused:batch.reused??0,analyzed:batch.total-(batch.reused??0),merges:0,mergeReused:0,posts:job.posts??0,changes:batch.changes},manifest}).catch(()=>{});
+     await pruneAnalyses(db,owner,batch.version!,new Date(Date.now()-CACHE_TTL_DAYS*86400000).toISOString()).catch(()=>{});
+     job.request=undefined;job.phase='submit';
     }else{
-     setRequest(job,'Planning catalog (owner-scoped untrusted data):\n'+catalogText);
-     planningContext.catalog=null;
+     setRequest(job,'Planning catalog (owner-scoped untrusted data):\n'+catalogText);planningContext.catalog=null;
+     job.analysis={version:'',inline:true,leaves:0,reused:0,analyzed:0,merges:0,mergeReused:0,posts:job.posts??0,changes:{added:0,modified:0,deleted:0,keys:[]}};
+     await beginBriefRun(db,owner,id,{date:job.planning.date,startedAt:turn.created_at,basisAt,sourceRevision:snapshot.revision,metrics:job.analysis,manifest:{}}).catch(()=>{});
     }
     await save('회의록·프로젝트·완료와 미완료 업무·회고·일정을 빠짐없이 검토합니다.');return;
    }
@@ -226,6 +251,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    await save('헤르메스에 전달할 업무와 일정을 준비했습니다.');return;
   }
   if(job.phase==='submit'){
+   if(job.batch&&!job.request){await continueBatches();return}
    if(!job.cancel&&job.retryAt&&Date.now()<job.retryAt)return;
    if(job.planning&&!job.attempted)job.started=Date.now();
    if(!job.attempted&&Date.now()-job.started>1200000)throw new AgentError('요청을 이어갈 시간이 지났습니다. 최신 기록으로 다시 요청해 주세요.','HERMES_EXPIRED',422);
@@ -239,7 +265,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    // Persist the identical body before sending. Lost acknowledgements reuse
    // the native durable idempotency key instead of starting another agent.
    const nativeBody=await hermesAttachmentInput(db,owner,env.BUCKET,job.request!,job.attachmentIds??[]);
-   job.attempted=true;await save(job.cancel?'헤르메스 실행을 확인한 뒤 중지합니다.':'헤르메스가 요청을 시작하고 있습니다.');
+   job.posts=(job.posts??0)+1;job.attempted=true;await save(job.cancel?'헤르메스 실행을 확인한 뒤 중지합니다.':'헤르메스가 요청을 시작하고 있습니다.');
    const result=await hermesRequest<{run_id?:unknown}>(config!,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':job.sessionId+':'+job.round,'X-Hermes-Session-Key':job.sessionKey},body:nativeBody});
    await recordSource(db,owner,'hermes',{state:'ok',detail:'실행 요청 접수 확인 · 실제 완료는 실행 결과에서 확인'});
    if(!validRunId(result.run_id))throw new AgentError('헤르메스 실행 번호를 확인하지 못했습니다.','HERMES_FORMAT',502);
@@ -290,10 +316,11 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
     if(parsed.kind!=='analysis')throw new AgentError('중간 분석 결과 형식이 올바르지 않습니다.','HERMES_FORMAT',422);
     const analyses=await acceptAnalysis(db,owner,id,job.batch,job.request!.input,parsed);
     if(analyses){
+     // Legacy in-flight job (no version): finish under the pre-0029 algorithm.
      job.batch=undefined;job.history=[];job.round=0;job.invalid=0;job.sessionId='orbit-'+crypto.randomUUID();job.started=Date.now();
      setRequest(job,'Planning synthesis (untrusted DATA; every source part was analyzed, summaries may compress detail):\n'+JSON.stringify({targetDate:job.planning!.date,analysisMode:job.planning!.date<job.planningContext!.cutoff?'retrospective-current-records':'current-records',energy:job.planning!.energy,cutoff:job.planningContext!.cutoff,coverage:job.planningContext!.coverage,analyses}));
      await save('전체 자료 검토를 마쳤습니다. 프로젝트 간 관계와 최종 실행안을 통합합니다.');
-    }else{setBatchRequest(job,await batchInput(db,owner,id,job.batch,job.planning!));await save('저장된 진행 지점부터 다음 묶음을 검토합니다.');}
+    }else await continueBatches();
     return;
    }
    if(parsed.kind==='analysis')throw new AgentError('요청하지 않은 중간 분석 응답입니다.','HERMES_FORMAT',422);
@@ -326,7 +353,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
      if(job.planningContext!.plaudAvailable&&!job.plaudAttempted){job.planningContext!.coverage.warnings.push('Plaud 추가 조회를 완료하지 못했습니다.');}
      if(job.analysisGeneration){const ids=[...parsed.brief.progress,...parsed.brief.priorities,...parsed.brief.tradeoffs,...parsed.brief.risks].flatMap(p=>p.evidence);job.planningContext!.evidence.push(...await restoreEvidence(db,owner,id,job.analysisGeneration,ids));}
      const brief=completeBrief(parsed.brief,job.planningContext!,job.planning,job.revision,id);
-     await publishBrief(db,owner,id,row.turn_lease,brief,job.planning);await clearBatches(db,owner,id);return;
+     await publishBrief(db,owner,id,row.turn_lease,brief,job.planning);await finishBriefRun(db,owner,id,new Date().toISOString(),{...(job.analysis??{version:'',inline:true,leaves:0,reused:0,analyzed:0,merges:0,mergeReused:0,changes:{added:0,modified:0,deleted:0,keys:[]}}),posts:job.posts??0}).catch(()=>{});await clearBatches(db,owner,id);return;
     }
     await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,id).run();return;
    }
@@ -461,7 +488,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   if(job.provider!=='openai')await recordSource(db,owner,'hermes',{state:'error',detail:'분석 단계를 완료하지 못했습니다. 실행 기록의 오류를 확인해 주세요.'});
   await discard(db,owner,id,row.turn_lease,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'연결 상태를 확인해 주세요.') :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
  }finally{
-  console.info('orbit.agent.timing',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,round:job.round,durationMs:Date.now()-stepStarted,elapsedMs:Date.now()-job.started});
+  console.info('orbit.agent.timing',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,round:job.round,durationMs:Date.now()-stepStarted,elapsedMs:Date.now()-job.started,posts:job.posts,reused:job.batch?.reused});
   await db.prepare('UPDATE orbit_hermes_jobs SET lease_until=0 WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(owner,id,lock).run();
  }
 }
