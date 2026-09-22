@@ -3,7 +3,7 @@ import type {AsideJob} from '../aside/types.ts';
 import {workflowInstructions,parseWorkflow,type WorkflowState} from './workflow.ts';
 import {readWorkspace,type Database} from '../../../db/repository.ts';
 import {getConversation} from './conversations.ts';
-import {hermesConfig,hermesRequest,validRunId,type HermesConfig} from './hermes.ts';
+import {hermesConfig,hermesRequest,validRunId,type HermesCapabilities,type HermesConfig,type HermesRun} from './hermes.ts';
 import {connections,type Runtime} from './integrations.ts';
 import {researchInstructions,researchRead,researchManifest,type ResearchState} from './order-research.ts';
 import {AgentError} from './errors.ts';
@@ -33,13 +33,13 @@ export async function listOrders(db:Database,owner:string){
  return Promise.all(results.map(async r=>{const order=publicOrder(JSON.parse(r.state_json));if(r.review_json){const review=JSON.parse(r.review_json);const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(order.output??''))),b=>b.toString(16).padStart(2,'0')).join('');if(review.outputHash===hash)order.review=review.verdict;}return order;}));
 }
 export async function orderCapabilities(db:Database,owner:string,env:Runtime){
- const config=await hermesConfig(db,owner,env),caps=await hermesRequest(config,'/v1/capabilities');
+ const config=await hermesConfig(db,owner,env),caps=await hermesRequest<HermesCapabilities>(config,'/v1/capabilities');
  const supported=caps.object==='hermes.api_server.capabilities'&&caps.features?.run_submission===true&&caps.features?.run_status===true&&caps.features?.run_stop===true&&caps.features?.runs_idempotency?.durable===true&&caps.features.runs_idempotency.enabled!==false&&caps.features.runs_idempotency.supported!==false;
  let tools:string[]=[],discoveryError='';
  try{tools=configuredOrderTools(await hermesRequest(config,'/v1/toolsets'));}
  catch{discoveryError='실행 도구 목록을 확인하지 못했습니다. 실제 사용 가능 여부는 Hermes가 실행 시 확인합니다.'}
  const connected=await connections(db,owner,env);
- return {orbitReads:{wiki:true,plaud:connected.some(c=>c.provider==='plaud'&&c.connected)},supported,retentionSeconds:Number.isFinite(caps.features?.runs_idempotency?.retention_seconds)?Math.max(0,Math.min(86400,Number(caps.features.runs_idempotency.retention_seconds))):0,steer:caps.features?.run_steer===true,approval:caps.features?.run_approval_response===true&&caps.features?.approval_events===true,delegation:tools.includes('delegate_task'),tools,discoveryError};
+ return {orbitReads:{wiki:true,plaud:connected.some(c=>c.provider==='plaud'&&c.connected)},supported,retentionSeconds:Number.isFinite(caps.features?.runs_idempotency?.retention_seconds)?Math.max(0,Math.min(86400,Number(caps.features!.runs_idempotency!.retention_seconds))):0,steer:caps.features?.run_steer===true,approval:caps.features?.run_approval_response===true&&caps.features?.approval_events===true,delegation:tools.includes('delegate_task'),tools,discoveryError};
 }
 export async function validateOrder(db:Database,owner:string,order:DispatchAction){
  const data=(await readWorkspace(db,owner)).data;
@@ -146,12 +146,12 @@ export async function advanceOrder(db:Database,owner:string,id:string,env:Runtim
    s.status='submitting';s.attempted=true;await save();
    const scope=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(s.research?[owner,id,row.connection_id,s.research.round]:s.workflow?[owner,id,row.connection_id,'workflow',s.workflow.step]:[owner,id,row.connection_id])));
    const key=Array.from(new Uint8Array(scope),b=>b.toString(16).padStart(2,'0')).join('');
-   const result=await hermesRequest(config,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':'orbit-order:'+key,'X-Hermes-Session-Key':'orbit-order:'+key},body:row.request_json});
+   const result=await hermesRequest<{run_id?:unknown}>(config,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':'orbit-order:'+key,'X-Hermes-Session-Key':'orbit-order:'+key},body:row.request_json});
    if(!validRunId(result.run_id))throw new AgentError('지시 접수 결과를 아직 확인하지 못했습니다. 같은 지시의 상태를 다시 확인합니다.','HERMES_FORMAT',502);
    s.runId=result.run_id;if(s.workflow&&!s.workflow.runIds.includes(s.runId!))s.workflow.runIds.push(s.runId!);s.status='queued';s.error='';event(s,'Hermes가 지시를 접수했습니다. 실행 번호: '+s.runId);await save();
   }
   const path='/v1/runs/'+s.runId;
-  const remote=await hermesRequest(config,path);
+  const remote=await hermesRequest<HermesRun>(config,path);
   if(remote.object!=='hermes.run'||remote.run_id!==s.runId)throw new AgentError('Hermes 실행 번호가 일치하지 않습니다.','HERMES_FORMAT',502);
   const mapped:Record<string,Receipt['status']>={started:'queued',pending:'queued',queued:'queued',running:'running',waiting:'running',waiting_approval:'waiting_for_approval',waiting_for_approval:'waiting_for_approval',stopping:'stopping',completed:'completed',failed:'failed',cancelled:'cancelled',interrupted:'failed'};
   const next=mapped[remote.status];if(!next)throw new AgentError('알 수 없는 실행 상태입니다.','HERMES_FORMAT',502);
@@ -209,13 +209,13 @@ export async function advanceOrder(db:Database,owner:string,id:string,env:Runtim
     if((s.steering?.length??0)>=40)throw new AgentError('이 업무의 추가 지시 한도에 도달했습니다. 범위를 정리해 새 업무로 이어 주세요.','ORDER_STATE',409);
     if(s.workflow&&ownerScope(s).length+ownerSteering(s).length+control.input.length+80>18000)throw new AgentError('웹 실행에 전달할 지시가 너무 깁니다. 범위를 정리한 새 업무로 이어 주세요.','ORDER_STATE',422);
     s.steering=[...s.steering??[],{at:new Date().toISOString(),input:control.input}];s.uncertainControl=fingerprint;event(s,'추가 지시 전달 확인 중: '+control.input);await save();
-    const result=await hermesRequest(config,path+'/steer',{method:'POST',body:JSON.stringify({input:control.input})});
+    const result=await hermesRequest<{run_id?:unknown;accepted?:unknown}>(config,path+'/steer',{method:'POST',body:JSON.stringify({input:control.input})});
     if(result.run_id!==s.runId||result.accepted!==true)throw new AgentError('추가 지시의 접수를 확인하지 못했습니다. 중복 전달하지 말고 결과를 먼저 확인해 주세요.','UNCERTAIN',409);
     s.uncertainControl=undefined;event(s,'추가 지시 전달: '+control.input);
    }else if(control.action==='approval'){
     if(!s.controls.approval||s.approval?.id!==control.requestId)throw new AgentError('실행 승인 요청이 바뀌었습니다. 최신 내용을 확인해 주세요.','STALE_APPROVAL',409);
     if(Array.isArray(remote.approval?.choices)&&!remote.approval.choices.includes(control.choice))throw new AgentError('현재 실행에서 허용되지 않은 승인 응답입니다.','ORDER_STATE',409);
-    const result=await hermesRequest(config,path+'/approval',{method:'POST',body:JSON.stringify({request_id:control.requestId,choice:control.choice})});
+    const result=await hermesRequest<{object?:unknown;run_id?:unknown;request_id?:unknown;choice?:unknown;resolved:number}>(config,path+'/approval',{method:'POST',body:JSON.stringify({request_id:control.requestId,choice:control.choice})});
     if(result.object!=='hermes.run.approval_response'||result.run_id!==s.runId||result.request_id!==control.requestId||result.choice!==control.choice||!(result.resolved>0))throw new AgentError('실행 승인 응답을 확인하지 못했습니다. 최신 상태를 다시 확인해 주세요.','UNCERTAIN',409);
     s.approval=null;s.status='running';event(s,control.choice==='once'?'표시된 작업만 한 번 승인했습니다.':'표시된 실행 요청을 거절했습니다.');
    }

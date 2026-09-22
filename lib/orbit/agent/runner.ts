@@ -25,7 +25,7 @@ import {applyAction} from '../reducer.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {weeklyStats,habitStreak} from '../derived.ts';
 import {connections,type Runtime} from './integrations.ts';
-import {hermesConfig,hermesRequest,validRunId} from './hermes.ts';
+import {hermesConfig,hermesRequest,validRunId,type HermesRun} from './hermes.ts';
 import {directChatConfigured,chatModel,directModelReply} from './direct-model.ts';
 import {chatContextData} from './chat-context.ts';
 import {plaudRead,plaudTools} from './plaud.ts';
@@ -240,7 +240,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    // the native durable idempotency key instead of starting another agent.
    const nativeBody=await hermesAttachmentInput(db,owner,env.BUCKET,job.request!,job.attachmentIds??[]);
    job.attempted=true;await save(job.cancel?'헤르메스 실행을 확인한 뒤 중지합니다.':'헤르메스가 요청을 시작하고 있습니다.');
-   const result=await hermesRequest(config!,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':job.sessionId+':'+job.round,'X-Hermes-Session-Key':job.sessionKey},body:nativeBody});
+   const result=await hermesRequest<{run_id?:unknown}>(config!,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':job.sessionId+':'+job.round,'X-Hermes-Session-Key':job.sessionKey},body:nativeBody});
    await recordSource(db,owner,'hermes',{state:'ok',detail:'실행 요청 접수 확인 · 실제 완료는 실행 결과에서 확인'});
    if(!validRunId(result.run_id))throw new AgentError('헤르메스 실행 번호를 확인하지 못했습니다.','HERMES_FORMAT',502);
    job.retryAt=undefined;job.capacityWaits=0;job.runId=result.run_id;job.phase='poll';await save('헤르메스가 기록을 검토하고 있습니다. 화면을 다시 열면 이어서 확인합니다.');return;
@@ -251,7 +251,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    if(job.cancel&&(job.failures??0)>=2){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 헤르메스 실행 상태는 Mac에서 확인해 주세요. 변경사항은 반영하지 않았습니다.');return}
    if(Date.now()-job.started>1800000){await discard(db,owner,id,row.turn_lease,'30분이 지나 실행을 종료했습니다. 최신 기록으로 다시 요청해 주세요.');return}
    let result;
-   try{result=job.provider==='openai'?{object:'hermes.run',run_id:job.runId,status:'completed',output:job.directOutput}:await hermesRequest(config!,'/v1/runs/'+job.runId)}catch(error){
+   try{result=job.provider==='openai'?{object:'hermes.run',run_id:job.runId,status:'completed',output:job.directOutput}:await hermesRequest<HermesRun>(config!,'/v1/runs/'+job.runId)}catch(error){
     // The gateway no longer knows this run (restart, retention expiry): a planning run restarts once
     // per attempt with the same budget instead of failing the whole analysis.
     if(error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.batch&&!job.cancel&&job.batch.retries<2){retryBatch(job);await save('저장된 분석 결과를 유지하고 현재 묶음을 다시 연결합니다.');return}

@@ -3,10 +3,11 @@ import {readWorkspace,RevisionConflict,type Database} from '../../../db/reposito
 import {accessToken,fetchJson,type Runtime} from './integrations.ts';
 import {AgentError} from './errors.ts';
 import {recordSource} from '../source-status.ts';
+import type {GoogleCalendarEntry} from './calendar.ts';
 export async function calendarSelection(db:Database,owner:string){const row=await db.prepare('SELECT selected_json,updated_at FROM orbit_calendar_settings WHERE owner_id=?').bind(owner).first<{selected_json:string;updated_at:string}>();return {ids:row?JSON.parse(row.selected_json) as string[]:['primary'],version:row?.updated_at??''};}
 export async function listGoogleCalendars(db:Database,owner:string,env:Runtime){
  const token=await accessToken(db,owner,'google_calendar',env),items:{id:string;label:string;primary:boolean}[]=[];let page='';
- for(let n=0;n<20;n++){const url=new URL('https://www.googleapis.com/calendar/v3/users/me/calendarList');url.search=new URLSearchParams({maxResults:'250',...(page?{pageToken:page}:{})}).toString();const {response,data}=await fetchJson(url.href,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new AgentError('캘린더 목록을 불러오지 못했습니다. Google을 다시 연결해 주세요.','CALENDAR',502);for(const c of data.items??[])if(['owner','writer','reader'].includes(c.accessRole)&&!c.deleted)items.push({id:c.primary?'primary':c.id,label:c.summaryOverride??c.summary??c.id,primary:!!c.primary});page=data.nextPageToken??'';if(!page)return items;}
+ for(let n=0;n<20;n++){const url=new URL('https://www.googleapis.com/calendar/v3/users/me/calendarList');url.search=new URLSearchParams({maxResults:'250',...(page?{pageToken:page}:{})}).toString();const {response,data}=await fetchJson<{items?:GoogleCalendarEntry[];nextPageToken?:string}>(url.href,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new AgentError('캘린더 목록을 불러오지 못했습니다. Google을 다시 연결해 주세요.','CALENDAR',502);for(const c of data.items??[])if(['owner','writer','reader'].includes(c.accessRole)&&!c.deleted)items.push({id:c.primary?'primary':c.id,label:c.summaryOverride??c.summary??c.id,primary:!!c.primary});page=data.nextPageToken??'';if(!page)return items;}
  throw new AgentError('캘린더 목록이 너무 많아 확인을 마치지 못했습니다.');
 }
 export async function setCalendarSelection(db:Database,owner:string,env:Runtime,ids:string[]){
