@@ -87,3 +87,35 @@ test('a merged card cannot be applied after the source changes',async()=>{const 
  const meta=await readNote(db,owner,note.id);await cmd(db,{type:'note.upsert',note:{...meta,body:source+'\n추가 논의'},expectedNoteRevision:meta.revision});
  await assert.rejects(()=>decide(db,owner,{id:a.id,decision:'approve'},env),/회의록 또는 연결 대상/);await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,b.id));assert.equal((await readWorkspace(db,owner)).data.tasks.length,0);
 }finally{db.close()}});
+test('a task or event card can be merged into an already registered record; approval updates that record',async()=>{const db=createDatabase();try{
+ await seed(db);
+ await cmd(db,{type:'task.upsert',autoAssign:false,task:{id:'existing-task',title:'기존 물류 정리',projectId:'oda',status:'todo',duration:20,due:'2099-01-10',impact:2,focus:false,definition:'기존 기준'}});
+ await cmd(db,{type:'task.upsert',autoAssign:false,task:{id:'done-task',title:'끝난 일',projectId:'oda',status:'done',duration:20,due:'2099-01-10',impact:2,focus:false,definition:''}});
+ await cmd(db,{type:'event.upsert',event:{id:'existing-event',title:'기존 미팅',projectId:'oda',date:'2099-01-06',start:540,end:600,kind:'meeting'}});
+ const undated=task('a','물류사 단가 문의');delete undated.action.task.due;
+ const d=await analyze(db,[undated,event('e1','웰스토리 미팅',600,660),task('b','공급 조건 확인')]);assert.equal(d.status,'completed',d.error);
+ assert.ok(d.candidates.tasks.some(t=>t.id==='existing-task'));assert.ok(!d.candidates.tasks.some(t=>t.id==='done-task'));assert.ok(d.candidates.events.some(e=>e.id==='existing-event'));
+ const [a,e1,b]=d.actions;assert.equal(a.guard.meeting.needsDue,true);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,{kind:'task',id:'missing'}),/찾을 수 없/);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,a.id,{kind:'event',id:'existing-event'}),/같은 종류/);
+ await assert.rejects(()=>mergeMeetingProposals(db,owner,note.id,b.id,{kind:'task',id:'done-task'}),/완료된 할 일/);
+ await mergeMeetingProposals(db,owner,note.id,a.id,{kind:'task',id:'existing-task'});
+ let detail=await meetingReviewDetail(db,owner,note.id);const merged=detail.actions.find(x=>x.id===a.id);
+ assert.equal(merged.state,'pending');assert.equal(merged.title,'기존 물류 정리');assert.equal(merged.action.type,'task.upsert');assert.equal(merged.action.task.id,'existing-task');
+ assert.equal(merged.action.task.duration,50);assert.equal(merged.action.task.impact,3);assert.equal(merged.action.task.due,'2099-01-10');assert.equal(merged.guard.meeting.needsDue,false);
+ assert.match(merged.action.task.definition,/^기존 기준\n\[통합\] 물류사 단가 문의: 물류사 단가 문의 완료 기준/);assert.match(merged.reason,/\[기존 할 일에 통합\] 기존 물류 정리/);assert.doesNotMatch(merged.reason,/\[마감일 확인 필요\]/);
+ assert.equal(detail.actions.filter(x=>x.state==='pending').length,3);
+ await mergeMeetingProposals(db,owner,note.id,e1.id,{kind:'event',id:'existing-event'});
+ detail=await meetingReviewDetail(db,owner,note.id);const meeting=detail.actions.find(x=>x.id===e1.id);
+ assert.equal(meeting.action.event.id,'existing-event');assert.equal(meeting.action.event.start,540);assert.equal(meeting.action.event.end,660);assert.match(meeting.action.event.description,/\[통합\] 웰스토리 미팅/);
+ await decide(db,owner,{id:a.id,decision:'approve'},env);await decide(db,owner,{id:e1.id,decision:'approve'},env);
+ const saved=(await readWorkspace(db,owner)).data,task1=saved.tasks.find(t=>t.id==='existing-task');
+ assert.equal(saved.tasks.length,2);assert.equal(task1.duration,50);assert.match(task1.definition,/\[통합\]/);assert.equal(task1.noteId,note.id);assert.equal(task1.status,'todo');
+ assert.equal(saved.events.length,1);assert.equal(saved.events[0].id,'existing-event');assert.equal(saved.events[0].end,660);
+}finally{db.close()}});
+test('a card merged into an existing task cannot apply after that task changes',async()=>{const db=createDatabase();try{
+ await seed(db);await cmd(db,{type:'task.upsert',autoAssign:false,task:{id:'existing-task',title:'기존 물류 정리',projectId:'oda',status:'todo',duration:20,due:'2099-01-10',impact:2,focus:false,definition:'기존 기준'}});
+ const d=await analyze(db,[task('a','물류사 단가 문의')]);await mergeMeetingProposals(db,owner,note.id,d.actions[0].id,{kind:'task',id:'existing-task'});
+ const current=(await readWorkspace(db,owner)).data.tasks.find(t=>t.id==='existing-task');await cmd(db,{type:'task.upsert',autoAssign:false,task:{...current,definition:'다른 사람이 바꿈'}});
+ await assert.rejects(()=>decide(db,owner,{id:d.actions[0].id,decision:'approve'},env),/회의록 또는 연결 대상/);assert.equal((await readWorkspace(db,owner)).data.tasks[0].definition,'다른 사람이 바꿈');
+}finally{db.close()}});
