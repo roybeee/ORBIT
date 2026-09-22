@@ -17,11 +17,11 @@ export async function configureDiscord(db:Database,owner:string,raw:unknown,env:
  const parsed=discordSettings.safeParse(raw);if(!parsed.success)throw new AgentError('봇 토큰, 서버·채널·본인 사용자 ID를 확인하세요.');
  const input=parsed.data,previous=await readDiscord(db,owner,env),token=input.token??previous?.token;if(!token)throw new AgentError('Discord 봇 토큰을 입력하세요.');
  // Verify all IDs against Discord before saving. Credentials only go to Discord.
- const bot=await discordRequest(token,'/users/@me');if(bot.bot!==true||typeof bot.id!=='string')throw new AgentError('개인 계정 토큰은 사용할 수 없습니다. 봇 토큰을 입력하세요.');
- const channel=await discordRequest(token,'/channels/'+input.channelId);if(channel.guild_id!==input.guildId||channel.type!==0)throw new AgentError('선택한 서버의 일반 텍스트 채널을 지정하세요.');
- const roles=await discordRequest(token,'/guilds/'+input.guildId+'/roles');
- const botMember=await discordRequest(token,`/guilds/${input.guildId}/members/${bot.id}`);
- const member=await discordRequest(token,`/guilds/${input.guildId}/members/${input.userId}`);
+ const bot=await discordRequest<{bot?:unknown;id?:unknown;username?:unknown}>(token,'/users/@me');if(bot.bot!==true||typeof bot.id!=='string')throw new AgentError('개인 계정 토큰은 사용할 수 없습니다. 봇 토큰을 입력하세요.');
+ const channel=await discordRequest<{guild_id?:unknown;type?:unknown;name?:unknown;permission_overwrites?:{id:string;type:number;allow:string;deny:string}[]}>(token,'/channels/'+input.channelId);if(channel.guild_id!==input.guildId||channel.type!==0)throw new AgentError('선택한 서버의 일반 텍스트 채널을 지정하세요.');
+ const roles=await discordRequest<{id:string;permissions:string}[]>(token,'/guilds/'+input.guildId+'/roles');
+ const botMember=await discordRequest<{roles:string[];user?:{id:string}}>(token,`/guilds/${input.guildId}/members/${bot.id}`);
+ const member=await discordRequest<{roles:string[];user?:{id:string}}>(token,`/guilds/${input.guildId}/members/${input.userId}`);
  const permissions=channelPermissions(input.guildId,roles,botMember,channel,bot.id),needed=BigInt(1024)|BigInt(2048)|BigInt(65536);
  if((permissions&needed)!==needed)throw new AgentError('봇에 채널 보기·메시지 보내기·기록 읽기 권한이 필요합니다.');
  if(!(channelPermissions(input.guildId,roles,member,channel,input.userId)&BigInt(1024)))throw new AgentError('본인 계정에서 볼 수 있는 채널을 지정하세요.');

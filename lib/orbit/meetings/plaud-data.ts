@@ -4,11 +4,13 @@ import {AgentError} from '../agent/errors.ts';
 const formatError=(message:string)=>new AgentError(message,'PLAUD_FORMAT',502);
 
 // Parse the documented MCP JSON response, never execute instructions in recording data.
-export function mcpData(result:any):any {
+type McpResult={isError?:unknown;structuredContent?:unknown;content?:unknown}|null|undefined;
+type PlaudFile={id?:unknown;name?:unknown;source_list?:unknown;note_list?:unknown;start_at?:unknown;created_at?:unknown;duration?:unknown;data?:PlaudFile}|null|undefined;
+export function mcpData(result:McpResult):unknown {
  if(result?.isError)throw formatError('Plaud 조회 실패');
  if(result?.structuredContent)return result.structuredContent;
  if(!result?.content)return result;
- for(const block of result.content){if(block.type!=='text')continue;const text=String(block.text??'');
+ for(const block of result.content as {type?:unknown;text?:unknown}[]){if(block.type!=='text')continue;const text=String(block.text??'');
   try{return JSON.parse(text)}catch{}
   // The preamble mentions the same opening tag. Only the actual block starts
   // with JSON; matching the first tag would include the preamble in the JSON.
@@ -19,19 +21,19 @@ export function mcpData(result:any):any {
 }
 export interface Recording {id:string;title:string;started:string;duration:number;transcript:string;summary:string;pending:boolean}
 const stamp=(ms:unknown)=>{const s=Math.max(0,Math.floor(Number(ms)/1000));return Number.isFinite(s)?`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`:'시간 미확인'};
-export function recording(result:any):Recording{
- const data=mcpData(result),file=data?.data?.id?data.data:data;
+export function recording(result:McpResult):Recording{
+ const data=mcpData(result) as PlaudFile,file=data?.data?.id?data.data:data;
  if(typeof file?.id!=='string'||!/^[-\w]{1,160}$/.test(file.id)||typeof file.name!=='string')throw new Error('녹음 식별자를 확인하지 못했습니다.');
  const sources=Array.isArray(file.source_list)?file.source_list:[],notes=Array.isArray(file.note_list)?file.note_list:[];
- const trans=sources.filter((s:any)=>s.data_type==='transaction'||s.data_type==='transcript');
- const text=trans.map((s:any)=>{if(!s.data_content)return '';let parts;try{parts=typeof s.data_content==='string'?JSON.parse(s.data_content):s.data_content}catch{throw new Error('전사 형식을 확인하지 못했습니다. 원문을 보존할 수 없어 수집을 보류합니다.')}
+ const trans=sources.filter((s:Record<string,unknown>)=>s.data_type==='transaction'||s.data_type==='transcript');
+ const text=trans.map((s:Record<string,unknown>)=>{if(!s.data_content)return '';let parts;try{parts=typeof s.data_content==='string'?JSON.parse(s.data_content):s.data_content}catch{throw new Error('전사 형식을 확인하지 못했습니다. 원문을 보존할 수 없어 수집을 보류합니다.')}
   if(!Array.isArray(parts))return '';
-  return parts.map((p:any)=>`[${stamp(p.start_time)}–${stamp(p.end_time)}] ${String(p.speaker??'발화자 미확인')}: ${String(p.content??'')}`).join('\n');
+  return parts.map((p:Record<string,unknown>)=>`[${stamp(p.start_time)}–${stamp(p.end_time)}] ${String(p.speaker??'발화자 미확인')}: ${String(p.content??'')}`).join('\n');
  }).join('\n\n');
- const summary=notes.map((n:any)=>typeof n.data_content==='string'?n.data_content:'').filter(Boolean).join('\n\n');
+ const summary=notes.map((n:Record<string,unknown>)=>typeof n.data_content==='string'?n.data_content:'').filter(Boolean).join('\n\n');
  return {id:file.id,title:file.name.slice(0,160),started:String(file.start_at??file.created_at??''),duration:Number(file.duration)||0,transcript:text,summary,pending:!text.trim()||!summary.trim()};
 }
-export function listed(result:any):string[]{const data=mcpData(result),items=Array.isArray(data)?data:data?.data??data?.files;if(!Array.isArray(items))throw new Error('녹음 목록 형식을 확인하지 못했습니다.');return items.map((r:any)=>{if(typeof r.id!=='string'||!/^[-\w]{1,160}$/.test(r.id))throw new Error('녹음 목록 식별자를 확인하지 못했습니다.');return r.id})}
+export function listed(result:McpResult):string[]{const data=mcpData(result) as {data?:unknown;files?:unknown}|unknown[]|null|undefined,items=Array.isArray(data)?data:data?.data??data?.files;if(!Array.isArray(items))throw new Error('녹음 목록 형식을 확인하지 못했습니다.');return items.map((r:Record<string,unknown>)=>{if(typeof r.id!=='string'||!/^[-\w]{1,160}$/.test(r.id))throw new Error('녹음 목록 식별자를 확인하지 못했습니다.');return r.id})}
 export function projectMatches(record:Recording,projects:Project[]){
  const text=normalize(record.title+' '+record.summary.slice(0,12000)+' '+record.transcript.slice(0,12000));
  return projects.filter(p=>p.id!=='plaud-inbox'&&p.status!=='completed').map(p=>{

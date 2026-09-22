@@ -51,7 +51,7 @@ export async function changeChiefSchedule(db:Database,owner:string,input:Schedul
     const state=await receiptFor(db,owner,config.connectionId);let job=await findJob(config,name);
     if(input.action==='pause'||input.action==='resume'){
       if(!job)throw new AgentError('아직 예약 실행이 없습니다.','NOT_FOUND',404);
-      const response=await hermesRequest(config,`/api/jobs/${job.id}/${input.action}`,{method:'POST',body:'{}'});return publicJob(response.job,state);
+      const response=await hermesRequest<{job?:Record<string,unknown>}>(config,`/api/jobs/${job.id}/${input.action}`,{method:'POST',body:'{}'});return publicJob(response.job,state);
     }
     if(input.action==='sync' && !state.confirmed)return {inactive:true};
     if(input.action!=='save'&&(!state.confirmed&&!state.pending||!job))throw new AgentError('예약 실행을 먼저 연결해 주세요.','NOT_FOUND',404);
@@ -62,7 +62,7 @@ export async function changeChiefSchedule(db:Database,owner:string,input:Schedul
     await db.prepare('UPDATE orbit_chief_jobs SET config_json=? WHERE owner_id=? AND lease_until=?').bind(JSON.stringify({...state,pending:receipt}),owner,lock).run();
     const fullPayload={name,schedule:`every ${receipt.hours}h`,prompt:scheduledPrompt(data,receipt,now),deliver:receipt.delivery};
     const payload=input.action==='save'||state.pending||!job?fullPayload:{prompt:fullPayload.prompt};
-    try{const result=await hermesRequest(config,job?`/api/jobs/${job.id}`:'/api/jobs',{method:job?'PATCH':'POST',body:JSON.stringify(payload)});if(!result.job||!jobId(result.job.id))throw new AgentError('예약 실행 결과를 확인 중입니다.','HERMES_JOBS',502);job=result.job;}catch(error){release=false;throw error;}
+    try{const result=await hermesRequest<{job?:Record<string,unknown>}>(config,job?`/api/jobs/${job.id}`:'/api/jobs',{method:job?'PATCH':'POST',body:JSON.stringify(payload)});if(!result.job||!jobId(result.job.id))throw new AgentError('예약 실행 결과를 확인 중입니다.','HERMES_JOBS',502);job=result.job;}catch(error){release=false;throw error;}
     const confirmed={confirmed:receipt,pending:null};
     await db.prepare('UPDATE orbit_chief_jobs SET config_json=? WHERE owner_id=? AND lease_until=?').bind(JSON.stringify(confirmed),owner,lock).run();
     return publicJob(job,confirmed);

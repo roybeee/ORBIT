@@ -1,0 +1,9 @@
+name: orbit-slack-directive-sync
+version: "1.0.0"
+description: Candidate trusted Slack receipts with durable approval (backend verification required)
+provides_tools:
+  - orbit_slack_note_prepare
+  - orbit_slack_directive_sync
+requires_env:
+  - ORBIT_SLACK_INGEST_KEY
+  - ORBIT_SLACK_DIRECTIVE_URL

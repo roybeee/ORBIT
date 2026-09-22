@@ -1,0 +1,76 @@
+# Trusted Slack directive receipt candidate — t_44ee3a1f
+
+**Local rework candidate; independent QA pending. NOT production-ready. Do not install/deploy.**
+
+Continuation preserves the original owner’s work and adds the real canonical backend plus minimal note preparation flow. Earlier rework parent: `635ec60b23afe7074b984f71339cc85f81674c3d`. Remote-main verification and latest validation are recorded immediately below; recheck before integration/release.
+
+## Latest rework: exposed-tool gate and fresh-main reconciliation
+
+Fresh `origin/main` and `ls-remote` both verified `1739316ef0a2f345c1aab2d935e3b3df283beaea`; merged without discarding earlier work. Main's `0028_flowery_queen_noir` migration and snapshot are unchanged. Slack tables were regenerated as append-only `0029_woozy_mikhail_rasputin`.
+
+Both exposed tools now use canonical preparation for successful note requests. Legacy `provider_status=succeeded` and a model-supplied `project.id` do not establish destination intent or authorize note creation. Legacy alternatives cannot opt out. A lower-level dispatch fence also rejects note creation without a durable selected choice, including stale pre-gate rows. Failed-provider receipts remain non-creating and do not need this note-creation approval. Already authorized same-source/same-payload retries reuse the durable selection without asking again.
+
+This is **not a policy that every operation needs a new approval forever**. There is currently no trusted source-to-destination intent binding for new notes: the backend's project-access binding proves ownership/access, not that the requester selected that destination. Even exact model-supplied IDs therefore need verification in this candidate. A future unambiguous fast path must supply a trustworthy canonical intent binding; do not infer one from model inputs or provider status.
+
+Actual SDK `PluginManager.discover_and_load()` with isolated temporary configuration loads the checked-in manifest, registers both tools and dispatches both through the real scoped registry into the actual TypeScript service and SQLite. Regression observed the old legacy path create a note without approval (RED); both entry points now produce zero notes/receipts/POSTs before selection, reject a different requester, then persist one exact note with idempotent replay. Slack approval readback is a fixture, not live Slack evidence. The stdin bridge replaces transport only, not the backend. No generic task/calendar provider support is claimed.
+
+Validation: full build-bearing `npm test` passed **650 Node tests**, then the Pythonless Node rerun; `npm run typecheck` exit 0. Plugin suite and current rework evidence are recorded in `/tmp/t_44ee3a1f-rework-evidence.json`. Earlier `evidence.json` and counts below are historical. No push, deploy, live plugin/profile changes or production calls. Independent re-QA and all release gates remain pending.
+
+## Locally exercised repairs (historical, not full acceptance)
+
+- **Credential scope:** ORBIT endpoint/key and Slack token use Hermes secret scopes. An active scope missing a credential does not borrow process-global credentials. Concurrent scope fixtures exercise distinct configurations and missing-scope failures.
+- **Original-request cancellation:** approval/resume and dispatch/readback consult the original ledger cancellation fence, persist cancellation and preserve it across module reload. Tests cover cancellation before approval and during approval readback. This is not an atomic fence around a remote mutation: cancellation after the final local check can race a POST, requiring server reconciliation.
+- **Canonical binding:** dispatch requires a project ID and an authorized `orbit-slack-v2` binding matching workspace, requester, project and owner. Name-only requests and missing/misbound contracts fail closed before POST. Target owner and note date join existing source/change/project/receipt/target checks. This validates a proposed contract against fixtures; it does not supply a canonical backend or independently fetch the target outside its receipt response.
+- **Durable recovery:** persisted `operationKey` and immutable wire binding permit GET-only reconciliation of an uncertain POST. Lost-ACK and child-process-exit tests recover against synthetic remote state without a second POST. Delayed error/confirmation responses cannot overwrite a terminal completion in tested interleavings.
+- **Safer incomplete transitions:** an identical unbound→bound retry retains the original request ID and one row, returning `source_promotion_required` rather than creating a duplicate. Backend-generated approval retains its receipt and returns `receipt_transition_required`, rather than clearing the receipt and POSTing again. These are fail-closed guards, not completed promotion/approval workflows.
+- **Approval wording:** explicitly limits the gate to this ORBIT candidate’s receipt; does not imply already-attempted provider mutations were prevented or rolled back.
+
+Existing protections remain: trusted gateway context plus profile-scoped ledger identity (including message timestamp), bounded payloads, exact requester/thread Slack approval readback, durable proposal selection, no model-supplied identity override, no raw provider exception persistence, and no overall success for a failed provider.
+
+## Actual validation from this finalization
+
+`evidence.json` is generated by `verify.py` and includes exact commands, exit codes, captured output and SHA-256 hashes of Python artifacts. It replaces stale 33-test evidence. It explicitly records `production_verified: false`, synthetic remote boundaries and independent QA pending.
+
+- Plugin pytest: **50 passed in 5.19s**.
+- Loopback demo: **passed**; `needs_confirmation → module reload → completed → replay completed`, **one durable row, one receipt POST, original source preserved**.
+- Typecheck: **exit 0**, `npx --no-install tsc --noEmit --incremental false`.
+- Node tests: **633 passed, 0 failed**, using `node --experimental-strip-types --test` over `tests/*.test.mjs`.
+- Full build-bearing `npm test` and dependency installation were **not rerun** in this bounded finalization. Earlier runs are historical evidence, not validation of this exact rework.
+- No production probe was run during this finalization.
+
+The demo imports the actual plugin, Hermes ledger/session context, uses temporary HERMES_HOME and real SQLite, and sends HTTP to a loopback server. **All Slack, canonical authorization and ORBIT receipt/target responses are synthetic fixtures. No real provider is changed.** The child-process crash test also uses synthetic persisted remote state, not a production crash/recovery exercise. Most plugin tests replace the authorization reader with a fixture; dedicated tests and the demo exercise the real reader against synthetic responses.
+
+## Remaining acceptance / release gates
+
+1. **Queued gateway trusted source — unresolved runtime defect.** Prior independent QA reproduced inherited message A with queued origin B causing `runtime_source_mismatch` in actual gateway dispatch. No gateway source changes were made; timestamp checks remain strict. Complete envelope propagation and real queued dispatch tests are still required.
+2. **Upstream alias collisions — unresolved dependency defect.** Prior QA reproduced the installed ledger returning on the first alias without attaching later aliases and silently accepting contradictory combinations. Stable-timestamp plugin tests do not repair/prove ledger completeness. Coordinate a dependency fix and pin its verified revision.
+3. **Multiple instructions per message — unimplemented.** One request per source still rejects a distinct second payload as `payload_conflict`. Ordered per-instruction identities, independent receipts/approval/retry and duplicate-versus-replay handling are required.
+4. **Automatic ambiguity approval — local note-only core implemented.** The new note prepare tool resolves canonical candidates and gates note execution on requester approval, with actual backend tests. General provider/classifier orchestration remains unimplemented. The legacy sync tool is still a post-attempt receipt contract; no claim that all provider side effects are gated.
+5. **Canonical backend — local note-only implementation now present; unreleased.** See `BACKEND.md`. The canonical route, scoped credentials, atomic knowledge-note/receipt transaction, durable conflict/reconciliation semantics and actual SQLite/built-worker tests are implemented. Independent review, approved credential provisioning, deployment and real authenticated verification remain required. Task/calendar targets are deliberately rejected.
+6. **Recovery — partial.** Authenticated same-request source promotion, explicit existing-receipt approval transition and legacy-row reconciliation remain blocked. Operation-key GET works only if a server implements it; missing/mismatched reconciliation must not trigger a new POST. General distributed exactly-once delivery, concurrent approvals, retention, connection lifetime and empty/invalid backend proposal behavior still need QA.
+7. **Production access — unresolved.** The prior owner and independent QA observed authenticated read-only GET returning **HTTP 403**, `text/plain`, not JSON. This finalization did not reproduce it. A 403 alone does not establish whether a route exists behind the access layer. Resolve access and verify authenticated real receipt/target behavior under release authorization; no production POST has been attempted here.
+8. **Real Slack approval/runtime — unverified.** Slack token scopes, actual approval readback and gateway dispatch need authorized end-to-end testing. Requester `U0B2R5WL206` and thread `1790043198.626399` are supplied task context; actual channel/current-message IDs remain unknown and were not invented or substituted with fixture identities.
+9. **Knowledge-base destination — unsupported.** Returns `destination_blocked`; no adapter or write proof.
+10. **Independent QA and release — pending.** This local commit is a handoff candidate, not a passed independent review, merged source, refreshed live plugin or deployed feature.
+
+## Proposed fixture contract (backend must implement and verify)
+
+- `GET endpoint?resolveProjectId=...&workspaceId=...&requesterId=...` must return `{contract:"orbit-slack-v2", authorized:true, projectId, workspaceId, requesterId, ownerId}` with authenticated tenant/owner enforcement, not merely echoed input.
+- `POST endpoint` accepts `{operationKey, source, providerStatus, providerError, change, project, binding}` and returns a stable `{id}`. Source includes platform, channelId, workspaceId, requesterId, messageTs and available eventId/clientMsgId/threadId.
+- `GET endpoint?operationKey=...` reconciles the same durable operation to a receipt with matching wire fields; it must not create a second operation.
+- `GET endpoint?id=...` returns the exact receipt/source/change/providerStatus/operationKey/binding/project and actual target entity. A completed target must match ID/type/project/owner/requested values (including note date). Failed provider state is `provider_failed`. Backend confirmation retains its original receipt; a write transition API is not implemented here.
+
+## Reproduce locally
+
+From this task checkout, with dependencies already installed:
+
+```bash
+python3 integrations/hermes-orbit-slack/verify.py --full \
+  --output /tmp/t_44ee3a1f-independent-evidence.json
+```
+
+Without `--full`, only plugin pytest and loopback demo run. The verifier uses `uv run --with pytest`; defaults are `HERMES_SOURCE=/home/hermes/.hermes/hermes-agent` and `HERMES_PYTHON=/home/hermes/.hermes/hermes-agent/venv/bin/python`. Override these for another machine. Tested dependency HEAD: `4db2300592d902a9cb6b7f7f15ae08b8ea25f361`; tests require its `gateway.slack_event_ledger`, `gateway.session_context` and `agent.secret_scope`. The dependency’s recorded HEAD is not proof of a clean tree or a fixed runtime. Tests/demo redirect profile state to temporary directories. No build/deploy command or production probe is part of the verifier.
+
+## Scope and rollback
+
+Only this task worktree’s integration files were finalized. No live plugin/profile/Hermes source changes, push, deploy, restart, production calls or Kanban mutations were performed. To discard the rework downstream, revert its local rework commit; the preceding candidate remains non-production-ready. Do not reset shared main. There is no production data rollback. If an independently approved future version is installed, preserve pending/uncertain SQLite state on rollback to avoid silently reissuing earlier requests.

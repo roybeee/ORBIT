@@ -53,7 +53,7 @@ export function previewRestore(current:WorkspaceData,raw:unknown,selection:z.inf
   if(category==='signalFollowups'){const r=record as NonNullable<WorkspaceData['signalFollowups']>[number];add('metricObservations',r.observationId);add('metricObservations',r.baselineId);if(r.delegationId)add('delegations',r.delegationId);}
   if(category==='meetingRecords'){const r=record as NonNullable<WorkspaceData['meetingRecords']>[number];for(const id of r.taskIds)add('tasks',id);for(const id of r.delegationIds)add('delegations',id);if(r.decisionId)add('decisions',r.decisionId);}
   if(category==='contacts'){const c=record as NonNullable<WorkspaceData['contacts']>[number];for(const [ids,cat] of [[c.projectIds,'projects'],[c.noteIds,'notes'],[c.decisionIds,'decisions'],[c.delegationIds,'delegations'],[c.eventIds,'events']] as [string[],Category][])for(const id of ids)add(cat,id);}
-  if(category==='tasks')for(const id of (record as any).dependsOn??[])add('tasks',id);
+  if(category==='tasks')for(const id of (record as WorkspaceData['tasks'][number]).dependsOn??[])add('tasks',id);
   if(category==='notes'){const n=record as Note;for(const id of [n.wiki?.parentId,...n.wiki?.links??[]].filter(Boolean) as string[])if(source.notes.some(n=>n.id===id))add('notes',id);}
   (next[category]??=[] as never).push(record as never);
  };

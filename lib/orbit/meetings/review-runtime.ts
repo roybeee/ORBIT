@@ -6,6 +6,8 @@ import {enqueueMeetingStatement,hasReadableMeeting} from './review.ts';
 import {driveAgent} from '../agent/driver.ts';
 import {collectNotifications} from '../notifications/store.ts';
 import {dateSchema} from '../validation.ts';
+import {addDays,todayInZone} from '../dates.ts';
+import type {WorkspaceData} from '../model.ts';
 import {findAction} from '../agent/repository.ts';
 import {applyAction} from '../reducer.ts';
 import {guardFor,recordFingerprint} from '../agent/action-guard.ts';
@@ -45,14 +47,19 @@ export async function advanceMeetingReviews(db:Database,owner:string,env?:Runtim
  }catch(e){await db.prepare("UPDATE orbit_meeting_reviews SET status='failed',error=?,updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status='queued'").bind(e instanceof Error?e.message:'회의록 분석 준비 실패',now,owner,row.note_id,row.revision).run();}
  return {active:true};
 }
+// Registered records a pending card may be folded into: open tasks and recent or upcoming local events.
+export function mergeCandidates(data:WorkspaceData){
+ const floor=addDays(todayInZone(data.preferences.timeZone),-30);
+ return {tasks:data.tasks.filter(t=>t.status!=='done').sort((a,b)=>a.due.localeCompare(b.due)).slice(0,300).map(t=>({id:t.id,title:t.title,projectId:t.projectId,due:t.due})),events:data.events.filter(e=>e.date>=floor&&!e.id.startsWith('google:')&&!e.id.startsWith('approved:')&&!e.id.startsWith('task-due:')).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start).slice(0,300).map(e=>({id:e.id,title:e.title,date:e.date,start:e.start,end:e.end}))};
+}
 export async function meetingReviewDetail(db:Database,owner:string,noteId:string){
  const note=await readNote(db,owner,noteId);
- const row=await db.prepare('SELECT r.*,t.status AS turn_status,t.response_json FROM orbit_meeting_reviews r LEFT JOIN orbit_agent_turns t ON t.owner_id=r.owner_id AND t.id=r.turn_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC LIMIT 1').bind(owner,noteId).first<any>();
+ const row=await db.prepare('SELECT r.*,t.status AS turn_status,t.response_json FROM orbit_meeting_reviews r LEFT JOIN orbit_agent_turns t ON t.owner_id=r.owner_id AND t.id=r.turn_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC LIMIT 1').bind(owner,noteId).first<{note_id:string;revision:number;turn_id:string;conversation_id:string;status:string;error:string;summary:string;turn_status:string|null;response_json:string|null}>();
  if(!row)return {status:'not_started',summary:'',actions:[],revision:note.revision??1,projects:[]};
  const response=JSON.parse(row.response_json??'{}');
- const cards=await db.prepare('SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id JOIN orbit_meeting_reviews r ON r.owner_id=a.owner_id AND r.conversation_id=t.conversation_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC,a.created_at,a.rowid').bind(owner,noteId).all<any>();
+ const cards=await db.prepare('SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id JOIN orbit_meeting_reviews r ON r.owner_id=a.owner_id AND r.conversation_id=t.conversation_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC,a.created_at,a.rowid').bind(owner,noteId).all<Parameters<typeof toAction>[0]>();
  const data=(await readWorkspace(db,owner)).data;
- return {status:row.status==='queued'?'queued':row.turn_status??row.status,summary:response.text||row.summary||'',error:response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal}))};
+ return {status:row.status==='queued'?'queued':row.turn_status??row.status,summary:response.text||row.summary||'',error:response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal})),candidates:mergeCandidates(data)};
 }
 
 // Scheduled and import callers use the same bounded worker as the UI. Reading a
@@ -91,7 +98,7 @@ export async function setMeetingDue(db:Database,owner:string,noteId:string,actio
  const statement=db.prepare("UPDATE orbit_agent_actions SET action_json=?,guard_json=?,reason=?,updated_at=? WHERE owner_id=? AND id=? AND state='pending' AND action_json=? AND guard_json=?").bind(JSON.stringify(action),JSON.stringify(guard),item.reason.replace('[마감일 확인 필요] 원문에 마감일이 없습니다. 승인 전에 날짜를 지정해 주세요.', '사용자가 마감일을 '+due+'로 지정했습니다.'),new Date().toISOString(),owner,actionId,JSON.stringify(item.action),JSON.stringify(oldGuard));
  const dependent=[];
  if(action.type==='project.upsert'){
-  const key='projects:'+action.project.id,before=applyAction(snapshot.data,item.action as any).projects.find(p=>p.id===action.project.id),after=applyAction(snapshot.data,action).projects.find(p=>p.id===action.project.id),oldHash=await recordFingerprint('projects',before),newHash=await recordFingerprint('projects',after);
+  const key='projects:'+action.project.id,before=applyAction(snapshot.data,item.action as Parameters<typeof applyAction>[1]).projects.find(p=>p.id===action.project.id),after=applyAction(snapshot.data,action).projects.find(p=>p.id===action.project.id),oldHash=await recordFingerprint('projects',before),newHash=await recordFingerprint('projects',after);
   const rows=await db.prepare("SELECT id,guard_json FROM orbit_agent_actions WHERE owner_id=? AND turn_id=? AND state='pending' AND id<>?").bind(owner,item.turnId,item.id).all<{id:string;guard_json:string}>();
   for(const row of rows.results){const g=JSON.parse(row.guard_json);if(g.meeting?.noteId!==noteId||g.values?.[key]!==oldHash)continue;g.values[key]=newHash;dependent.push(db.prepare("UPDATE orbit_agent_actions SET guard_json=? WHERE owner_id=? AND id=? AND state='pending' AND guard_json=? AND EXISTS(SELECT 1 FROM orbit_agent_actions a WHERE a.owner_id=? AND a.id=? AND a.action_json=?)").bind(JSON.stringify(g),owner,row.id,row.guard_json,owner,item.id,JSON.stringify(action)));}
  }

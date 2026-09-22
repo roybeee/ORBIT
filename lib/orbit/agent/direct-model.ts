@@ -21,7 +21,7 @@ export async function directModelReply(env:Runtime,request:ModelRequest,model:st
   const raw=await response.text();if(raw.length>1000000)throw new AgentError('응답이 너무 큽니다. 요청을 나눠 주세요.','OPENAI_FORMAT',422);
   const data=JSON.parse(raw);
   if(data.status!=='completed')throw new AgentError('응답을 끝까지 받지 못했습니다. 변경사항은 반영되지 않았습니다.','OPENAI_INCOMPLETE',502);
-  const output=(Array.isArray(data.output)?data.output:[]).filter((item:any)=>item.type==='message'&&item.role==='assistant').flatMap((item:any)=>Array.isArray(item.content)?item.content:[]).filter((part:any)=>part.type==='output_text').map((part:any)=>part.text).join('');
+  const output=(Array.isArray(data.output)?data.output:[]).filter((item:Record<string,unknown>)=>item.type==='message'&&item.role==='assistant').flatMap((item:Record<string,unknown>)=>Array.isArray(item.content)?item.content:[]).filter((part:Record<string,unknown>)=>part.type==='output_text').map((part:Record<string,unknown>)=>part.text).join('');
   if(!output||output.length>300000)throw new AgentError('빠른 대화 응답 형식을 확인하지 못했습니다.','OPENAI_FORMAT',422);
   return output as string;
  }catch(error){

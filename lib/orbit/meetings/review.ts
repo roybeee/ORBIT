@@ -27,15 +27,15 @@ export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Pr
  const out:Proposal[]=[],projects=new Map<string,string>(),seen=new Set<string>();
  for(let p of proposals){
   // Repair harmless omitted UI fields on the server, never invent dates or facts.
-  const raw=structuredClone(p.action) as any;
-  if(raw?.type==='project.upsert'&&raw.project){const old=data.projects.find(x=>x.id===raw.project.id);raw.project={id:'draft-project',color:'#7067eb',symbol:'O',priority:3,...old,...raw.project};}
+  const raw=structuredClone(p.action) as {type?:unknown;project?:Record<string,unknown>;task?:Record<string,unknown>;event?:Record<string,unknown>}|null|undefined;
+  if(raw?.type==='project.upsert'&&raw.project){const old=data.projects.find(x=>x.id===raw.project!.id);raw.project={id:'draft-project',color:'#7067eb',symbol:'O',priority:3,...old,...raw.project};}
   if(raw?.type==='task.upsert'&&raw.task)raw.task={id:'draft-task',status:'todo',focus:false,...raw.task};
   if(raw?.type==='event.upsert'&&raw.event)raw.event={id:'draft-event',kind:'meeting',...raw.event};
   if((raw?.type==='task.upsert'&&!raw.task?.due)||(raw?.type==='project.upsert'&&!raw.project?.due)){
    const target=raw.type==='task.upsert'?raw.task:raw.project;
    if(target){target.due=todayInZone(data.preferences.timeZone);p={...p,reason:'[마감일 확인 필요] 원문에 마감일이 없습니다. 승인 전에 날짜를 지정해 주세요.\n'+p.reason};}
   }
-  if(!['project.upsert','task.upsert','event.upsert'].includes(raw?.type))throw new AgentError('회의록은 일정·할 일·프로젝트 변경만 제안할 수 있습니다.','MEETING_SCOPE',422);
+  if(!['project.upsert','task.upsert','event.upsert'].includes(raw?.type as string))throw new AgentError('회의록은 일정·할 일·프로젝트 변경만 제안할 수 있습니다.','MEETING_SCOPE',422);
   const validated=actionSchema.safeParse(raw);
   if(!validated.success)throw new AgentError('결재안 형식 검증: '+validated.error.issues.slice(0,4).map(i=>i.path.join('.')+': '+i.message).join('; '),'MEETING_FORMAT',422);
   const a=parseAction(validated.data),s=p.source,line=s&&note.body.split(/\r?\n/)[s.line-1];

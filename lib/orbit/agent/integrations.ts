@@ -7,13 +7,14 @@ export const GOOGLE={authorize:'https://accounts.google.com/o/oauth2/v2/auth',to
 export interface Runtime {BUCKET?:import('../attachments/storage.ts').Bucket;ORBIT_ENCRYPTION_KEY?:string;PLAUD_OAUTH_CLIENT_ID?:string;OPENAI_API_KEY?:string;ORBIT_CHAT_MODEL?:string;ORBIT_DIRECT_CHAT_ENABLED?:string}
 export interface AuthConfig {clientId:string;clientSecret?:string;accessToken?:string;refreshToken?:string;expiresAt?:number;scope?:string}
 export const keyOf=(env:Runtime)=>env.ORBIT_ENCRYPTION_KEY??'';
-export async function fetchJson(url:string,init:RequestInit={},timeout=20000):Promise<{response:Response;data:Record<string,any>}>{
+type OAuthTokens={access_token?:unknown;refresh_token?:string;expires_in?:unknown;scope?:string};
+export async function fetchJson<T=Record<string,unknown>>(url:string,init:RequestInit={},timeout=20000):Promise<{response:Response;data:T}>{
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
  try{
   const response=await fetch(url,{...init,cache:'no-store',signal:controller.signal,redirect:'manual'});
   if(response.status>=300&&response.status<400)throw new AgentError('연결 서비스가 다른 주소로 이동했습니다. 연결 주소를 확인해 주세요.','UPSTREAM_REDIRECT',502);
   const text=await response.text();if(text.length>2000000)throw new AgentError('연결 응답이 너무 큽니다. 범위를 줄여 주세요.','UPSTREAM',502);
-  if(response.status===204&&!text)return {response,data:{}};
+  if(response.status===204&&!text)return {response,data:{} as T};
   let data;try{data=JSON.parse(text)}catch{throw new AgentError('연결 서비스가 올바르게 응답하지 않았습니다.','UPSTREAM',502)}if(!data||typeof data!=='object')throw new AgentError('연결 서비스의 응답 형식을 확인할 수 없습니다.','UPSTREAM',502);return{response,data};
  }catch(error){if(error instanceof AgentError)throw error;console.error('Orbit upstream request failed',{host:new URL(url).hostname,kind:error instanceof Error?error.name:'unknown'});throw new AgentError(controller.signal.aborted?'연결 시간이 초과됐습니다. 잠시 후 다시 연결해 주세요.':'연결 서비스에 도달하지 못했습니다. 잠시 후 다시 시도해 주세요.','UPSTREAM_NETWORK',502)}finally{clearTimeout(timer)}
 }
@@ -31,7 +32,7 @@ export async function accessToken(db:Database,owner:string,provider:'plaud'|'goo
  try{
   const latest=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));if(latest?.accessToken&&latest.expiresAt&&latest.expiresAt>Date.now()+60000)return latest.accessToken;
   const form=new URLSearchParams({grant_type:'refresh_token',refresh_token:config.refreshToken,client_id:config.clientId});if(config.clientSecret)form.set('client_secret',config.clientSecret);if(provider==='plaud')form.set('resource',PLAUD.server);
-  const {response,data}=await fetchJson(provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
+  const {response,data}=await fetchJson<OAuthTokens>(provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
   const publicRow=await db.prepare('SELECT public_json FROM orbit_integrations WHERE owner_id=? AND provider=?').bind(owner,provider).first<{public_json:string}>();const publicState=publicRow?JSON.parse(publicRow.public_json):{};
   if(!response.ok||typeof data.access_token!=='string'){await saveConnection(db,owner,provider,config,{...publicState,connected:false},keyOf(env));throw new AgentError('연결을 갱신하지 못했습니다. 다시 연결해 주세요.','RECONNECT',409)}
   const next={...config,accessToken:data.access_token,refreshToken:data.refresh_token??config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000};await saveConnection(db,owner,provider,next,{...publicState,connected:true},keyOf(env));return next.accessToken;
@@ -47,7 +48,7 @@ export async function startOAuth(db:Database,owner:string,provider:'plaud'|'goog
  if(provider==='plaud'&&!config?.clientId&&env.PLAUD_OAUTH_CLIENT_ID)config={clientId:env.PLAUD_OAUTH_CLIENT_ID};
  if((provider==='google_calendar'||provider==='google_mail')&&!config?.clientId)throw new AgentError('Google 연결 설정에 Orbit용 OAuth 클라이언트 정보를 먼저 등록해 주세요.','GOOGLE_SETUP',409);
  if(provider==='plaud'&&!config?.clientId){
-  const {response,data}=await fetchJson(PLAUD.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_name:'Orbit · Personal Manager',redirect_uris:[redirectUri],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'})});
+  const {response,data}=await fetchJson<{client_id?:unknown;client_secret?:string}>(PLAUD.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_name:'Orbit · Personal Manager',redirect_uris:[redirectUri],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'})});
   if(!response.ok||typeof data.client_id!=='string')throw new AgentError('Plaud 연결을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.','CONNECT',502);
   config={clientId:data.client_id,...(data.client_secret?{clientSecret:data.client_secret}:{})};await saveConnection(db,owner,provider,config,{connected:false},keyOf(env));
  }
@@ -64,7 +65,7 @@ export async function finishOAuth(db:Database,owner:string,state:string,code:str
  const removed=await db.prepare('DELETE FROM orbit_oauth_states WHERE state=? AND owner_id=?').bind(state,owner).run();if(!removed.meta?.changes)throw new AgentError('이미 사용한 연결 요청입니다.','OAUTH',409);
  const saved=await decrypt<{verifier:string;redirectUri:string;config:AuthConfig}>(row.secret_json,keyOf(env),`${owner}:oauth:${state}`);
  const form=new URLSearchParams({grant_type:'authorization_code',code,client_id:saved.config.clientId,redirect_uri:saved.redirectUri,code_verifier:saved.verifier});if(saved.config.clientSecret)form.set('client_secret',saved.config.clientSecret);if(row.provider==='plaud')form.set('resource',PLAUD.server);
- const {response,data}=await fetchJson(row.provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
+ const {response,data}=await fetchJson<OAuthTokens>(row.provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
  if(!response.ok||typeof data.access_token!=='string')throw new AgentError('계정 연결을 확인하지 못했습니다. 다시 연결해 주세요.','OAUTH',502);
  if(row.provider==='google_calendar'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/calendar.events'))throw new AgentError('일정 권한을 승인해야 Calendar를 연결할 수 있습니다.','SCOPE',403);
  if(row.provider==='google_mail'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly'))throw new AgentError('메일 읽기 권한을 승인해 주세요.','SCOPE',403);
