@@ -17,7 +17,7 @@
 ## 루프
 
 ```
-start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [머지 큐]  →  release.sh  →  Sites publish  →  verify-deploy.sh
+start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [auto-merge, main 최신화 필수]  →  release.sh  →  publish-sites.sh  →  verify-deploy.sh
 ```
 
 ### 1. 시작 — `scripts/parallel/start.sh <slug> [--type feat|fix|refactor|docs|chore]`
@@ -49,9 +49,14 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [머지
 ### 6. 릴리스 — `scripts/parallel/release.sh [--sites-remote <url>] [--record-pr]`
 
 - 검증된 `origin/main`의 `Validate Orbit`이 success인지 확인한다(아니면 중단, `--allow-unverified`는 사유 기록 필수).
-- `--sites-remote`(또는 `ORBIT_SITES_REMOTE_URL`)를 주면 토큰을 비표시 입력으로 받아 그 SHA를 Sites 소스 `main`으로 fast-forward push한다. 토큰은 인수·파일·로그에 남기지 않는다. Sites 쪽에 GitHub에 없는 커밋이 있으면 중단한다.
-- `docs/releases/<날짜>-<sha7>.md`에 GitHub SHA → tree → CI → Sites push 결과를 기록한다. `--record-pr`은 이 기록을 별도 docs PR로 큐에 올린다.
-- Sites publication(배포 ID 생성) 자체는 Sites 도구에서 실행한다. 이 단계는 "검증된 소스 인계"이며 배포 완료가 아니다.
+- `--sites-remote`(또는 `ORBIT_SITES_REMOTE_URL`)를 주면 토큰을 비표시 입력으로 받아 **exact-tree projection**을 push한다. Sites 소스 저장소는 자체 히스토리를 가지므로 GitHub main을 fast-forward할 수 없다. 대신 Sites main 위에 "GitHub tree와 정확히 같은 tree"를 가진 커밋 하나를 만들어 push한다(PR #22, #24의 방식). 토큰은 인수·파일·로그에 남기지 않는다.
+- `docs/releases/<날짜>-<sha7>.md`에 GitHub SHA → tree → CI → Sites 결과를 기록한다. `--record-pr`은 이 기록을 별도 docs PR로 올린다.
+
+### 6-1. Sites 게시 — `scripts/parallel/publish-sites.sh <github-sha>` (소유자 실행)
+
+- Sites publication(버전 저장·배포 ID 생성)은 ChatGPT/Codex 안의 Sites 연결로만 가능하다. 이 스크립트는 로컬 Codex CLI(`codex exec`, bundled `sites-hosting` 스킬)에 정확한 지시문을 전달한다: 검증된 SHA의 detached 워크트리에서 exact-tree projection push → 빌드·패키지 → `save_version_and_deploy_private` → 배포 상태 폴링 → 구조화된 보고.
+- Codex가 승인을 요청하므로 터미널에서 소유자가 직접 실행한다(무인 전권 실행은 하지 않는다). `--print`로 지시문과 명령만 확인할 수 있다.
+- 끝나면 보고의 DEPLOYMENT_ID·버전을 릴리스 기록에 적고 `verify-deploy.sh`로 운영 tree를 대조한다.
 
 ### 7. 배포 검증 — `scripts/parallel/verify-deploy.sh <github-sha> [--url ...]`
 
@@ -75,5 +80,5 @@ start.sh <slug>  →  개발·커밋  →  sync.sh  →  finish.sh  →  [머지
 
 - 큐는 PR을 순차 검증하므로 동시 PR 5개면 최대 10분 안팎 지연된다(CI 약 2분).
 - `merge=union`은 같은 위치에 삽입된 두 섹션의 순서를 바꿀 수 있다. 내용은 잃지 않는다.
-- Sites publication은 자동화 대상 밖이다. `release.sh`는 소스 push와 기록까지만 담당한다.
+- Sites publication은 Codex의 Sites 연결을 통해서만 가능하다. `release.sh`는 소스 push와 기록, `publish-sites.sh`는 소유자가 실행하는 Codex 게시 지시를 담당한다.
 - 이 변경 이전에 배포된 빌드는 `tree`를 `unknown`으로 보고한다.

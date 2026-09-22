@@ -27,7 +27,9 @@ export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,
   const {root}=reorder;
   const ordered=reorder.order?visible.slice().sort((a,b)=>Number(b.project.id===data.dominoProjectId)-Number(a.project.id===data.dominoProjectId)||(reorder.order!.indexOf(a.project.id)-reorder.order!.indexOf(b.project.id))):visible;
   const visibleKey=visible.map(i=>i.project.id).join('|');
-  useEffect(()=>{if(reorder.editing)return;setIndex(0);root.current?.scrollTo({left:0,behavior:'instant'})},[visibleKey,bucket,root]);
+  const [seenTrack,setSeenTrack]=useState({visibleKey,bucket});
+  if(seenTrack.visibleKey!==visibleKey||seenTrack.bucket!==bucket){setSeenTrack({visibleKey,bucket});if(!reorder.editing)setIndex(0)}
+  useEffect(()=>{if(reorder.editing)return;root.current?.scrollTo({left:0,behavior:'instant'})},[visibleKey,bucket,root]);
   const bucketLabel=bucket==='active'?'진행 중인 프로젝트':bucket==='completed'?'완료된 프로젝트':'준비·보류 프로젝트';
   const narrowed=!!query.trim()||filter!=='all';
   function scrollCard(next:number){

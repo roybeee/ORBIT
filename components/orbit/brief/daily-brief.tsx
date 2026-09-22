@@ -1,6 +1,6 @@
 'use client';
 import {FocusCalendarButton} from '../agent/calendar-controls';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Sparkles,LoaderCircle,Check,Pause,ArrowRight,RefreshCw,Clock3,ChevronDown,FileText} from 'lucide-react';
 import {EvidenceSheet} from '../agent/evidence-sheet';
 import {agentRequest} from '../agent/connections';
@@ -14,8 +14,9 @@ interface Props {snapshot:WorkspaceSnapshot;date:string;setDate:(date:string)=>v
 export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,demo,refresh,perform,navigate,open,launch}:Props){
  const [selectedEvidence,setSelectedEvidence]=useState<BriefEvidence|null>(null);
  const [run,setRun]=useState<BriefRun|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[starting,setStarting]=useState(false),[defer,setDefer]=useState<string|null>(null),[reason,setReason]=useState(''),[revisit,setRevisit]=useState(addDays(date,1));
- const refreshedRun=useRef(''),onRefresh=useRef(refresh);onRefresh.current=refresh;
- const currentDate=useRef(date),request=useRef<{id:string;date:string;energy:Proposal['energy']}|null>(null),launched=useRef(''),startingRef=useRef(false);currentDate.current=date;
+ const refreshedRun=useRef(''),onRefresh=useRef(refresh);
+ const currentDate=useRef(date),request=useRef<{id:string;date:string;energy:Proposal['energy']}|null>(null),launched=useRef(''),startingRef=useRef(false);
+ useLayoutEffect(()=>{onRefresh.current=refresh;currentDate.current=date},[refresh,date]);
  const plan=snapshot.data.proposals.find(p=>p.date===date),brief=plan?.brief,running=run?.status==='running',locked=busy||starting||running;
  const today=todayInZone(snapshot.data.preferences.timeZone),historical=date<today;
  const dayLabel=date===today?'오늘':date===addDays(today,1)?'내일':date===addDays(today,-1)?'어제':koreanDate(date,false);
@@ -29,8 +30,10 @@ export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,dem
   try{const started=await agentRequest('/api/brief','POST',payload);if(started?.local){setNotice('Hermes가 연결되어 있지 않아 Orbit의 규칙 기반 계획(Goal Laser 우선 → 반드시 종결 → B → A → C)으로 시간을 배치했습니다. 연결하면 근거 기반 원페이지 제안을 받을 수 있습니다.');request.current=null;await onRefresh.current();return}setNotice('');if(currentDate.current===payload.date)setRun({id:payload.id,status:'running',progress:`${payload.date} 제안을 위해 진척과 회의 기록을 모으고 있습니다.`})}catch(e){try{const state=await agentRequest('/api/brief?date='+payload.date);if(currentDate.current===payload.date&&state.run){setRun(state.run);if(state.run.status==='running'){setError('');setNotice('요청은 접수됐습니다. 연결이 잠시 지연되어도 분석 상태를 계속 확인합니다.');return}}}catch{}setError(e instanceof Error?e.message:'분석을 시작하지 못했습니다.')}finally{startingRef.current=false;setStarting(false)}
  }
  useEffect(()=>{if(!launch||launch.date!==date||launched.current===launch.id)return;launched.current=launch.id;void start(launch.id)},[launch,date]);
+ const [briefDate,setBriefDate]=useState(date);
+ if(briefDate!==date){setBriefDate(date);if(!demo){setRun(null);setError('')}}
  useEffect(()=>{
-  if(demo)return;let active=true,timer:ReturnType<typeof setTimeout>;setRun(null);setError('');refreshedRun.current='';
+  if(demo)return;let active=true,timer:ReturnType<typeof setTimeout>;refreshedRun.current='';
   const poll=async()=>{try{
    const result=await agentRequest('/api/brief?date='+date);if(!active)return;setRun(result.run);setError('');
    if(result.run?.status==='running'){try{await agentRequest('/api/agent/run','POST',{id:result.run.id,action:'poll'});if(active)setNotice('')}catch{if(active)setNotice('분석은 서버에서 계속 진행 중입니다. 연결 상태를 다시 확인하고 있습니다.')}}

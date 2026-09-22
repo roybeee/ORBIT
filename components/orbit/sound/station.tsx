@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Headphones,Pause,Play,Volume2,ArrowUpRight,LoaderCircle} from 'lucide-react';
 import {Slider} from '@/components/ui/slider';
 import {agentRequest} from '@/components/orbit/agent/connections';
@@ -17,9 +17,11 @@ export function SoundStation({visible,demo=false,onOpen}:{visible:boolean;demo?:
   const [mounted,setMounted]=useState(false),[playback,setPlayback]=useState(idle),[loadError,setLoadError]=useState(''),[dismissed,setDismissed]=useState(false),[dismissError,setDismissError]=useState('');
   const frame=useRef<HTMLIFrameElement>(null),queue=useRef<Promise<void>>(Promise.resolve());
   const localDemo=useRef(emptySound()),prefill=useRef<{goal:string;minutes:number}|null>(null);
-  const open=useRef(onOpen);open.current=onOpen;
+  const open=useRef(onOpen);
+  useLayoutEffect(()=>{open.current=onOpen},[onOpen]);
   const command=(name:string,value?:unknown)=>frame.current?.contentWindow?.postMessage({protocol,type:'command',command:name,value},'*');
   usePopupHistory({historyPriority:-1,open:visible&&!!playback.popup,onOpenChange:open=>{if(!open)command('close-popup',playback.popup);}});
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- mounted latches after the first client render that shows the station, so the iframe is never rendered on the server
   useEffect(()=>{if(visible){setMounted(true);setDismissed(false)}},[visible]);
   useEffect(()=>{
     const show=(event:Event)=>{
