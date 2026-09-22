@@ -37,10 +37,13 @@ function messagePage(value:Record<string,unknown>,offset:number){
  if(pagination&&(typeof pagination!=='object'||Array.isArray(pagination)||(pagination.offset!==undefined&&pagination.offset!==offset)||(pagination.order!==undefined&&pagination.order!=='oldest')||(pagination.returned!==undefined&&pagination.returned!==value.data.length)))throw new AgentError('Hermes 메시지 순서가 요청한 수집 위치와 다릅니다.','HERMES_FORMAT',502);
  return value.data as unknown[];
 }
+// The quarantine reason is the only thing an operator sees from outside, so an
+// unknown role names itself. The value is upstream data: keep it short and plain.
+const roleHint=(role:unknown)=>typeof role!=='string'?' (역할 값이 없습니다)':` (역할: ${role.replace(/[^A-Za-z0-9_-]/g,'').slice(0,40)||'알 수 없는 형식'})`;
 function activityMessage(value:unknown,position:number,token:string){
  if(!value||typeof value!=='object'||Array.isArray(value))throw new AgentError('Hermes 메시지가 올바른 객체가 아닙니다.','HERMES_FORMAT',502);
  const m=value as Record<string,unknown>;
- if(typeof m.role!=='string'||!messageRoles.has(m.role))throw new AgentError('Hermes 메시지 역할을 확인하지 못했습니다.','HERMES_FORMAT',502);
+ if(typeof m.role!=='string'||!messageRoles.has(m.role))throw new AgentError('Hermes 메시지 역할을 확인하지 못했습니다.'+roleHint(m.role),'HERMES_FORMAT',502);
  // When a transcript projection omits SQLite row IDs, the requested oldest-first
  // absolute position is stable across overlap/retry; a content hash alone loses repeated turns.
  const positional=m.id===undefined||m.id===null||m.id==='';
