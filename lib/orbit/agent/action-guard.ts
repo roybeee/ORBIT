@@ -22,13 +22,16 @@ export async function captureWorkspaceBasis(data:WorkspaceData,now=new Date()):P
  }
  return Object.fromEntries(await Promise.all(entries.map(async([key,value])=>[key,await recordFingerprint(key.split(':')[0],value)])));
 }
+// Guard keys read the action as a loose record: every referenced field is listed here.
+type GuardRef={id:unknown;projectId:unknown;goalId:unknown;noteId:unknown;taskId:unknown;parentId:unknown;status:unknown;name:string;dependsOn:unknown[]|undefined;sources:{kind:unknown;id:unknown}[]|undefined};
+type GuardAction={type:string;id:unknown;date:unknown;goalId:unknown;projectId:unknown;taskIds:unknown[];eventIds:unknown[]|undefined;assignments:GuardRef[];projects:GuardRef[]|undefined;tasks:GuardRef[];routine:GuardRef;project:GuardRef;task:GuardRef;note:GuardRef;event:GuardRef;goal:GuardRef;improvement:GuardRef;habit:GuardRef;risk:GuardRef;memory:GuardRef;record:GuardRef;contact:Record<string,unknown[]|undefined>};
 function keysFor(action:AgentAction['action'],data:WorkspaceData):string[]{
- const a=action as unknown as Record<string,any>,keys=new Set<string>();
+ const a=action as unknown as GuardAction,keys=new Set<string>();
  const row=(collection:string,id:unknown)=>{if(typeof id==='string'&&id)keys.add(collection+':'+id)};
  const project=(id:unknown)=>{row('projects',id);const p=data.projects.find(p=>p.id===id);if(p?.goalId)row('goals',p.goalId)};
- const draftProject=(draft:Record<string,any>)=>{project(draft.id);keys.add('projectName:'+normalize(draft.name))};
+ const draftProject=(draft:GuardRef)=>{project(draft.id);keys.add('projectName:'+normalize(draft.name))};
  const task=(id:unknown)=>{row('tasks',id);row('taskEvents',id);const t=data.tasks.find(t=>t.id===id);if(t){project(t.projectId);for(const dep of t.dependsOn??[])row('tasks',dep);for(const event of data.events.filter(e=>e.taskId===id))row('events',event.id)}};
- const linked=(record:Record<string,any>)=>{project(record.projectId);row('notes',record.noteId);row('tasks',record.taskId);row('goals',record.goalId)};
+ const linked=(record:GuardRef)=>{project(record.projectId);row('notes',record.noteId);row('tasks',record.taskId);row('goals',record.goalId)};
  if(['project.upsert','task.upsert','task.status','task.focus','task.record','chief.checkin','care.check','review.saveGenerate','meeting.finish','quest.plan'].includes(a.type)){keys.add('$today');keys.add('$timeZone')}
  switch(a.type){
   case 'chief.checkin':keys.add('chief.checkins:'+todayInZone(data.preferences.timeZone));break;

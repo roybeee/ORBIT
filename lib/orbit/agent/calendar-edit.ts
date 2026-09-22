@@ -32,7 +32,7 @@ function dateFields(value:{date?:string;dateTime?:string},timeZone:string){
  const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(instant).map(p=>[p.type,p.value]));
  return {date:`${p.year}-${p.month}-${p.day}`,minute:Number(p.hour)*60+Number(p.minute)};
 }
-function fields(event:Record<string,any>,timeZone:string){const start=dateFields(event.start,timeZone),end=dateFields(event.end,timeZone),allDay=!!event.start.date;return {title:String(event.summary??'비공개 일정').slice(0,160),startDate:start.date,endDate:allDay?addDays(end.date,-1):end.date,start:start.minute,end:end.minute,allDay}}
+function fields(event:GoogleEvent,timeZone:string){const start=dateFields(event.start,timeZone),end=dateFields(event.end,timeZone),allDay=!!event.start.date;return {title:String(event.summary??'비공개 일정').slice(0,160),startDate:start.date,endDate:allDay?addDays(end.date,-1):end.date,start:start.minute,end:end.minute,allDay}}
 export async function readCalendarEdit(db:Database,owner:string,env:Runtime,id:string){
  const snapshot=await readWorkspace(db,owner),cached=snapshot.data.events.find(e=>e.id===id);
  if(!cached?.google)throw new AgentError('일정을 새로 불러온 뒤 다시 선택해 주세요.','NOT_FOUND',404);
@@ -42,7 +42,7 @@ export async function readCalendarEdit(db:Database,owner:string,env:Runtime,id:s
  if(live.data.id!==cached.google.eventId||live.data.status==='cancelled'||!live.data.etag)throw new AgentError('현재 수정할 일정을 확인하지 못했습니다.','NOT_FOUND',404);
  // Only a concrete occurrence can be edited; never silently change a series master.
  if(live.data.recurrence?.length&&!live.data.recurringEventId)throw new AgentError('반복 일정에서 수정할 날짜를 선택해 주세요.','INPUT',422);
- return {id,calendarId,eventId:live.data.id as string,etag:live.data.etag as string,timeZone:snapshot.data.preferences.timeZone,...fields(live.data,snapshot.data.preferences.timeZone),description:String(live.data.description??''),scope:storedEventScope(live.data.extendedProperties?.private?.orbitScope)??eventScope(cached),recurring:!!live.data.recurringEventId,sourceCalendarId:cached.google.calendarId};
+ return {id,calendarId,eventId:live.data.id as string,etag:live.data.etag as string,timeZone:snapshot.data.preferences.timeZone,...fields(live.data as GoogleEvent,snapshot.data.preferences.timeZone),description:String(live.data.description??''),scope:storedEventScope(live.data.extendedProperties?.private?.orbitScope)??eventScope(cached),recurring:!!live.data.recurringEventId,sourceCalendarId:cached.google.calendarId};
 }
 // Update just this Google resource in the owner cache; local events remain untouched.
 // Date-based attachment/appearance keys move in the same workspace CAS transaction.
@@ -87,7 +87,7 @@ export async function saveCalendarEdit(db:Database,owner:string,env:Runtime,valu
   const completed=JSON.parse(row.result_json).verified===true;
   if(!completed&&live.data.extendedProperties?.private?.orbitEditId!==input.operationId){
    if(live.data.etag!==input.etag)throw new AgentError('다른 곳에서 일정이 변경되었습니다. 최신 내용을 불러온 뒤 수정해 주세요.','CONFLICT',409);
-   const previous=fields(live.data,input.timeZone);
+   const previous=fields(live.data as GoogleEvent,input.timeZone);
    if(previous.startDate!==input.startDate||previous.endDate!==input.endDate||previous.start!==input.start||previous.end!==input.end||previous.allDay!==input.allDay){
     const snapshot=await readWorkspace(db,owner);
     if(snapshot.data.preferences.timeZone!==input.timeZone)throw new AgentError('시간대가 변경되었습니다. 최신 일정을 불러와 주세요.','CONFLICT',409);
