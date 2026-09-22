@@ -28,7 +28,7 @@ type Session=z.infer<typeof sessionSchema>;
 interface Cursor {connection?:string;messageVersion?:number;offset:number;pending:Session[];lastSync?:string;lastError?:string;cycles?:number;turns?:number;enabled?:boolean;omissions?:number;quarantine?:{id:string;signature:string;reason:string;retryAt:number}[]}
 const sessionSignature=(s:Session)=>JSON.stringify([s.last_active,s.message_count,s.ended_at,s.title]);
 const defaults=():Cursor=>({offset:0,pending:[],enabled:true});
-const messageRoles=new Set(['user','assistant','tool','system','developer','function']);
+const messageRoles=new Set(['user','assistant','tool','system','developer','function','session_meta']);
 const localMessageId=(position:number)=>`orbit-position:${String(position).padStart(12,'0')}`;
 type MessagePage={session_id:string;data:unknown[]};
 function messagePage(value:Record<string,unknown>,offset:number){
@@ -46,8 +46,9 @@ function activityMessage(value:unknown,position:number,token:string){
  const positional=m.id===undefined||m.id===null||m.id==='';
  if(!positional&&!(typeof m.id==='string'&&m.id.length<=500)&&!(typeof m.id==='number'&&Number.isSafeInteger(m.id)&&m.id>=0))throw new AgentError('Hermes 메시지 식별자 형식을 확인하지 못했습니다.','HERMES_FORMAT',502);
  const rawId=String(m.id),id=positional?localMessageId(position):rawId.startsWith('orbit-')?'orbit-source:'+rawId:rawId;
- // Do not turn hidden compaction carriers or developer/system prompts into user records.
- const hidden=m.display_kind==='hidden'||m.role==='system'||m.role==='developer';
+ // Do not turn hidden compaction carriers, developer/system prompts or Hermes'
+ // session_meta rows (transcript metadata with no content) into user records.
+ const hidden=m.display_kind==='hidden'||m.role==='system'||m.role==='developer'||m.role==='session_meta';
  const content=hidden?'[시스템 메시지 제외]':redactActivity(m.content,token),tools=!hidden&&m.tool_calls?redactActivity(m.tool_calls,token):'';
  return {id,role:m.role,positional,content:content.slice(0,30000)+(content.length>30000?'\n[긴 메시지 일부만 보관 · Hermes 원본 확인]':''),tool:hidden?'':String(m.tool_name??'').slice(0,150),tools:tools.slice(0,8000),at:String(m.timestamp??'')};
 }
