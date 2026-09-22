@@ -43,6 +43,27 @@ interface FeedbackDraft {
   rule: string;
   kind: ImprovementKind;
 }
+// Shape of the per-device draft persisted while the wizard is open (see saveDraft below).
+interface ReviewDraft {
+  baseVersion: string;
+  items: ItemDraft[];
+  feedback: Record<string, FeedbackDraft>;
+  dayRule: FeedbackDraft;
+  bed: string;
+  wake: string;
+  exercise: string;
+  meals: string;
+  mood: string;
+  habitChecks: string[];
+  energy: Proposal['energy'];
+  smallWins: string[];
+  gratitude: string[];
+  win: string;
+  block: string;
+  quick?: boolean;
+  step?: number;
+  savedSleep?: number;
+}
 const STEPS = ['오늘 항목 결과', '원인 · 대안 · 규칙', '에너지 · 습관', '내가 해냄 · 감사'] as const;
 const toMinutes = (value: string) => {
   const [h, m] = value.split(':').map(Number);
@@ -126,20 +147,22 @@ export function ReviewWizard({
   const [loading, setLoading] = useState(!demo && !!existing?.hasDetail);
   const [ready,setReady]=useState(false),[quick,setQuick]=useState(true),[draftError,setDraftError]=useState('');
   const dirty=useRef(false);
-  const [conflict,setConflict]=useState<any>(null);
-  const savedSleep=useRef<number|undefined>(undefined);
-  const hydrate=(d:any)=>{setItems(current=>[...d.items,...current.filter(i=>!d.items.some((v:any)=>v.taskId===i.taskId))]);setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);savedSleep.current=d.savedSleep;};
+  const [conflict,setConflict]=useState<ReviewDraft|null>(null);
+  // Sleep minutes from the saved review drive rendering (sleepMinutes fallback), so they live in state rather than a ref.
+  const [savedSleep,setSavedSleep]=useState<number|undefined>(undefined);
+  const hydrate=(d:ReviewDraft)=>{setItems(current=>[...d.items,...current.filter(i=>!d.items.some(v=>v.taskId===i.taskId))]);setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);setSavedSleep(d.savedSleep);};
   // Saved detail rows are fetched once; every setState below happens after the network round trip.
   useEffect(() => {
-    const draft=!demo&&readDraft<any>(ownerId,'review',reviewDate);
-    if(draft&&Array.isArray(draft.items)&&draft.feedback&&draft.dayRule&&Array.isArray(draft.habitChecks)&&Array.isArray(draft.smallWins)&&Array.isArray(draft.gratitude)&&['bed','wake','exercise','meals','mood','energy','win','block'].every(k=>typeof draft[k]==='string')){if(draft.baseVersion===(existing?.updatedAt??'')){hydrate(draft);dirty.current=true;setLoading(false);setReady(true);return;}setConflict(draft);}
+    const draft=!demo&&readDraft<ReviewDraft>(ownerId,'review',reviewDate);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores the device draft from localStorage once after mount; it cannot be read during server rendering or hydration, and the wizard must show the draft (or the conflict notice) before any network request
+    if(draft&&Array.isArray(draft.items)&&draft.feedback&&draft.dayRule&&Array.isArray(draft.habitChecks)&&Array.isArray(draft.smallWins)&&Array.isArray(draft.gratitude)&&['bed','wake','exercise','meals','mood','energy','win','block'].every(k=>typeof (draft as unknown as Record<string,unknown>)[k]==='string')){if(draft.baseVersion===(existing?.updatedAt??'')){hydrate(draft);dirty.current=true;setLoading(false);setReady(true);return;}setConflict(draft);}
     if (demo || !existing?.hasDetail) {setReady(true);return;}
     let active = true;
     const timer = setTimeout(() => setLoading(true), 0);
     void agentRequest('/api/reviews?date=' + reviewDate)
       .then((r: { detail: ReviewDetail | null }) => {
         if(!active)return;if(!r.detail){setDraftError('저장된 회고 상세를 확인하지 못했습니다. 다시 열어 주세요.');return;}
-        const d = r.detail; savedSleep.current=d.energy.sleepMinutes;
+        const d = r.detail; setSavedSleep(d.energy.sleepMinutes);
         setItems(current => [
           ...d.items.map(saved => ({taskId:saved.taskId,title:saved.title,estimate:saved.estimateMinutes,outcome:saved.outcome,actual:saved.actualMinutes === undefined ? '' : String(saved.actualMinutes),reason:saved.reason ?? 'other' as const,source:'저장된 회고'})),
           ...current.filter(i=>!d.items.some(saved=>saved.taskId===i.taskId)),
@@ -176,11 +199,12 @@ export function ReviewWizard({
       clearTimeout(timer);
     };
   }, [reviewDate, demo, existing?.hasDetail]);
-  useEffect(()=>{if(!ready||demo||!dirty.current||conflict)return;try{saveDraft(ownerId,'review',reviewDate,{baseVersion:existing?.updatedAt??'',items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep:savedSleep.current});setDraftError('');}catch{setDraftError('기기 임시 저장에 실패했습니다. 입력을 복사해 보관해 주세요.');}},[ready,demo,ownerId,reviewDate,items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- persists the draft to localStorage after every change; the error state only reports a failed write of that external store
+  useEffect(()=>{if(!ready||demo||!dirty.current||conflict)return;try{saveDraft(ownerId,'review',reviewDate,{baseVersion:existing?.updatedAt??'',items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep});setDraftError('');}catch{setDraftError('기기 임시 저장에 실패했습니다. 입력을 복사해 보관해 주세요.');}},[ready,demo,ownerId,reviewDate,items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep]);
   const sleepMinutes = (() => {
     const b = toMinutes(bed),
       w = toMinutes(wake);
-    if (b === null || w === null) return savedSleep.current;
+    if (b === null || w === null) return savedSleep;
     return (w - b + 1440) % 1440 || undefined;
   })();
   const undecided = items.filter((i) => !i.outcome).length;

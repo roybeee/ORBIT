@@ -7,7 +7,8 @@ type Options={ids:string[];coreId?:string;scope:string;disabled:boolean;onManage
 type Drag={id:string;x:number;y:number};
 type Session={id:string;x:number;y:number;input:'touch'|'pointer';pointer:number;active:boolean;timer?:ReturnType<typeof setTimeout>;before:string[]|null};
 export function useProjectReorder(options:Options){
- const root=useRef<HTMLDivElement>(null),latest=useRef(options);latest.current=options;
+ const root=useRef<HTMLDivElement>(null),latest=useRef(options);
+ useEffect(()=>{latest.current=options});
  const [order,setOrder]=useState<string[]|null>(null),orderRef=useRef<string[]|null>(null);
  const [drag,setDrag]=useState<Drag|null>(null),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
  const savingRef=useRef(false);
@@ -27,6 +28,7 @@ export function useProjectReorder(options:Options){
  function step(id:string,delta:number){if(savingRef.current||latest.current.disabled)return;const ids=orderRef.current;if(!ids)return;const i=ids.indexOf(id),target=ids[i+delta];if(target)update(moveProjectInOrder(ids,id,target))}
  // A change of bucket/filter/core or external membership invalidates the draft.
  const membership=options.ids.slice().sort().join('|');
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- the reset must abort the active gesture (a ref) and clear orderRef together with the state; refs cannot be touched during render
  useEffect(()=>{cancelGesture.current();update(null);setMessage('')},[options.scope,options.coreId,membership]);
  useEffect(()=>{if(options.disabled)cancelGesture.current()},[options.disabled]);
  useEffect(()=>{
