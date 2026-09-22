@@ -18,7 +18,7 @@ async function calendar(token:string){
 }
 async function get(token:string,calendarId:string,eventId:string){return fetchJson(path(calendarId,eventId),{headers:{Authorization:`Bearer ${token}`}});}
 const validId=(id:unknown):id is string=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,1024}$/.test(id);
-function master(event:Record<string,any>,title:string){
+function master(event:Record<string,unknown>,title:string){
  if(!validId(event.id)||event.status==='cancelled'||event.recurringEventId||!Array.isArray(event.recurrence)||!event.recurrence.length||event.summary!==title||typeof event.etag!=='string'||typeof event.iCalUID!=='string')throw new AgentError('제목과 반복 시리즈를 확실히 확인하지 못해 삭제하지 않았습니다. 대상 일정의 정확한 제목과 ID를 확인해 주세요.','CALENDAR_TARGET',409);
 }
 // Owner Google credentials stay on Orbit's server, never in Hermes context or logs.
@@ -69,11 +69,11 @@ export async function deleteCalendarSeries(db:Database,owner:string,env:Runtime,
   if(after.response.status!==404&&after.response.status!==410){check(after.response);if(after.data.status!=='cancelled')throw new Error('master remains');}
   const future=new URL(path(v.calendarId,v.seriesId)+'/instances');future.search=new URLSearchParams({timeMin:new Date().toISOString(),showDeleted:'false',maxResults:'2500'}).toString();
   const instances=await fetchJson(future.href,{headers:{Authorization:`Bearer ${token}`}});
-  if(instances.response.status!==404&&instances.response.status!==410){check(instances.response);if(!Array.isArray(instances.data.items)||instances.data.items.some((e:any)=>e.status!=='cancelled')||instances.data.nextPageToken)throw new Error('instances remain');}
+  if(instances.response.status!==404&&instances.response.status!==410){check(instances.response);if(!Array.isArray(instances.data.items)||instances.data.items.some((e:{status?:string})=>e.status!=='cancelled')||instances.data.nextPageToken)throw new Error('instances remain');}
   // A deleted master can make instances return 404. Also query the calendar by iCalUID.
   const list=new URL(`${base}/calendars/${encodeURIComponent(v.calendarId)}/events`);list.search=new URLSearchParams({iCalUID:v.iCalUID,timeMin:new Date().toISOString(),singleEvents:'true',showDeleted:'false',maxResults:'2500'}).toString();
   const remaining=await fetchJson(list.href,{headers:{Authorization:`Bearer ${token}`}});check(remaining.response);
-  if(!Array.isArray(remaining.data.items)||remaining.data.items.some((e:any)=>e.status!=='cancelled')||remaining.data.nextPageToken)throw new Error('future records remain or incomplete');
+  if(!Array.isArray(remaining.data.items)||remaining.data.items.some((e:{status?:string})=>e.status!=='cancelled')||remaining.data.nextPageToken)throw new Error('future records remain or incomplete');
   return await checkpoint('verified','반복 시리즈 전체 삭제 후 Google 재조회 완료 · 향후 회차 없음 · 기존 할 일 변경 없음');
  }catch(error){
   await checkpoint('verification_pending','삭제 후 재조회가 완료되지 않았습니다. 같은 카드에서 결과 확인을 다시 시도해 주세요.');
