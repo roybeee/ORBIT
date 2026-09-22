@@ -79,6 +79,24 @@ if [[ "${merge}" == 0 ]]; then
   exit 0
 fi
 
+# Never enable auto-merge before the required check has passed on this head: if the
+# ruleset were missing, GitHub would merge a "clean" PR immediately (PR #25 did).
+wait_for_checks() {
+  local pr="$1" tries=0 count
+  while :; do
+    count="$(gh pr checks "${pr}" -R "${ORBIT_GITHUB_REPO}" --json name --jq 'length' 2>/dev/null || printf 0)"
+    [[ "${count}" =~ ^[0-9]+$ && "${count}" -gt 0 ]] && break
+    (( tries++ < 18 )) || die "no checks reported for PR #${pr} after 3 minutes; is Validate Orbit configured for pull requests?"
+    log "waiting for Validate Orbit to start on PR #${pr}"
+    sleep 10
+  done
+  log "waiting for checks on PR #${pr} head $(git rev-parse --short HEAD)"
+  gh pr checks "${pr}" -R "${ORBIT_GITHUB_REPO}" --watch --fail-fast --interval 15 >/dev/null \
+    || die "checks failed on PR #${pr}; fix, commit and rerun finish.sh"
+}
+wait_for_checks "${pr_number}"
+task_write "ci_passed_head=${head}"
+
 # Auto-merge fires only when the head is up to date with main and validate is green.
 # If another PR lands first, the PR becomes BEHIND and the loop below re-syncs it.
 log "enabling auto-merge for PR #${pr_number} (merge commit)"
