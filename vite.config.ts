@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -33,6 +34,22 @@ const localBindingConfig = {
     : [],
 };
 
+// The committed tree hash is the same for the GitHub merge commit and the Sites
+// source commit that publishes it, so a deployment can be matched to the
+// verified GitHub revision. ORBIT_SOURCE_TREE overrides it for builds without git.
+function sourceTree(): string {
+  const configured = process.env.ORBIT_SOURCE_TREE;
+  if (configured && /^[0-9a-f]{40}$/.test(configured)) return configured;
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
 export default defineConfig(async () => {
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
@@ -60,6 +77,9 @@ export default defineConfig(async () => {
         config: localBindingConfig,
       }),
     ],
-    define: { __ORBIT_BUILD_ID__: JSON.stringify(new Date().toISOString()) },
+    define: {
+      __ORBIT_BUILD_ID__: JSON.stringify(new Date().toISOString()),
+      __ORBIT_SOURCE_TREE__: JSON.stringify(sourceTree()),
+    },
   };
 });

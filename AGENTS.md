@@ -22,6 +22,14 @@
 - Record the verified base SHA and validation results in the PR. On completion, report the merged SHA and distinguish source synchronization from deployment.
 - Do not pin future work to a release number or a SHA from chat history. Historical source hashes document provenance only; the latest verified GitHub `main` always determines the next base.
 
+## Parallel integration loop
+
+- `main` is protected by the `main-integration` ruleset: pull request required (merge commits only), `Validate Orbit` (`validate`) required on a head that is up to date with `main`, no deletion or force-push, no bypass. A green check on an outdated head can no longer merge: when another PR lands first, yours becomes "behind" and must integrate the new `main` and pass CI again. (GitHub merge queues are only offered to organization-owned repositories; `github-setup.sh --merge-queue` switches to one if the repository moves.)
+- Merging means enabling auto-merge: `gh pr merge <n> --auto --merge` (or "Enable auto-merge" in the UI). It completes only when the PR is up to date and green. If it reports "behind", update the branch (`gh pr update-branch <n>` or `scripts/parallel/sync.sh`) and let CI re-run. After the merge, read back the remote `main` SHA before reporting.
+- One task = one worktree from the verified remote `main`. The helper scripts in `scripts/parallel/` implement this loop: `start.sh <slug>` (verified base + worktree + install), `sync.sh` (integrate the latest `main`, re-run checks), `finish.sh` (push, PR with base SHA and tree, auto-merge, re-sync when behind, wait for the merged SHA), `status.sh` (drift/PR/CI/queue board), `cleanup.sh`, `release.sh` and `verify-deploy.sh`. See `docs/Parallel_Loop.ko.md`.
+- Conflict prevention: migrations are append-only and `scripts/check-migrations.mjs` runs in CI (journal indexes, files, snapshot chain, and no renumbering of migrations already on the base). If two branches generated the same number, the later one regenerates its migration on top of the integrated `main`. `CHANGELOG.md` merges with `merge=union`; keep each entry in its own dated section. Dependency or lockfile changes travel in their own small PR before feature work depends on them.
+- Release identity: the build embeds the committed source tree hash, and `/api/deployment-health` and `/api/version` report it as `tree`. `scripts/parallel/release.sh` records GitHub SHA → tree in `docs/releases/` and can push the exact revision to the Sites source; `verify-deploy.sh <sha>` confirms the running app reports that tree. Only that confirmation counts as a production deployment.
+
 ## Release boundary
 
 - Product changes must reach GitHub `main` through a validated PR before the resulting source is published to Sites. Do not create a separate Sites-only development line.
