@@ -204,3 +204,11 @@ export const pushSubscriptions=sqliteTable('orbit_push_subscriptions',{
 export const pushDeliveries=sqliteTable('orbit_push_deliveries',{
  ownerId:text('owner_id').notNull(),notificationId:text('notification_id').notNull(),subscriptionId:text('subscription_id').notNull(),status:text('status').notNull().default('queued'),attempts:integer('attempts').notNull().default(0),nextAt:integer('next_at').notNull().default(0),leaseUntil:integer('lease_until').notNull().default(0),error:text('error').notNull().default(''),
 },t=>[primaryKey({columns:[t.ownerId,t.notificationId,t.subscriptionId]}),index('idx_orbit_push_queue').on(t.ownerId,t.status,t.nextAt)]);
+// Cross-run analysis reuse: content-addressed per owner. Derived data; regenerable, never backed up.
+export const analysisCache=sqliteTable('orbit_analysis_cache',{
+ ownerId:text('owner_id').notNull(),cacheKey:text('cache_key').notNull(),version:text('version').notNull(),stage:text('stage').notNull(),unit:text('unit').notNull(),content:text('content').notNull(),createdAt:text('created_at').notNull(),lastUsedAt:text('last_used_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.cacheKey]}),index('idx_orbit_analysis_cache_used').on(t.ownerId,t.lastUsedAt)]);
+// One row per planning turn: when records were read (basis), when the plan became ready, reuse counts, leaf manifest.
+export const briefRuns=sqliteTable('orbit_brief_runs',{
+ ownerId:text('owner_id').notNull(),turnId:text('turn_id').notNull(),date:text('date').notNull(),startedAt:text('started_at').notNull(),basisAt:text('basis_at').notNull(),readyAt:text('ready_at'),sourceRevision:integer('source_revision').notNull().default(0),metricsJson:text('metrics_json').notNull().default('{}'),manifestJson:text('manifest_json').notNull().default(''),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.turnId]}),index('idx_orbit_brief_runs_date').on(t.ownerId,t.date,t.startedAt)]);

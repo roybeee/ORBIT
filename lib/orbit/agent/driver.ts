@@ -14,7 +14,7 @@ export async function agentProgress(db:Database,owner:string,id:string){
 export async function driveAgent(db:Database,owner:string,id:string,env:Runtime,options:{maxMs?:number;maxSteps?:number;onStep?:()=>Promise<void>;allowExternalReads?:boolean}={}){
  const started=Date.now(),maxMs=Math.min(options.maxMs??20000,25000),maxSteps=Math.min(options.maxSteps??16,24);
  const read=()=>db.prepare('SELECT job_json,lease_until FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,id).first<{job_json:string;lease_until:number}>();
- const fingerprint=(raw:string)=>{const j=JSON.parse(raw);return JSON.stringify([j.phase,j.round,j.runId,j.reads?.length,j.attempted,j.batch?.cursor,j.batch?.stage])};
+ const fingerprint=(raw:string)=>{const j=JSON.parse(raw);return JSON.stringify([j.phase,j.round,j.runId,j.reads?.length,j.attempted,j.batch?.cursor,j.batch?.stage,!!j.request,j.batch?.pending?.length])};
  for(let step=0;step<maxSteps&&Date.now()-started<maxMs;step++){
   const before=await read();
   if(!before){await advanceAgent(db,owner,id,env);await options.onStep?.();break;}
