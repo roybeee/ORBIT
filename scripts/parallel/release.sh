@@ -32,7 +32,7 @@ if [[ "${ci}" != "success" ]]; then
 fi
 run_url="$(gh run list -R "${ORBIT_GITHUB_REPO}" --workflow "${ORBIT_CI_WORKFLOW}" --commit "${main}" --limit 1 --json url --jq '.[0].url // ""' 2>/dev/null || true)"
 
-sites_result="not pushed from this machine (hand off: publish Sites from the source whose tree is ${tree})"
+sites_result="not pushed from this machine (hand off: scripts/parallel/publish-sites.sh ${main} pushes the exact tree ${tree} and publishes)"
 if [[ -n "${sites_remote}" ]]; then
   [[ "${sites_remote}" == https://* ]] || die "--sites-remote must be an https URL"
   if [[ -n "${ORBIT_SITES_TOKEN_FD:-}" ]]; then
@@ -45,15 +45,28 @@ if [[ -n "${sites_remote}" ]]; then
   export GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader
   export GIT_CONFIG_VALUE_0="Authorization: Bearer ${token}"
   unset token
-  log "fetching Sites ${ORBIT_MAIN_BRANCH} to confirm a fast-forward"
+  # The Sites source repository keeps its own history, so GitHub main is never a
+  # fast-forward of it. Publish an exact-tree projection instead: one new commit
+  # on top of the Sites main whose tree is exactly the verified GitHub tree.
+  log "fetching Sites ${ORBIT_MAIN_BRANCH}"
   git fetch --quiet "${sites_remote}" "${ORBIT_MAIN_BRANCH}" 2>&1 | sed "s/${GIT_CONFIG_VALUE_0}/[REDACTED]/g" >&2 || true
-  if git rev-parse --verify --quiet FETCH_HEAD >/dev/null && ! git merge-base --is-ancestor FETCH_HEAD "${main}"; then
-    die "Sites ${ORBIT_MAIN_BRANCH} $(git rev-parse --short FETCH_HEAD) is not an ancestor of GitHub ${main}; integrate the Sites-only commits through a GitHub PR first"
+  if git rev-parse --verify --quiet FETCH_HEAD >/dev/null; then
+    sites_head="$(git rev-parse FETCH_HEAD)"
+    if [[ "$(tree_of "${sites_head}")" == "${tree}" ]]; then
+      projection="${sites_head}"
+      log "Sites ${ORBIT_MAIN_BRANCH} ${sites_head} already has tree ${tree}; nothing to push"
+    else
+      projection="$(git commit-tree "${tree}" -p "${sites_head}" -m "Publish GitHub ${ORBIT_MAIN_BRANCH} ${main} (tree ${tree})")"
+    fi
+  else
+    projection="$(git commit-tree "${tree}" -m "Publish GitHub ${ORBIT_MAIN_BRANCH} ${main} (tree ${tree})")"
   fi
-  log "pushing ${main} -> Sites ${ORBIT_MAIN_BRANCH}"
-  git push --quiet "${sites_remote}" "${main}:refs/heads/${ORBIT_MAIN_BRANCH}" 2>&1 | sed "s/${GIT_CONFIG_VALUE_0}/[REDACTED]/g" >&2
+  if [[ "${projection}" != "${sites_head:-}" ]]; then
+    log "pushing projection ${projection} (tree ${tree}) -> Sites ${ORBIT_MAIN_BRANCH}"
+    git push --quiet "${sites_remote}" "${projection}:refs/heads/${ORBIT_MAIN_BRANCH}" 2>&1 | sed "s/${GIT_CONFIG_VALUE_0}/[REDACTED]/g" >&2
+  fi
   unset GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_0 GIT_CONFIG_COUNT
-  sites_result="pushed ${main} to the Sites source ${ORBIT_MAIN_BRANCH} at $(date -u +%H:%M:%SZ) UTC; Sites publication still has to be run and verified"
+  sites_result="Sites source ${ORBIT_MAIN_BRANCH} = \`${projection}\` (exact tree ${tree}) at $(date -u +%H:%M:%SZ) UTC; publication (save version + deploy) still has to run: scripts/parallel/publish-sites.sh ${main}"
 fi
 
 mkdir -p docs/releases
@@ -101,5 +114,5 @@ cat >&2 <<MSG
   CI           ${ci}
   Sites        ${sites_result}
   record       ${record}
-next: publish from Sites, then  scripts/parallel/verify-deploy.sh ${main}
+next: scripts/parallel/publish-sites.sh ${main}  (owner runs; Codex Sites connector)\n      scripts/parallel/verify-deploy.sh ${main}   (after the deployment succeeds)
 MSG
