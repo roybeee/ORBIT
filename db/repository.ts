@@ -221,6 +221,7 @@ export async function writeCommand(
   ownerId: string,
   command: { operationId: string; expectedRevision: number; action: WorkspaceAction },
   now = new Date(),
+  atomic?: { gate: string; values: SqlValue[]; statements: (gate: string, values: SqlValue[]) => Statement[] },
 ): Promise<WorkspaceSnapshot> {
   const hashBytes = await crypto.subtle.digest(
     'SHA-256',
@@ -306,9 +307,9 @@ export async function writeCommand(
   const update = db
     .prepare(
       `INSERT INTO orbit_workspaces (owner_id, revision, state_json, mutation_id, updated_at)
- SELECT ?, ?, ?, ?, ? WHERE ${exportGate} AND ${attachmentGate(attachmentIds ?? [])}
+ SELECT ?, ?, ?, ?, ? WHERE ${atomic?.gate ?? '1'} AND ${exportGate} AND ${attachmentGate(attachmentIds ?? [])}
  ON CONFLICT(owner_id) DO UPDATE SET revision=excluded.revision, state_json=excluded.state_json, mutation_id=excluded.mutation_id, updated_at=excluded.updated_at
- WHERE orbit_workspaces.revision = ? AND ${exportGate} AND ${attachmentGate(attachmentIds ?? [])}`,
+ WHERE orbit_workspaces.revision = ? AND ${atomic?.gate ?? '1'} AND ${exportGate} AND ${attachmentGate(attachmentIds ?? [])}`,
     )
     .bind(
       ownerId,
@@ -316,9 +317,11 @@ export async function writeCommand(
       storage.stateJson,
       command.operationId,
       timestamp,
+      ...(atomic?.values ?? []),
       ownerId,Date.now(),
       ...attachmentGateValues(ownerId, attachmentIds ?? [], 'event', attachmentTarget),
       command.expectedRevision,
+      ...(atomic?.values ?? []),
       ownerId,Date.now(),
       ...attachmentGateValues(ownerId, attachmentIds ?? [], 'event', attachmentTarget),
     );
@@ -429,6 +432,7 @@ export async function writeCommand(
       )
       .bind(ownerId, command.operationId, hash, revision, timestamp, ...gateValues),
   );
+  if (atomic) statements.push(...atomic.statements(gate, gateValues));
   const results = await db.batch(statements);
   if (results[0]?.meta?.changes !== 1) {
     const replay = await receipt(db, ownerId, command.operationId);
