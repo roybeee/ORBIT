@@ -5,6 +5,7 @@ import {automaticProject} from '../classify.ts';
 import {AgentError} from '../agent/errors.ts';
 import {todayInZone} from '../dates.ts';
 type MailPart={mimeType?:string;body?:{data?:string};parts?:MailPart[]}|undefined;
+type MailMessage={payload?:MailPart&{headers?:{name:string;value:string}[]};snippet?:unknown;internalDate?:unknown;labelIds?:unknown;threadId?:unknown};
 export function mailText(payload:MailPart):string {
  const pieces:string[]=[];
  const walk=(part:MailPart)=>{if(part?.mimeType==='text/plain'&&part.body?.data){try{const bytes=Uint8Array.from(atob(part.body.data.replaceAll('-','+').replaceAll('_','/')),c=>c.charCodeAt(0));pieces.push(new TextDecoder().decode(bytes))}catch{}}for(const child of part?.parts??[])walk(child)};
@@ -19,7 +20,7 @@ export async function syncWikiMail(db:Database,owner:string,env:Runtime) {
  const base='https://gmail.googleapis.com/gmail/v1/users/me/messages';
  const catchup=!!state.wikiPage&&Number(state.wikiCycle??0)%3!==2;
  const params=new URLSearchParams({q:'newer_than:30d -in:spam -in:trash',maxResults:'10',...(catchup?{pageToken:state.wikiPage}:{})});
- const listed=await fetchJson(base+'?'+params,{headers});
+ const listed=await fetchJson<{messages?:{id?:unknown}[];nextPageToken?:string}>(base+'?'+params,{headers});
  if(!listed.response.ok)throw new AgentError('Gmail 조회를 완료하지 못했습니다. API 사용 설정과 읽기 권한을 확인해 주세요.','MAIL',502);
  let count=0;
  for(const item of listed.data.messages??[]) {
@@ -27,7 +28,7 @@ export async function syncWikiMail(db:Database,owner:string,env:Runtime) {
   const snapshot=await readWorkspace(db,owner);const id='gmail:'+item.id;const existing=snapshot.data.notes.find(n=>n.id===id);if(existing?.source?.mail)continue;
   if(await db.prepare("SELECT id FROM orbit_data_trash WHERE owner_id=? AND category='notes' AND record_id=?").bind(owner,id).first())continue;
   if(Date.now()>deadline)throw new AgentError('메일 수집을 나누어 진행합니다. 다음 주기에 이어서 확인합니다.','MAIL',504);
-  const detail=await fetchJson(base+'/'+encodeURIComponent(item.id)+'?format=full',{headers});if(!detail.response.ok)throw new AgentError('메일 원문을 가져오지 못했습니다. 다음 동기화에서 재시도합니다.','MAIL',502);
+  const detail=await fetchJson<MailMessage>(base+'/'+encodeURIComponent(item.id)+'?format=full',{headers});if(!detail.response.ok)throw new AgentError('메일 원문을 가져오지 못했습니다. 다음 동기화에서 재시도합니다.','MAIL',502);
   const m=detail.data,header=(key:string)=>String(m.payload?.headers?.find((h:{name:string;value:string})=>String(h.name).toLowerCase()===key)?.value??'').slice(0,2000);
   const mail=mailMetadata(m);
   if(existing){if(mail){await writeCommand(db,owner,{operationId:'wiki-mail-meta:'+item.id,expectedRevision:snapshot.revision,action:{type:'note.upsert',note:{...existing,body:(await readNote(db,owner,id,existing.revision??1)).body,source:{...existing.source!,mail}}}});}continue;}

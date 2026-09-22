@@ -7,7 +7,7 @@ import {dateSchema} from '../validation.ts';
 import {addDays} from '../dates.ts';
 import type {CalendarEvent} from '../model.ts';
 import {accessToken,fetchJson,type Runtime} from './integrations.ts';
-import {normalizeEvents,zonedInstant,type GoogleEvent} from './calendar.ts';
+import {normalizeEvents,zonedInstant,type GoogleCalendarEntry,type GoogleEvent} from './calendar.ts';
 import {AgentError} from './errors.ts';
 const base='https://www.googleapis.com/calendar/v3';
 const eventPath=(calendar:string,id:string)=>base+'/calendars/'+encodeURIComponent(calendar)+'/events/'+encodeURIComponent(id);
@@ -25,7 +25,7 @@ function check(response:Response){
  if(response.status===412)throw new AgentError('다른 곳에서 일정이 변경되었습니다. 최신 일정을 불러온 뒤 수정해 주세요.','CONFLICT',409);
  if(!response.ok)throw new AgentError('Google의 저장 결과를 확인하지 못했습니다. 같은 내용으로 다시 확인해 주세요.','CALENDAR',502);
 }
-async function calendar(token:string,source:string){const result=await fetchJson(base+'/users/me/calendarList/'+encodeURIComponent(source),{headers:{Authorization:'Bearer '+token}});check(result.response);if(!['owner','writer'].includes(result.data.accessRole))throw new AgentError('읽기 전용 캘린더입니다. 수정 권한이 있는 일정만 변경할 수 있습니다.','CALENDAR_READ_ONLY',409);return result.data.id as string}
+async function calendar(token:string,source:string){const result=await fetchJson<GoogleCalendarEntry>(base+'/users/me/calendarList/'+encodeURIComponent(source),{headers:{Authorization:'Bearer '+token}});check(result.response);if(!['owner','writer'].includes(result.data.accessRole))throw new AgentError('읽기 전용 캘린더입니다. 수정 권한이 있는 일정만 변경할 수 있습니다.','CALENDAR_READ_ONLY',409);return result.data.id as string}
 function dateFields(value:{date?:string;dateTime?:string},timeZone:string){
  if(value.date)return {date:value.date,minute:0};
  const instant=new Date(value.dateTime??'');if(!Number.isFinite(+instant))throw new AgentError('일정 시간을 읽지 못했습니다.','CALENDAR',502);
@@ -38,7 +38,7 @@ export async function readCalendarEdit(db:Database,owner:string,env:Runtime,id:s
  if(!cached?.google)throw new AgentError('일정을 새로 불러온 뒤 다시 선택해 주세요.','NOT_FOUND',404);
  if(cached.google.orbitEventId&&snapshot.data.events.some(e=>e.id===cached.google!.orbitEventId))throw new AgentError('ORBIT에서 연결된 원래 일정을 수정해 주세요.','MANAGED_EVENT',409);
  const token=await accessToken(db,owner,'google_calendar',env),calendarId=await calendar(token,cached.google.calendarId);
- const live=await fetchJson(eventPath(calendarId,cached.google.eventId),{headers:{Authorization:'Bearer '+token}});check(live.response);
+ const live=await fetchJson<GoogleEvent>(eventPath(calendarId,cached.google.eventId),{headers:{Authorization:'Bearer '+token}});check(live.response);
  if(live.data.id!==cached.google.eventId||live.data.status==='cancelled'||!live.data.etag)throw new AgentError('현재 수정할 일정을 확인하지 못했습니다.','NOT_FOUND',404);
  // Only a concrete occurrence can be edited; never silently change a series master.
  if(live.data.recurrence?.length&&!live.data.recurringEventId)throw new AgentError('반복 일정에서 수정할 날짜를 선택해 주세요.','INPUT',422);
@@ -81,7 +81,7 @@ export async function saveCalendarEdit(db:Database,owner:string,env:Runtime,valu
  if(claimed.meta?.changes!==1)throw new AgentError('저장 결과를 확인하고 있습니다. 잠시 후 다시 확인해 주세요.','BUSY',409);
  try{
   const token=await accessToken(db,owner,'google_calendar',env);if(await calendar(token,row.source_calendar_id)!==input.calendarId)throw new AgentError('Google 계정이 바뀌었습니다. 일정을 다시 불러와 주세요.','CONFLICT',409);
-  const headers={Authorization:'Bearer '+token},url=eventPath(input.calendarId,input.eventId),live=await fetchJson(url,{headers});check(live.response);
+  const headers={Authorization:'Bearer '+token},url=eventPath(input.calendarId,input.eventId),live=await fetchJson<GoogleEvent>(url,{headers});check(live.response);
   if(live.data.id!==input.eventId||live.data.status==='cancelled')throw new AgentError('일정이 삭제되었습니다.','NOT_FOUND',404);
   let saved=live.data;
   const completed=JSON.parse(row.result_json).verified===true;
@@ -96,7 +96,7 @@ export async function saveCalendarEdit(db:Database,owner:string,env:Runtime,valu
    }
    const start=input.allDay?{date:input.startDate,dateTime:null,timeZone:null}:{date:null,dateTime:zonedInstant(input.startDate,input.start,input.timeZone),timeZone:input.timeZone};
    const end=input.allDay?{date:addDays(input.endDate,1),dateTime:null,timeZone:null}:{date:null,dateTime:zonedInstant(input.endDate,input.end,input.timeZone),timeZone:input.timeZone};
-   const changed=await fetchJson(url+'?sendUpdates=none',{method:'PATCH',headers:{...headers,'Content-Type':'application/json','If-Match':input.etag},body:JSON.stringify({summary:input.title,start,end,...(input.description!==undefined?{description:input.description}:{}),extendedProperties:{private:{...live.data.extendedProperties?.private,orbitEditId:input.operationId,...(input.scope!==undefined?{orbitScope:input.scope}:{})}}})});check(changed.response);saved=changed.data;
+   const changed=await fetchJson<GoogleEvent>(url+'?sendUpdates=none',{method:'PATCH',headers:{...headers,'Content-Type':'application/json','If-Match':input.etag},body:JSON.stringify({summary:input.title,start,end,...(input.description!==undefined?{description:input.description}:{}),extendedProperties:{private:{...live.data.extendedProperties?.private,orbitEditId:input.operationId,...(input.scope!==undefined?{orbitScope:input.scope}:{})}}})});check(changed.response);saved=changed.data;
    if(input.description!==undefined&&(saved.description??'')!==input.description||input.scope!==undefined&&saved.extendedProperties?.private?.orbitScope!==input.scope)throw new AgentError('메모와 일정 구분의 저장 결과를 다시 확인해 주세요.','CALENDAR',502);
   }
   if(saved.id!==input.eventId||!saved.start||!saved.end)throw new AgentError('저장 응답을 확인하지 못했습니다. 같은 내용으로 다시 확인해 주세요.','CALENDAR',502);
