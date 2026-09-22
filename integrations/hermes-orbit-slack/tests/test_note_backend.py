@@ -28,6 +28,33 @@ def backend():
     child.stdout.close()
     assert child.returncode == 0
 
+def test_verifier_rejects_canonical_kind_only_mutation(plugin, backend):
+    remote, _ = backend
+    binding = remote('GET', {'resolveProjectId':'project-a', 'workspaceId':'T_TEST', 'requesterId':'U_TEST'})
+    wire = {'operationKey':'kind-only', 'source':{'platform':'slack', 'workspaceId':'T_TEST',
+        'requesterId':'U_TEST', 'channelId':'C_TEST', 'messageTs':'1790000000.000002', 'eventId':'Ev-kind'},
+        'providerStatus':'succeeded', 'providerError':'', 'project':{'id':'project-a'},
+        'binding':binding, 'change':NOTE['change']}
+    saved = remote('POST', wire)
+    assert saved['target']['note']['kind'] == 'knowledge'
+    assert plugin.verify_readback(saved, wire) == 'completed'
+    remote('CHANGE_KIND', {'kind':'wiki'}, saved['target']['id'])
+    changed = remote('GET', {'id':saved['id']})
+    assert changed['target']['note'] == {**saved['target']['note'], 'kind':'wiki',
+        'revision':saved['target']['note']['revision'] + 1}
+    assert changed['status'] == 'target_changed'
+    with pytest.raises(ValueError, match='readback_incomplete'):
+        plugin.verify_readback(changed, wire)
+    # Independently fence the plugin against an old/misreporting backend: use the
+    # actual persisted target, changing only the receipt's claimed status.
+    with pytest.raises(ValueError, match='readback_target_mismatch'):
+        plugin.verify_readback({**changed, 'status':'completed'}, wire)
+    missing_kind = {**saved['target']['note']}
+    del missing_kind['kind']
+    with pytest.raises(ValueError, match='readback_target_mismatch'):
+        plugin.verify_readback({**saved, 'target':{**saved['target'], 'note':missing_kind}}, wire)
+
+
 @pytest.fixture
 def registered(plugin, tmp_path, monkeypatch):
     """Actual SDK discovery, config enablement, loader and scoped tool registry."""

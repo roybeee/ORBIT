@@ -170,6 +170,7 @@ def verify_readback(data, wire):
     expected = {'title': change['text'], 'due': change['due']} if kind == 'task' else {'title': change['title'], 'body': change.get('text') if change['kind'] == 'note' else '\n'.join(f'{i + 1}) {text}' for i, text in enumerate(change['items']))}
     expected['ownerId'] = wire['binding']['ownerId']
     if change['kind'] != 'task':
+        expected['kind'] = 'knowledge'
         expected['date'] = change['date']
     if any(entity.get(key) != value for key, value in expected.items()):
         raise ValueError('readback_target_mismatch')

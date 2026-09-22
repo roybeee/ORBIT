@@ -11,6 +11,7 @@ for await(const line of readline.createInterface({input:process.stdin})){
  try{
  const {method,payload,remote_id}=JSON.parse(line);
  if(method==='INSPECT'){const workspace=await readWorkspace(db,'fixture-owner');workspace.data.notes=await Promise.all(workspace.data.notes.map(n=>readNote(db,'fixture-owner',n.id)));console.log(JSON.stringify({workspace,receipts:await db.prepare('SELECT COUNT(*) n FROM orbit_slack_directives').first()}));continue}
+ if(method==='CHANGE_KIND'){const note=await readNote(db,'fixture-owner',remote_id);await writeCommand(db,'fixture-owner',{operationId:'kind-only-'+remote_id,expectedRevision:(await readWorkspace(db,'fixture-owner')).revision,action:{type:'note.upsert',note:{...note,kind:payload.kind}}});console.log(JSON.stringify({status:200,data:await readNote(db,'fixture-owner',remote_id)}));continue}
  const url='https://orbit.test/api/integrations/slack/directives'+(method==='GET'?'?'+new URLSearchParams(payload??{id:remote_id}):'');
  const response=await handleDirective(db,new Request(url,{method,headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(method==='POST'?{body:JSON.stringify(payload)}:{})}));
  console.log(JSON.stringify({status:response.status,data:await response.json()}));

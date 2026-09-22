@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {register} from 'node:module';
 import {createDatabase} from './sqlite-d1.mjs';
 import {digest} from '../lib/orbit/slack/directives.ts';
-import {writeCommand,readNote} from '../db/repository.ts';
+import {writeCommand,readNote,readWorkspace} from '../db/repository.ts';
 register('./cloudflare-loader.mjs',import.meta.url);
 const db=createDatabase();
 globalThis.__orbitCloudflareEnv={DB:db};
@@ -19,4 +19,12 @@ test('built HTTP route demo: scoped binding, atomic knowledge note, operation re
  const response=await send('',wire);assert.equal(response.status,200);const saved=await response.json();assert.equal(saved.status,'completed');assert.equal((await readNote(db,'demo-owner',saved.target.id)).body,wire.change.text);
  const recovered=await send('?operationKey=built-demo');assert.equal((await recovered.json()).id,saved.id);assert.equal((await (await send('',wire)).json()).id,saved.id);
  const ambiguous={...wire,operationKey:'ambiguous'};delete ambiguous.project;delete ambiguous.binding;const pending=await (await send('',ambiguous)).json();assert.equal(pending.status,'needs_confirmation');assert.deepEqual(pending.candidates,['ofd']);assert.equal(pending.target,null);
+ // Change only canonical kind, keeping every previously verified field intact.
+ const before=await readNote(db,'demo-owner',saved.target.id);assert.equal(before.kind,'knowledge');
+ await writeCommand(db,'demo-owner',{operationId:'kind-only',expectedRevision:(await readWorkspace(db,'demo-owner')).revision,action:{type:'note.upsert',note:{...before,kind:'wiki'}}});
+ const changed=await (await send('?id='+saved.id)).json();
+ assert.deepEqual(changed.target.note,{...saved.target.note,kind:'wiki',revision:saved.target.note.revision+1});
+ assert.equal(changed.status,'target_changed');
+ assert.equal((await (await send('?operationKey=built-demo')).json()).status,'target_changed');
+ assert.equal((await (await send('',wire)).json()).status,'target_changed');
 }finally{db.close()}});
