@@ -35,9 +35,17 @@ export async function collectNotifications(db:Database,owner:string){
  WHERE n.owner_id=? AND n.created_at>=s.created_at AND n.created_at>=? AND n.read_at IS NULL`).bind(owner,new Date(Date.now()-86400000).toISOString()).run();
 }
 export async function listNotifications(db:Database,owner:string,before?:string){
- const rows=await db.prepare('SELECT * FROM orbit_notifications WHERE owner_id=? AND (? IS NULL OR created_at<?) ORDER BY created_at DESC,id DESC LIMIT 51').bind(owner,before??null,before??null).all<{id:string;kind:OrbitNotification['kind'];title:string;body:string;href:string;created_at:string;read_at:string|null}>();
- const count=await db.prepare('SELECT count(*) AS n FROM orbit_notifications WHERE owner_id=? AND read_at IS NULL').bind(owner).first<{n:number}>();
+ const rows=await db.prepare('SELECT * FROM orbit_notifications WHERE owner_id=? AND dismissed_at IS NULL AND (? IS NULL OR created_at<?) ORDER BY created_at DESC,id DESC LIMIT 51').bind(owner,before??null,before??null).all<{id:string;kind:OrbitNotification['kind'];title:string;body:string;href:string;created_at:string;read_at:string|null}>();
+ const count=await db.prepare('SELECT count(*) AS n FROM orbit_notifications WHERE owner_id=? AND dismissed_at IS NULL AND read_at IS NULL').bind(owner).first<{n:number}>();
  return {items:rows.results.slice(0,50).map(r=>({id:r.id,kind:r.kind,title:r.title,body:r.body,href:r.href,createdAt:r.created_at,readAt:r.read_at} as OrbitNotification)),unread:count?.n??0,hasMore:rows.results.length>50};
+}
+// Collection rebuilds notifications from durable receipts with stable IDs, so a row
+// cannot simply be deleted: the next refresh would insert it again. The row stays and
+// carries the dismissal, which INSERT OR IGNORE leaves untouched.
+export async function dismissNotifications(db:Database,owner:string,ids:string[]){
+ if(!ids.length)return;
+ const now=new Date().toISOString();
+ await db.prepare(`UPDATE orbit_notifications SET dismissed_at=?,read_at=COALESCE(read_at,?) WHERE owner_id=? AND id IN (${ids.map(()=>'?').join(',')})`).bind(now,now,owner,...ids).run();
 }
 export async function readNotifications(db:Database,owner:string,ids:string[],through?:string){
  if(through)await db.prepare('UPDATE orbit_notifications SET read_at=? WHERE owner_id=? AND read_at IS NULL AND created_at<=?').bind(new Date().toISOString(),owner,through).run();

@@ -199,7 +199,7 @@ export const meetingReviews=sqliteTable('orbit_meeting_reviews',{
 },t=>[primaryKey({columns:[t.ownerId,t.noteId,t.revision]}),index('idx_orbit_meeting_review_queue').on(t.ownerId,t.status,t.createdAt),uniqueIndex('idx_orbit_meeting_review_turn').on(t.ownerId,t.turnId)]);
 
 export const notifications=sqliteTable('orbit_notifications',{
- ownerId:text('owner_id').notNull(),id:text('id').notNull(),kind:text('kind').notNull(),title:text('title').notNull(),body:text('body').notNull(),href:text('href').notNull(),createdAt:text('created_at').notNull(),readAt:text('read_at'),
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),kind:text('kind').notNull(),title:text('title').notNull(),body:text('body').notNull(),href:text('href').notNull(),createdAt:text('created_at').notNull(),readAt:text('read_at'),dismissedAt:text('dismissed_at'),
 },t=>[primaryKey({columns:[t.ownerId,t.id]}),index('idx_orbit_notifications_recent').on(t.ownerId,t.createdAt),index('idx_orbit_notifications_unread').on(t.ownerId,t.readAt)]);
 export const notificationState=sqliteTable('orbit_notification_state',{
  ownerId:text('owner_id').primaryKey(),startedAt:text('started_at').notNull(),publicKey:text('public_key').notNull().default(''),privateKey:text('private_key').notNull().default(''),
