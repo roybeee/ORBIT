@@ -1,0 +1,45 @@
+name: E2E smoke
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: orbit-e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # Playwright core-journey smoke (docs/E2E.ko.md). NON-BLOCKING for now: the
+  # test step has continue-on-error, so this job stays green while the smoke
+  # proves itself, and it is not a required check in the main-integration
+  # ruleset (only `validate` is). Once it has been stable, remove
+  # continue-on-error and the warning step, then add `e2e-smoke` to the ruleset.
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Run the core-journey smoke against the local app
+        id: e2e
+        continue-on-error: true
+        # playwright.config.ts starts e2e/serve.sh: local D1 migrations, then
+        # the Vite dev server (workerd + local D1), and stops it afterwards.
+        run: npm run test:e2e
+      - name: Report a failed smoke without failing the job
+        if: steps.e2e.outcome == 'failure'
+        run: echo "::warning title=E2E smoke failed::The non-blocking Playwright smoke failed; see the e2e-artifacts upload."
+      - name: Upload screenshots, traces and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: e2e/artifacts/
+          if-no-files-found: warn
+          retention-days: 14
