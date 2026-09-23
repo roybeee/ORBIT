@@ -294,6 +294,18 @@ test('a part whose analysis cites evidence outside it is re-run, not the whole a
  assert.ok((await readWorkspace(db,'owner')).data.proposals.some(p=>p.date===date&&p.brief),'the plan is published');
 }));
 
+test('a rejected citation names the bundle it came from and the ids it invented',()=>fixture(async db=>{
+ await bulk(db);await hermes(db);
+ mock({onPart:(part,result)=>part.stage==='source-analysis'
+  ?result({status:'completed',output:JSON.stringify({kind:'analysis',summary:'지어낸 근거'+filler,evidence:['note:ghost-one','note:ghost-two']})})
+  :undefined});
+ const {turn}=await run(db,date);
+ assert.equal(turn.status,'failed');
+ const error=JSON.parse(turn.response_json).error;
+ assert.match(error,/묶음 .+ \(\d+\/\d+\)에 없는 근거 2건/,'the failing bundle and its position are named');
+ assert.match(error,/note:ghost-one/);assert.match(error,/note:ghost-two/);
+}));
+
 test('a part that keeps failing its checks still ends the run rather than looping',()=>fixture(async db=>{
  await bulk(db);await hermes(db);
  const m=mock({onPart:(part,result)=>part.stage==='source-analysis'

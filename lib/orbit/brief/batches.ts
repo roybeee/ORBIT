@@ -105,7 +105,14 @@ export async function batchInput(db:Database,owner:string,id:string,state:BatchS
 export async function acceptAnalysis(db:Database,owner:string,id:string,savedState:BatchState,input:string,reply:Analysis){
  const state={...savedState};
  const known=new Set(references(JSON.parse(input)));
- if(reply.evidence.some(e=>!known.has(e)))throw new AgentError('중간 분석의 근거가 원본 묶음과 일치하지 않습니다.','BRIEF_EVIDENCE',422);
+ const unknown=reply.evidence.filter(e=>!known.has(e));
+ // Name the bundle and the citations it invented. Without them a rejection is unactionable: the run
+ // ends after its retries and nothing says which of a thousand bundles keeps failing, or why.
+ if(unknown.length){
+  const sent=JSON.parse(input) as {unit?:unknown;part?:unknown;total?:unknown};
+  const where=`${typeof sent.unit==='string'?sent.unit:'?'} (${typeof sent.part==='number'?sent.part:'?'}/${typeof sent.total==='number'?sent.total:'?'})`;
+  throw new AgentError(`중간 분석의 근거가 원본 묶음과 일치하지 않습니다. 묶음 ${where}에 없는 근거 ${unknown.length}건: ${unknown.slice(0,5).join(', ').slice(0,300)}`,'BRIEF_EVIDENCE',422);
+ }
  if(state.version){
   // Content-addressed pipeline: the accepted analysis and its cache row land in one batch; level transitions live in nextBatch.
   const part=state.pending![state.cursor],row=await inputRow(db,owner,id,state,part),{key}=JSON.parse(row.content) as {key:string},kind=state.stage===0?'source':'merge';
