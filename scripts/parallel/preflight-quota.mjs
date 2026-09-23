@@ -5,7 +5,8 @@
 // signed into the same OpenAI account. Then every Codex Sites publication spends
 // the weekly quota Hermes needs for planning (2026-09-23: Hermes planning failed
 // with 429 "retry after 393141s" after a night of publications). This check runs
-// before Codex starts and refuses to publish into an exhausted or shared quota.
+// before Codex starts, warns about the shared account, and refuses to publish
+// into an exhausted quota.
 //
 // It never prints account ids or tokens: ids are compared as SHA-256 hashes and
 // only "same account" / "different" / "unknown" is reported.
@@ -113,14 +114,16 @@ export function hermesQuotaFindings(auth, now = Date.now()) {
   return [...fromPool, ...relogin];
 }
 
+// Owner decision 2026-09-23: Codex and Hermes stay on one OpenAI account, so a
+// shared account is expected and only warns. What stops a publication is an
+// actually exhausted Hermes quota (hermesQuotaFindings). --accept-shared-quota is
+// still accepted so existing commands keep working; it only silences the hint.
 function accountLines(relation, acceptSharedQuota) {
   if (relation === 'same account') {
-    return acceptSharedQuota
-      ? {block: false, warn: true, lines: ['WARN Hermes and Codex use the same OpenAI account; publishing spends the Hermes weekly quota (--accept-shared-quota) / 같은 계정: Hermes 주간 쿼터를 함께 소모함']}
-      : {block: true, warn: false, lines: [
-        'BLOCKED Hermes and Codex use the same OpenAI account; a publication spends the Hermes weekly quota / Hermes와 Codex가 같은 OpenAI 계정이라 게시가 Hermes 주간 쿼터를 소모함',
-        '        sign Codex into another account (codex logout && codex login), or rerun with --accept-shared-quota / Codex를 다른 계정으로 로그인하거나 --accept-shared-quota로 재실행',
-      ]};
+    return {block: false, warn: true, lines: [
+      'WARN Hermes and Codex use the same OpenAI account; this publication spends the Hermes weekly quota / 같은 계정: 게시가 Hermes 주간 쿼터를 함께 소모함',
+      ...(acceptSharedQuota ? [] : ['        publish when Hermes planning does not need the quota soon (owner keeps one account) / Hermes 계획 분석과 시간대를 나눠 게시']),
+    ]};
   }
   if (relation === 'unknown') {
     return {block: false, warn: true, lines: ['WARN could not compare the Hermes and Codex accounts (auth file missing or without account id) / 계정 비교 불가']};

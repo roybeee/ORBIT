@@ -127,10 +127,13 @@ test('relogin_required plus an accepted shared quota passes with warnings', () =
   assert.equal(result.status, 'warn');
 });
 
-test('same account blocks unless the shared quota is accepted', () => {
-  const blocked = evaluatePreflight({hermes: hermesAuth(), codex: codexAuth(), now: NOW});
-  assert.equal(blocked.status, 'blocked');
-  assert.equal(blocked.relation, 'same account');
+// Owner decision 2026-09-23: Codex and Hermes stay on one OpenAI account. Sharing
+// is expected, so it warns; only an actually exhausted quota stops a publication.
+test('same account only warns, with or without --accept-shared-quota', () => {
+  const plain = evaluatePreflight({hermes: hermesAuth(), codex: codexAuth(), now: NOW});
+  assert.equal(plain.status, 'warn');
+  assert.equal(plain.relation, 'same account');
+  assert.ok(plain.lines.some((line) => /^WARN .*weekly quota/.test(line)));
   const accepted = evaluatePreflight({hermes: hermesAuth(), codex: codexAuth(), now: NOW, acceptSharedQuota: true});
   assert.equal(accepted.status, 'warn');
 });
@@ -141,7 +144,7 @@ test('different accounts pass, unknown accounts only warn', () => {
   assert.equal(evaluatePreflight({hermes: null, codex: null, now: NOW}).status, 'warn');
 });
 
-test('accepting the shared quota does not override an exhausted credential', () => {
+test('same account with an exhausted credential still blocks, even when accepted', () => {
   const result = evaluatePreflight({
     hermes: hermesAuth({pool: [{last_error_code: 429, last_error_reset_at: '2026-09-27T21:09:21Z'}]}),
     codex: codexAuth(),
@@ -159,16 +162,16 @@ test('evaluation never exposes account ids or tokens', () => {
   assert.ok(!text.includes(FAKE_TOKEN));
 });
 
-test('CLI exits 2 when blocked and 0 when accepted, without printing secrets', () => {
+test('CLI exits 0 with a warning for a shared account, without printing secrets', () => {
   const {dir, paths} = fixtureDir({hermes: hermesAuth(), codex: codexAuth()});
   try {
     const env = {ORBIT_HERMES_AUTH: paths.hermes, ORBIT_CODEX_AUTH: paths.codex};
-    const blocked = runCli(env);
-    assert.equal(blocked.code, 2, blocked.output);
-    assert.match(blocked.output, /same account/);
-    assert.match(blocked.output, /--accept-shared-quota/);
-    assert.ok(!blocked.output.includes(FAKE_ACCOUNT));
-    assert.ok(!blocked.output.includes(FAKE_TOKEN));
+    const shared = runCli(env);
+    assert.equal(shared.code, 0, shared.output);
+    assert.match(shared.output, /same account/);
+    assert.match(shared.output, /WARN/);
+    assert.ok(!shared.output.includes(FAKE_ACCOUNT));
+    assert.ok(!shared.output.includes(FAKE_TOKEN));
     const accepted = runCli(env, ['--accept-shared-quota']);
     assert.equal(accepted.code, 0, accepted.output);
     assert.match(accepted.output, /WARN/);
