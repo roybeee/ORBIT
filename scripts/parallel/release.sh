@@ -84,10 +84,11 @@ cat > "${record}" <<RECORD
 | Source tree | \`${tree}\` |
 | Validate Orbit | ${ci}${run_url:+ · ${run_url}} |
 | Sites source push | ${sites_result} |
-| Sites version / deployment | _pending_ (fill in after publication) |
-| Verified running tree | _pending_ (\`scripts/parallel/verify-deploy.sh ${main}\`) |
+| Source state | \`merged\` |
+| Sites version / deployment | _pending_ — becomes \`published\` when the deployment succeeds (fill in the id) |
+| Verified running tree | _pending_ — becomes \`runtime-verified\` when \`scripts/parallel/verify-deploy.sh ${main}\` matches |
 
-A GitHub merge is a source release. Production is confirmed only when the
+A GitHub merge is a source release (\`merged\`). Production is confirmed (\`runtime-verified\`) only when the
 deployment-health endpoint reports tree \`${tree}\` and the authenticated app works.
 RECORD
 log "wrote ${record}"

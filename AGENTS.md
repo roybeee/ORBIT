@@ -6,6 +6,7 @@
 - The authoritative development source is the remote default branch `main` in `https://github.com/roybeee/ORBIT`.
 - Before starting any work, fetch the remote and verify the exact current `origin/main` SHA. Do not rely on a cached local branch, an existing worktree name, or a previously reported SHA.
 - Create every new work branch from the verified remote `main`.
+- At the start of every task, read `docs/STATUS.md` and reconcile it with the live remote state (`origin/main` SHA, open PRs, `scripts/parallel/status.sh`). It is a memory aid, not evidence. When the state it describes changes, update it in the same PR (`scripts/parallel/status.sh --write` regenerates the auto section between the `status:auto` markers; the other sections are edited by hand).
 - `archive/main-76769c8` is preserved historical reference only. Do not branch from it, merge it wholesale, or treat it as the current product unless the owner explicitly reverses this decision.
 
 ## Development workflow
@@ -30,6 +31,26 @@
 - Conflict prevention: migrations are append-only and `scripts/check-migrations.mjs` runs in CI (journal indexes, files, snapshot chain, and no renumbering of migrations already on the base). If two branches generated the same number, the later one regenerates its migration on top of the integrated `main`: take `main`'s `drizzle/meta/` verbatim (`git checkout origin/main -- drizzle/meta/`), delete the draft `drizzle/NNNN_*.sql`, re-run `npm run db:generate`, and rename the generated file and its journal `tag` together if a descriptive name is wanted (snapshots are numbered, not named). Never hand-edit a snapshot's `id` or `prevId`; the chain is what `check-migrations.mjs` verifies. `CHANGELOG.md` merges with `merge=union`, which applies to local merges only — a `CHANGELOG.md` conflict on GitHub shows up as a `DIRTY` pull request and is resolved locally with `sync.sh`; keep each entry in its own dated section. Dependency or lockfile changes travel in their own small PR before feature work depends on them.
 - Release identity: the build embeds the committed source tree hash, and `/api/deployment-health` and `/api/version` report it as `tree`. `scripts/parallel/release.sh` records GitHub SHA → tree in `docs/releases/` and can push an exact-tree projection of that revision to the Sites source (the Sites repository keeps its own history); `publish-sites.sh <sha>` is the owner-run Codex publication step; `verify-deploy.sh <sha>` confirms the running app reports that tree. Only that confirmation counts as a production deployment.
 
+## State vocabulary
+
+Use these words, and only these, when reporting where a change is. Never shorten "merged" to "deployed".
+
+- Source: `merged` — the change is in GitHub `main` through a validated PR.
+- Deploy: `published` — a Sites deployment of that exact tree reported `succeeded` (deployment id recorded in `docs/releases/`); `runtime-verified` — the running app reported the same `tree` (`verify-deploy.sh`, or an authenticated `/api/version` read recorded with its output).
+- Each check: `passed | failed | blocked | not_run`, plus `real` or `mocked`. A check is `mocked` when it replaces the thing it is named after (for example, tests that stub the OpenAI `fetch` are `mocked` for model behavior). `not_run` and `blocked` always carry a reason.
+
+## Delegation contract
+
+Background: on 2026-09-22 the Hermes hub looped for about two hours (about 90 delegations, 20+ timeouts at `child_timeout_seconds` 600, quality gates added by the agents themselves, and `main` moving underneath). Every delegated task — Slack/Hermes, Claude, Codex or human — must state, before work starts:
+
+1. Goal and observable acceptance criteria, including the failure cases that must be handled.
+2. Owned files or subsystem, and the shared interfaces it must not change without the owner.
+3. Branch and worktree (one task = one worktree from the verified `main`).
+4. Time budget and the maximum number of re-delegations. Default: one re-delegation; after that, escalate to the owner in #승인함 instead of retrying.
+5. The allowed quality gates. Only the delegating owner defines gates; no agent adds new gates on its own.
+6. The tests that must be added or run, with their state per the vocabulary above.
+7. The result-return path: commit SHA (or PR) plus test evidence (commands and pass/fail counts). A self-reported "done" without these is not a result.
+
 ## Release boundary
 
 - Product changes must reach GitHub `main` through a validated PR before the resulting source is published to Sites. Do not create a separate Sites-only development line.
@@ -37,4 +58,5 @@
 - A GitHub merge is a source release, not a ChatGPT Sites deployment.
 - Do not report production deployment until Sites publication and the authenticated production behavior are separately verified.
 - The Android wrapper, Sites runtime, and GitHub source may have different versions; identify each explicitly when relevant.
+- `publish-sites.sh` runs `scripts/parallel/preflight-quota.mjs` first. It blocks when Codex and Hermes share one OpenAI account (a publication spends the Hermes weekly quota) or when a Hermes credential is rate-limited or needs relogin. Pass `--accept-shared-quota` only when the owner accepts that cost for this run. After a publication, the Codex report is archived in `docs/releases/publish-reports/`; `cleanup.sh --publish-clones` removes leftover publish clones whose only change is that report.
 - Repository instructions do not prove that a remote Slack/Hermes process has refreshed its checkout. Do not claim that its local configuration or running session was updated without verifying it.

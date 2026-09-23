@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Remove worktrees whose branch is already part of origin/main.
-# usage: scripts/parallel/cleanup.sh [--merged | <slug-or-branch>...] [--force]
+# Remove worktrees whose branch is already part of origin/main, and leftover
+# standalone Sites publish clones whose report has been archived.
+# usage: scripts/parallel/cleanup.sh [--merged | <slug-or-branch>...] [--publish-clones] [--force]
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-force=0; merged=0; targets=()
+force=0; merged=0; publish_clones=0; targets=()
 for arg in "$@"; do
   case "${arg}" in
     --force) force=1 ;;
     --merged) merged=1 ;;
-    -h|--help) sed -n '2,3p' "$0"; exit 0 ;;
+    --publish-clones) publish_clones=1 ;;
+    -h|--help) sed -n '2,4p' "$0"; exit 0 ;;
     *) targets+=("${arg}") ;;
   esac
 done
-[[ ${merged} == 1 || ${#targets[@]} -gt 0 ]] || die "usage: cleanup.sh --merged | <slug-or-branch>..."
+[[ ${merged} == 1 || ${publish_clones} == 1 || ${#targets[@]} -gt 0 ]] || die "usage: cleanup.sh --merged | <slug-or-branch>... | --publish-clones"
 
 main="$(fetch_verified_main)"
 main_root="$(main_worktree)"
@@ -53,6 +55,46 @@ remove_worktree() {
     git push --quiet "${ORBIT_REMOTE}" --delete "${branch}" && log "deleted ${ORBIT_REMOTE}/${branch}"
   fi
 }
+
+# publish-sites.sh leaves standalone clones (${ORBIT_WORKTREE_PREFIX}publish-<sha7>, own .git
+# directory, ~1 GB with node_modules) next to the main worktree. A clone whose only
+# change is the Codex report is disposable once that report is archived into this
+# worktree's docs/releases/publish-reports/. Anything else it carries may be the
+# only copy of an edit made during publication, so it stays unless --force.
+remove_publish_clones() {
+  local dest="${here}/docs/releases/publish-reports" clone status others report sha7
+  for clone in "$(dirname "${main_root}")/${ORBIT_WORKTREE_PREFIX}"publish-*; do
+    [[ -e "${clone}" ]] || continue
+    if [[ ! -d "${clone}/.git" ]]; then
+      log "skipping ${clone}: not a standalone clone (a worktree is removed with <slug> or --merged)"; continue
+    fi
+    if ! status="$(git -C "${clone}" status --porcelain 2>&1)"; then
+      log "skipping ${clone}: git status failed: ${status}"; continue
+    fi
+    others="$(grep -vxF '?? .sites-publish-result.md' <<<"${status}" | sed '/^$/d' || true)"
+    if [[ -n "${others}" && ${force} == 0 ]]; then
+      log "skipping ${clone}: modified beyond the publish report (use --force to discard):"; printf '%s\n' "${others}" >&2; continue
+    fi
+    report="${clone}/.sites-publish-result.md"
+    if [[ -s "${report}" ]]; then
+      sha7="$(short "$(git -C "${clone}" rev-parse HEAD)")"
+      mkdir -p "${dest}"
+      if [[ -f "${dest}/${sha7}.md" ]] && ! cmp -s "${report}" "${dest}/${sha7}.md"; then
+        log "skipping ${clone}: ${dest}/${sha7}.md already exists with different content; reconcile it by hand"; continue
+      fi
+      cp "${report}" "${dest}/${sha7}.md"
+      log "archived ${report} -> ${dest}/${sha7}.md"
+    elif [[ ${force} == 0 ]]; then
+      log "skipping ${clone}: no publish report to archive (use --force to remove anyway)"; continue
+    fi
+    rm -rf "${clone}"
+    log "removed publish clone ${clone}"
+  done
+}
+[[ ${publish_clones} == 0 ]] || remove_publish_clones
+# --publish-clones alone touches no worktree (and bash 3.2 treats the empty
+# targets array below as unbound under set -u).
+[[ ${merged} == 1 || ${#targets[@]} -gt 0 ]] || exit 0
 
 # Process substitution, not a pipe: a pipeline would run this loop in a subshell,
 # where `die` could not stop the run and nothing it set would survive.
