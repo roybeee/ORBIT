@@ -5,7 +5,8 @@
 # run this from a terminal, never unattended.
 # usage: scripts/parallel/publish-sites.sh <github-sha> [--print] [--accept-shared-quota]
 #   --print shows the Codex prompt and command without running Codex.
-#   --accept-shared-quota publishes even when Codex and Hermes share one OpenAI account.
+#   --accept-shared-quota silences the shared-account hint (Codex and Hermes share one
+#   OpenAI account by owner decision; only an exhausted Hermes quota blocks).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 sha=""; print_only=0; quota_args=()

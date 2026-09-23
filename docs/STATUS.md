@@ -24,42 +24,40 @@
 
 ## 막힌 것
 
-- **Hermes 계획 생성**: Hermes와 Codex CLI가 같은 OpenAI 계정으로 로그인되어 있어 `publish-sites.sh`의 Codex 실행이 Hermes 주간 쿼터를 함께 소모했다. 2026-09-23 계획 분석이 `429 quota exhausted (retry after 393141s)`로 실패했다([b0c9c58 기록](releases/2026-09-22-b0c9c58.md)). 2026-09-23T01:00Z UTC 기준 `node scripts/parallel/preflight-quota.mjs`는 `account: same account`로 `blocked`(exit 2)이고, `--accept-shared-quota`를 주면 `warn`(exit 0)이다. Hermes `openai-codex`의 `relogin_required`(2026-09-21 기록)는 게시와 무관한 경고로만 표시된다(`hermes auth status openai-codex`는 logged in). 해결: Codex를 다른 계정으로 로그인한다(소유자 조치).
+- **Hermes 계획 생성**: Hermes와 Codex CLI가 같은 OpenAI 계정으로 로그인되어 있어 `publish-sites.sh`의 Codex 실행이 Hermes 주간 쿼터를 함께 소모했다. 2026-09-23 계획 분석이 `429 quota exhausted (retry after 393141s)`로 실패했다([b0c9c58 기록](releases/2026-09-22-b0c9c58.md)). 소유자 결정(2026-09-23): 계정을 분리하지 않고 같은 계정을 유지한다. 그래서 `preflight-quota.mjs`는 같은 계정을 경고만 하고(exit 0), 실제로 쿼터가 소진된 경우(재설정 시각이 미래인 429)만 차단한다. 대응: 게시를 Hermes 계획 분석 시간대와 분리하고, 게시를 묶어서 횟수를 줄인다.
 - **자동 runtime 검증**: `verify-deploy.sh`에 필요한 `ORBIT_RELEASE_HEALTH_TOKEN`이 이 머신에 없어, 운영 tree 확인은 소유자 브라우저의 same-origin `/api/version` 조회에 의존한다.
 
 ## 작동 중인 에이전트/작업
 
 | 작업 | 워크트리 / 브랜치 | 담당 | 상태 |
 |---|---|---|---|
-| 게시 쿼터 검사·클론 정리·STATUS·위임 계약 | `orbit-ops-guardrails` / `chore/ops-guardrails` | Claude (orbit-ops) | 이 PR |
-| E2E 스모크 테스트 | `orbit-e2e-smoke` / `chore/e2e-smoke` | Claude (orbit-e2e) | 진행 중 |
+| 같은 계정 경고 전환 | `orbit-shared-account-warn` / `fix/shared-account-warn` | Claude | 이 PR |
 | 계획 stale-basis 수정 | `incremental` / `fix/plan-stale-basis` | 별도 작업 | 미커밋 변경 있음, 건드리지 말 것 |
 
 ## 다음 행동
 
-1. 소유자: Codex CLI를 Hermes와 다른 OpenAI 계정으로 로그인하고 `node scripts/parallel/preflight-quota.mjs`가 `account: different`인지 확인한다. 남은 `relogin_required` 경고는 `hermes auth status openai-codex`로 확인한다.
-2. 이 PR 머지 후 `scripts/parallel/cleanup.sh --publish-clones`로 남은 게시 클론(`orbit-publish-*`, 약 7GB)을 정리한다. 보고가 없는 `orbit-publish-a6f4ee0`은 확인 후 `--force`로만 지운다.
-3. `41016f9` 게시의 Codex 보고(`.sites-publish-result.md`)는 `docs/releases/publish-reports/`에 아직 없다. 원본이 남아 있으면 `publish-reports/41016f9.md`로 추가한다.
-4. 다음 게시는 1번 해결 후 `release.sh` → `publish-sites.sh` → 브라우저/`verify-deploy.sh` 순서로 한다.
+1. 게시할 때는 Hermes 계획 분석과 시간대를 나누고, 여러 머지를 한 번에 묶어 게시한다(같은 계정이라 쿼터를 함께 쓴다).
+2. Hermes `openai-codex`의 `relogin_required` 경고(2026-09-21 기록)는 `hermes auth status openai-codex`로 확인한다.
+3. 다음 게시는 `release.sh` → `publish-sites.sh` → 브라우저/`verify-deploy.sh` 순서로 한다.
 
 ## 마지막 갱신(UTC)
 
-- 수동 구역: 2026-09-23T00:51Z (Claude orbit-ops, 위 증거 명령으로 확인)
+- 수동 구역: 2026-09-23T01:48Z (Claude, 소유자의 같은 계정 유지 결정 반영)
 
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-09-23T00:51:27Z
-- `origin/main`: `1d3779b135d2dee62aaff12aaddb7a273592de52` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `90d34f1d3eab7ba866ce8b21b9ad09eaea812a80`
+- 생성 시각(UTC): 2026-09-23T01:48:12Z
+- `origin/main`: `b5d9be64f1aee67553fba030e17b4ee8a299b063` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `cc6edd1e5709b688428462e71b64f8410122dafc`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| incremental | fix/plan-stale-basis | `919679a` | 44 / 0 | yes |
-| orbit-e2e-smoke | chore/e2e-smoke | `e6337dd` | 2 / 1 | no |
-| orbit-ops-guardrails | chore/ops-guardrails | `3df982e` | 0 / 2 | yes |
+| incremental | fix/plan-stale-basis | `919679a` | 54 / 0 | yes |
+| orbit-e2e-smoke | chore/e2e-smoke | `cfe2567` | 3 / 0 | no |
+| orbit-shared-account-warn | fix/shared-account-warn | `b5d9be6` | 0 / 0 | yes |
 
 ### 열린 PR
 
