@@ -6,7 +6,7 @@ import {readWorkspace,writeCommand} from '../db/repository.ts';
 import {todayInZone,addDays} from '../lib/orbit/dates.ts';
 import {emptyWorkspace} from '../lib/orbit/model.ts';
 import {collectPlanningContext} from '../lib/orbit/brief/context.ts';
-import {splitCatalog,frameFor,enc,baseKey,prefixOf,depthFor,planLevel,diffKey,manifestOf,diffManifest,textChunks,joinChunks,FRAME_CHARS,MERGE_CHARS} from '../lib/orbit/brief/units.ts';
+import {splitCatalog,frameFor,enc,baseKey,prefixOf,depthFor,planLevel,diffKey,manifestOf,diffManifest,orderUnits,keyRecency,textChunks,joinChunks,FRAME_CHARS,MERGE_CHARS} from '../lib/orbit/brief/units.ts';
 import {analysisVersion,cacheKey} from '../lib/orbit/brief/cache.ts';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
 const today=todayInZone('Asia/Seoul'),date=addDays(today,1),planning={date,energy:'normal'};
@@ -30,7 +30,7 @@ test('splitCatalog is deterministic and order-independent',()=>fixture(async db=
  assert.ok(a.frame.availableWindows);assert.ok(a.frame.preferences);assert.ok(Array.isArray(a.frame.brainy.goals));
  assert.ok(a.units.every(u=>!u.key.startsWith('frame')));
  for(const unit of a.units)assert.ok(refs(unit.value).length>0,'unit '+unit.key+' carries evidence');
- assert.deepEqual(a.units.map(u=>u.key),[...a.units.map(u=>u.key)].sort());
+ assert.deepEqual(a.units.map(u=>u.key),orderUnits(a.units).map(u=>u.key),'units carry the analysis order, newest first');
  assert.equal(JSON.stringify(a.units),JSON.stringify(splitCatalog(await catalogOf(db,first)).units));
 }));
 
@@ -157,4 +157,32 @@ test('diffKey/manifestOf/diffManifest',()=>{
  const many=Object.fromEntries(Array.from({length:70},(_,i)=>['done/'+String(i).padStart(3,'0'),'x']));
  const capped=diffManifest(many,{});
  assert.equal(capped.deleted,70);assert.equal(capped.keys.length,60);assert.equal(capped.keys[0],'done/000');
+});
+
+test('units are ordered newest first, with the undated current state ahead of history',()=>{
+ const u=k=>({key:k,value:[]});
+ const ordered=orderUnits([
+  u('conversation/2026-04/2026-04-09'),u('note/2026-09/2026-09-22.abc'),u('project/ofd'),
+  u('done/2026-09'),u('conversation/2026-09/2026-09-06'),u('records/decisions'),
+  u('review/2026'),u('event/2026-10'),u('notes/2026-04'),u('project/-'),
+ ]).map(x=>x.key);
+ // Undated first (stable by key), then by the date in the key, newest to oldest.
+ assert.deepEqual(ordered,[
+  'project/-','project/ofd','records/decisions',
+  'event/2026-10','note/2026-09/2026-09-22.abc','conversation/2026-09/2026-09-06','done/2026-09',
+  'conversation/2026-04/2026-04-09','notes/2026-04','review/2026',
+ ]);
+ assert.equal(keyRecency('conversation/2026-09/2026-09-06'),'2026-09-06');
+ assert.equal(keyRecency('done/2026-09'),'2026-09-00');
+ assert.equal(keyRecency('review/2026'),'2026-00-00');
+ assert.equal(keyRecency('project/ofd'),'');
+ // Total and deterministic: the same input in any arrival order gives the same sequence.
+ const shuffled=orderUnits([...[...ordered].reverse()].map(u)).map(x=>x.key);
+ assert.deepEqual(shuffled,ordered);
+});
+
+test('the manifest identifies content, not the order units were processed in',()=>{
+ const leaves=[{key:'notes/2026-09',hash:'a'.repeat(64)},{key:'note/2026-09/2026-09-22.x#0',hash:'b'.repeat(64)},{key:'note/2026-09/2026-09-22.x#1',hash:'c'.repeat(64)}];
+ assert.deepEqual(manifestOf(leaves),manifestOf([...leaves].reverse()));
+ assert.deepEqual(diffManifest(manifestOf(leaves),manifestOf([...leaves].reverse())),{added:0,modified:0,deleted:0,keys:[]});
 });
