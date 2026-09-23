@@ -1,0 +1,15 @@
+// Used only by e2e/serve.sh to apply drizzle migrations to the local D1 state.
+// The binding, name and id must match localBindingConfig in vite.config.ts so
+// that wrangler and the Vite dev server open the same .wrangler/state database.
+{
+  "name": "orbit-e2e",
+  "compatibility_date": "2025-01-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "site-creator-d1",
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "../drizzle"
+    }
+  ]
+}
