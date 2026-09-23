@@ -9,7 +9,7 @@ import {collectPlanningContext} from '../lib/orbit/brief/context.ts';
 import {briefMessage} from '../lib/orbit/brief/schema.ts';
 import {runAgent,advanceAgent} from '../lib/orbit/agent/runner.ts';
 import {saveConnection} from '../lib/orbit/agent/secrets.ts';
-import {prepareBatches,batchInput,acceptAnalysis,batchInstructions} from '../lib/orbit/brief/batches.ts';
+import {prepareBatches,batchInput,acceptAnalysis,batchInstructions,unknownCitations} from '../lib/orbit/brief/batches.ts';
 import {analysisVersion,lookupAnalyses,pruneAnalyses} from '../lib/orbit/brief/cache.ts';
 
 // Shared helpers mirror tests/brief.test.mjs (copied, not imported) plus the incremental-analysis fixtures of SPEC §9.
@@ -318,3 +318,17 @@ test('a part that keeps failing its checks still ends the run rather than loopin
  assert.equal(recordSources(m).length,0);
  assert.equal(m.posts.filter(p=>p.body.instructions.includes('one part of an Orbit')).length,3);
 }));
+
+test('a citation the model was shown is accepted; one it never saw, or a prefix of another, is not',()=>{
+ // A month bundle shows 25 events but an analysis may only carry 16 citations forward, so the ones
+ // that survive only inside a summary must still be citable by the merge that reads that summary.
+ const input=JSON.stringify({stage:'merge-analysis',unit:'event',part:1,total:1,data:[
+  {key:'event/2026-09',summary:'9월 일정 요약 · event:aaaa-1 과 event:bbbb-2 를 포함합니다.',evidence:['event:aaaa-1']},
+ ]});
+ assert.deepEqual(unknownCitations(input,['event:aaaa-1']),[],'declared evidence passes');
+ assert.deepEqual(unknownCitations(input,['event:bbbb-2']),[],'an id shown only in the summary passes');
+ assert.deepEqual(unknownCitations(input,['event:cccc-3']),['event:cccc-3'],'an id never shown is rejected');
+ // 'event:aaaa' is a prefix of 'event:aaaa-1' and must not pass on that alone.
+ assert.deepEqual(unknownCitations(input,['event:aaaa']),['event:aaaa']);
+ assert.deepEqual(unknownCitations(input,['event:bbbb-2','event:zzzz']),['event:zzzz']);
+});
