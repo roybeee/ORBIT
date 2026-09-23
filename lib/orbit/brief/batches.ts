@@ -24,6 +24,22 @@ export function references(value:unknown):string[]{
  const v=value as Record<string,unknown>;
  return [...new Set([...(typeof v.evidence==='string'?[v.evidence]:Array.isArray(v.evidence)?v.evidence.filter((s):s is string=>typeof s==='string'):[]),...Object.values(v).flatMap(x=>typeof x==='object'?references(x):[])])];
 }
+// An analysis may not invent a citation, but an id the model was actually shown is not invented.
+// A month bundle carries far more records than the 16 citations an analysis is allowed to pass on,
+// so checking only the `evidence` fields rejected real records that a later merge legitimately cited
+// from the summaries it was given. Check the bytes the model saw, and require the id to end where it
+// ends so one id cannot pass by being the prefix of another.
+export function unknownCitations(input:string,evidence:string[]):string[]{
+ const declared=new Set(references(JSON.parse(input)));
+ const shown=(id:string)=>{
+  for(let at=input.indexOf(id);at>=0;at=input.indexOf(id,at+1)){
+   const after=input[at+id.length];
+   if(after===undefined||!/[A-Za-z0-9_:%-]/.test(after))return true;
+  }
+  return false;
+ };
+ return evidence.filter(e=>!declared.has(e)&&!shown(e));
+}
 // Oversized records are split recursively, including individual huge strings. No tail is clipped.
 export function partitionCatalog(value:unknown,limit=PART_CHARS,root='catalog'):string[]{
  const pieces:Fragment[]=[];
@@ -65,7 +81,7 @@ const inputRow=async(db:Database,owner:string,id:string,state:BatchState,part:nu
 };
 // A cached analysis is replayed only when it still parses and cites nothing outside its own input bytes.
 function validAnalysis(cached:string,content:string):Analysis|null{
- try{const parsed=analysisSchema.safeParse(JSON.parse(cached));if(!parsed.success)return null;const known=new Set(references(JSON.parse(content).data));return parsed.data.evidence.every(e=>known.has(e))?parsed.data:null}catch{return null}
+ try{const parsed=analysisSchema.safeParse(JSON.parse(cached));if(!parsed.success)return null;return unknownCitations(content,parsed.data.evidence).length?null:parsed.data}catch{return null}
 }
 // Cache reads live here only: misses become input rows at `stage`, validated hits become output rows at `stage+1`,
 // corrupt rows are dropped and re-analyzed, and last_used_at is touched after validation.
@@ -104,8 +120,7 @@ export async function batchInput(db:Database,owner:string,id:string,state:BatchS
 }
 export async function acceptAnalysis(db:Database,owner:string,id:string,savedState:BatchState,input:string,reply:Analysis){
  const state={...savedState};
- const known=new Set(references(JSON.parse(input)));
- const unknown=reply.evidence.filter(e=>!known.has(e));
+ const unknown=unknownCitations(input,reply.evidence);
  // Name the bundle and the citations it invented. Without them a rejection is unactionable: the run
  // ends after its retries and nothing says which of a thousand bundles keeps failing, or why.
  if(unknown.length){
