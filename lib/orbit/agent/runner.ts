@@ -497,6 +497,12 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    setRequest(job,input+'\nSERVER VALIDATION: '+error.message+'\nCorrect the response using ONLY the supplied facts and exact action schemas. Return the entire summary and all proposals again. No changes were applied. Do not ask the user to fix a schema error.');
    await save('요약을 보존하고 결재안 형식을 자동 보정하고 있습니다.');return;
   }
+  // One part's reply can be wrong - evidence outside its own bundle, or the wrong shape - without
+  // anything else being wrong. Re-run that part in a fresh session, the way a failed Hermes run for
+  // a part already is, instead of discarding an analysis that may be hours and hundreds of parts in.
+  if(job.batch&&!job.cancel&&error instanceof AgentError&&['BRIEF_EVIDENCE','HERMES_FORMAT'].includes(error.code)&&job.batch.retries<2){
+   retryBatch(job);await save('이 묶음의 분석 결과를 확인하지 못해 다시 받습니다. 지금까지 분석한 내용은 그대로 둡니다.'+(error.message?' · '+error.message:''));return;
+  }
   if(job.planning&&error instanceof AgentError&&error.code==='CONFLICT'&&(job.revalidations??0)<2){const latest=await getJob(db,owner,id);if(latest&&!latest.cancel_requested&&(await readWorkspace(db,owner)).revision!==job.revision){await revalidate();return;}}
   if(error instanceof AgentError&&error.code==='HERMES_CAPACITY'&&job.phase==='submit'){
    job.capacityWaits=(job.capacityWaits??0)+1;job.retryAt=Date.now()+Math.min(60000,5000*2**Math.min(job.capacityWaits-1,4));job.attempted=false;

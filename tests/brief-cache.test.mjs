@@ -269,3 +269,40 @@ test('batch API contract preserved',()=>fixture(async db=>{
  const cancelled=randomUUID();await runAgent(db,'owner',{id:cancelled,message:briefMessage(planning),planning},env);await advanceAgent(db,'owner',cancelled,env,true);
  assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_brief_parts WHERE turn_id=?').bind(cancelled).first(),null);
 }));
+
+test('a part whose analysis cites evidence outside it is re-run, not the whole analysis discarded',()=>fixture(async db=>{
+ await bulk(db);await hermes(db);
+ // The first source part comes back citing a record that is not in its bundle. Before this, the
+ // BRIEF_EVIDENCE check ended the entire run: hours of accepted parts stayed cached but the turn failed.
+ let poisoned=0,wrongShape=0;
+ const m=mock({onPart:(part,result)=>{
+  if(part.stage!=='source-analysis')return;
+  if(!poisoned++)return result({status:'completed',output:JSON.stringify({kind:'analysis',summary:'근거를 지어낸 요약'+filler,evidence:['note:not-in-this-bundle']})});
+  if(!wrongShape++)return result({status:'completed',output:JSON.stringify({kind:'read',requests:[]})});
+ }});
+ const {id,turn}=await run(db,date);
+ assert.equal(turn.status,'completed',turn.response_json);
+ assert.equal(poisoned>0&&wrongShape>0,true,'both bad replies were served');
+ const metrics=await metricsOf(db,id);
+ assert.equal(metrics.reused,0);
+ assert.ok(metrics.leaves>0);
+ // Every part is accepted exactly once, and the two rejected ones cost exactly one extra send each.
+ const accepted=m.sources.map(s=>s.unit+'#'+s.part);
+ assert.equal(new Set(accepted).size,accepted.length,'no part is accepted twice');
+ const sourcePosts=m.posts.filter(p=>p.body.instructions.includes('one part of an Orbit')&&JSON.parse(p.body.input).stage==='source-analysis');
+ assert.equal(sourcePosts.length,accepted.length+2,'exactly the two rejected parts were re-sent');
+ assert.ok((await readWorkspace(db,'owner')).data.proposals.some(p=>p.date===date&&p.brief),'the plan is published');
+}));
+
+test('a part that keeps failing its checks still ends the run rather than looping',()=>fixture(async db=>{
+ await bulk(db);await hermes(db);
+ const m=mock({onPart:(part,result)=>part.stage==='source-analysis'
+  ?result({status:'completed',output:JSON.stringify({kind:'analysis',summary:'언제나 틀린 근거'+filler,evidence:['note:not-in-this-bundle']})})
+  :undefined});
+ const {turn}=await run(db,date);
+ assert.equal(turn.status,'failed');
+ assert.match(JSON.parse(turn.response_json).error,/근거가 원본 묶음과 일치하지 않습니다/);
+ // Bounded: the first part is attempted three times (initial + two retries), never endlessly.
+ assert.equal(recordSources(m).length,0);
+ assert.equal(m.posts.filter(p=>p.body.instructions.includes('one part of an Orbit')).length,3);
+}));
