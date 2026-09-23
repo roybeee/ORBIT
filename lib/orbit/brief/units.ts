@@ -55,6 +55,28 @@ function recordUnits(catalog:Rec):Unit[]{
   ...(hasChief?[{key:'records/chief',value:{responses:chief.responses,careRoutines:chief.careRoutines}}]:[]),
  ];
 }
+// Analyse the newest material first. A run that is cut short then leaves the records the owner is
+// working from cached, instead of the oldest month of conversations. Undated units (projects with
+// their open tasks, decisions, delegations, memories) lead: they are the current state, not history.
+// Order is total and deterministic - the date embedded in the key, then the key itself.
+// A key carries its bucket and then its record: `note/2026-09/2026-09-22.<id>` holds both the month
+// and the day. Take the most specific one so a day-level unit sorts ahead of its own month bucket.
+const KEY_DATE=/\/(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/g;
+export function keyRecency(key:string):string{
+ let best='';
+ for(const m of key.matchAll(KEY_DATE)){
+  const value=`${m[1]}-${m[2]??'00'}-${m[3]??'00'}`;
+  if(value>best)best=value;
+ }
+ return best;
+}
+export function orderUnits(units:Unit[]):Unit[]{
+ return [...units].sort((a,b)=>{
+  const ra=keyRecency(a.key),rb=keyRecency(b.key);
+  if(Boolean(ra)!==Boolean(rb))return ra?1:-1;
+  return compare(rb,ra)||compare(a.key,b.key);
+ });
+}
 export function splitCatalog(catalog:Record<string,any>):CatalogSplit{
  const conversations=list(catalog.conversations).filter(c=>!str(c.user).startsWith(PLANNING_TURN_PREFIX));
  const units:Unit[]=[
@@ -67,7 +89,7 @@ export function splitCatalog(catalog:Record<string,any>):CatalogSplit{
   ...bucketUnits('meetings',list(catalog.meetingResults),m=>m.projectId?enc(str(m.projectId)):'-',members=>sortBy(members,m=>str(m.id))),
   ...recordUnits(catalog),
  ];
- return {frame:frameFor(catalog),units:sortBy(units,u=>u.key)};
+ return {frame:frameFor(catalog),units:orderUnits(units)};
 }
 
 const compactPlan=(p:Rec)=>({id:p.id,date:p.date,energy:p.energy,budget:p.budget,laser:p.laser,unscheduled:p.unscheduled,items:list(p.items).map(i=>({id:i.id,taskId:i.taskId,state:i.state,start:i.start,end:i.end,role:i.role,draftTask:i.draftTask?{title:i.draftTask.title,projectId:i.draftTask.projectId,duration:i.draftTask.duration}:undefined}))});
@@ -123,8 +145,9 @@ export function planLevel(items:LevelItem[],depth:number,limit=MERGE_CHARS):Leve
 }
 
 export const diffKey=(key:string)=>{const b=baseKey(key),m=/^note\/[^/]+\/[^/]+\.(.+)$/.exec(b);return m?'note/'+m[1]:b};
+// Sorted first: the manifest identifies content, so it must not change when the processing order does.
 export function manifestOf(leaves:{key:string;hash:string}[]):Record<string,string>{
- return leaves.reduce<Record<string,string>>((manifest,leaf)=>{const k=diffKey(leaf.key);return {...manifest,[k]:(manifest[k]??'')+leaf.hash.slice(0,16)}},{});
+ return sortBy(leaves,l=>l.key).reduce<Record<string,string>>((manifest,leaf)=>{const k=diffKey(leaf.key);return {...manifest,[k]:(manifest[k]??'')+leaf.hash.slice(0,16)}},{});
 }
 export function diffManifest(prev:Record<string,string>,current:Record<string,string>):ManifestDiff{
  const added=Object.keys(current).filter(k=>!(k in prev)).sort(compare);
