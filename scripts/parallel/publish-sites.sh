@@ -3,19 +3,21 @@
 # local Codex CLI and its bundled `sites-hosting` skill (the Sites connector is
 # only available inside Codex/ChatGPT). Codex asks for approvals interactively;
 # run this from a terminal, never unattended.
-# usage: scripts/parallel/publish-sites.sh <github-sha> [--print]
+# usage: scripts/parallel/publish-sites.sh <github-sha> [--print] [--accept-shared-quota]
 #   --print shows the Codex prompt and command without running Codex.
+#   --accept-shared-quota publishes even when Codex and Hermes share one OpenAI account.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-sha=""; print_only=0
+sha=""; print_only=0; quota_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --print) print_only=1; shift ;;
-    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
+    --accept-shared-quota) quota_args+=(--accept-shared-quota); shift ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     *) sha="$1"; shift ;;
   esac
 done
-[[ -n "${sha}" ]] || die "usage: publish-sites.sh <github-sha> [--print]"
+[[ -n "${sha}" ]] || die "usage: publish-sites.sh <github-sha> [--print] [--accept-shared-quota]"
 need codex; need gh
 
 main="$(fetch_verified_main)"
@@ -24,6 +26,19 @@ git merge-base --is-ancestor "${sha}" "${main}" || die "${sha} is not on ${ORBIT
 tree="$(tree_of "${sha}")"
 ci="$(ci_conclusion_for "${sha}")"
 [[ "${ci}" == "success" ]] || die "Validate Orbit for ${sha} is '${ci}', not success"
+
+# Codex and Hermes may be signed into one OpenAI account; then this run spends the
+# quota Hermes needs for planning (2026-09-23: Hermes 429, "retry after 393141s").
+# Check before anything is cloned or started. --print only shows the verdict.
+quota_status=0
+node "$(dirname "${BASH_SOURCE[0]}")/preflight-quota.mjs" ${quota_args[@]+"${quota_args[@]}"} >&2 || quota_status=$?
+if [[ ${quota_status} != 0 ]]; then
+  if [[ ${print_only} == 1 ]]; then
+    log "quota preflight would block this publication (exit ${quota_status}); showing the prompt anyway (--print)"
+  else
+    die "quota preflight blocked the publication (exit ${quota_status}); see the lines above"
+  fi
+fi
 
 # Codex's workspace-write sandbox can only write inside the checkout, so the
 # publish checkout must be a standalone clone (its own .git directory), not a
@@ -84,7 +99,8 @@ cat "${result}" >&2
 # The sandbox is writable, so the prompt's "do not edit any file" is a request,
 # not a guarantee. If the source changed, the deployed bytes are not ${sha} and
 # the projection commit recorded a tree that was never built.
-dirty="$(git -C "${checkout}" status --porcelain -- . ':!.sites-publish-result.md' || true)"
+# A failing status must read as dirty, never as clean: the clone is deleted below.
+dirty="$(git -C "${checkout}" status --porcelain -- . ':!.sites-publish-result.md' 2>&1)" || dirty="git status failed: ${dirty}"
 [[ -z "${dirty}" ]] || cat >&2 <<WARN
 
 [parallel] WARNING: the publish checkout was modified during publication:
@@ -92,9 +108,37 @@ ${dirty}
 The deployed bundle may not match ${sha}. Do not record this as a verified release
 until the differences are reviewed and, if real, committed through a pull request.
 WARN
+# Archive the report where it outlives the clone: appended to the release record
+# (when the main worktree has one) and copied to docs/releases/publish-reports/.
+# Both land in the main worktree as uncommitted files; commit them in a docs PR.
+main_root="$(main_worktree)"
+sha7="$(short "${sha}")"
+archived=0
+if [[ -s "${result}" ]]; then
+  mkdir -p "${main_root}/docs/releases/publish-reports"
+  cp "${result}" "${main_root}/docs/releases/publish-reports/${sha7}.md" \
+    && archived=1 && log "copied the report to ${main_root}/docs/releases/publish-reports/${sha7}.md"
+  records=("${main_root}"/docs/releases/*-"${sha7}".md)
+  if [[ -f "${records[0]}" ]]; then
+    printf '\n## Publish report (%s UTC)\n\n```\n%s\n```\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(cat "${result}")" >>"${records[0]}"
+    log "appended the report to ${records[0]}"
+  else
+    log "no docs/releases/*-${sha7}.md in ${main_root}; run release.sh first or add the report to the record by hand"
+  fi
+fi
+
+# The clone holds node_modules (close to 1 GB). Remove it only when nothing but the
+# report changed, the deployment succeeded, and the report was archived above.
+if [[ -z "${dirty}" && ${archived} == 1 ]] && grep -Eq '^DEPLOYMENT_STATUS:[[:space:]]*succeeded' "${result}"; then
+  rm -rf "${checkout}"
+  log "removed the publish clone ${checkout} (clean, deployment succeeded, report archived)"
+  kept=""
+else
+  kept="      the publish clone ${checkout} was kept (modified, not succeeded, or report missing); inspect it, then scripts/parallel/cleanup.sh --publish-clones"
+fi
 cat >&2 <<MSG
 
 next: scripts/parallel/verify-deploy.sh ${sha}
-      then fill DEPLOYMENT_ID / version into docs/releases/*-$(short "${sha}").md
-      then delete the standalone clone ${checkout}
+      then fill DEPLOYMENT_ID / version into docs/releases/*-${sha7}.md and commit docs/releases/ in a docs PR
+${kept}
 MSG

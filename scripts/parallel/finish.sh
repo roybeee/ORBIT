@@ -30,14 +30,14 @@ node scripts/check-migrations.mjs --base "${main}"
 
 if [[ -n "${skip_reason}" ]]; then
   log "skipping local checks: ${skip_reason} (CI still gates the merge)"
-  checks="local checks skipped: ${skip_reason}"
+  checks="local checks: not_run (${skip_reason})"
 elif [[ "$(task_read verified_head)" == "${head}" ]]; then
   log "reusing verification recorded for ${head} by sync.sh"
-  checks="npm run typecheck, npm test passed on ${head} (sync.sh)"
+  checks="npm run typecheck, npm test: passed · real on ${head} (sync.sh)"
 else
   run_checks
   task_write "verified_head=${head}" "verified_tree=${tree}"
-  checks="npm run typecheck, npm test passed on ${head}"
+  checks="npm run typecheck, npm test: passed · real on ${head}"
 fi
 
 log "pushing ${branch}"
@@ -54,12 +54,13 @@ $(git log --reverse --format='- %s' "${main}..HEAD")
 - 병합 직전 재확인한 \`${ORBIT_REMOTE}/${ORBIT_MAIN_BRANCH}\`: \`${main}\` (이 브랜치에 포함됨)
 - PR head: \`${head}\` · 소스 tree: \`${tree}\`
 - ${checks}
-- \`scripts/check-migrations.mjs --base ${main}\`: 통과
+- \`scripts/check-migrations.mjs --base ${main}\`: passed · real
 - [ ] 현재 PR 코드의 \`Validate Orbit\` 성공, 그리고 최신 \`main\`을 포함한 head로 auto-merge
 
 ## 데이터 / 연동 / 복구 영향
 
-- Sites 배포 여부 / 배포했다면 GitHub SHA와 Sites 버전: 별도 release.sh 기록
+- 상태 용어(AGENTS.md "State vocabulary"): 검사 \`passed|failed|blocked|not_run\` · \`real|mocked\`. 테스트 중 외부 호출을 stub한 것은 mocked다.
+- 이 PR이 머지되면 소스 상태는 \`merged\`다. Sites 배포(\`published\`)와 운영 tree 확인(\`runtime-verified\`)은 별도 release.sh / publish-sites.sh / verify-deploy.sh 기록
 BODY
 )"
 
