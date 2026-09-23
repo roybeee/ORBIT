@@ -98,11 +98,33 @@ test('healthy and disabled credentials produce no findings', () => {
   assert.deepEqual(findings, []);
 });
 
-test('relogin_required on the provider blocks', () => {
+// relogin_required is a stale Hermes auth record, not a quota state: it must not
+// stop a publication (it did, permanently, even with --accept-shared-quota).
+test('relogin_required on the provider only warns', () => {
   const findings = hermesQuotaFindings(hermesAuth({lastAuthError: {reason: 'token revoked', relogin_required: true, at: '2026-09-23T10:00:00Z'}}), NOW);
   assert.equal(findings.length, 1);
-  assert.equal(findings[0].block, true);
+  assert.equal(findings[0].block, false);
   assert.match(findings[0].message, /relogin/i);
+  assert.match(findings[0].message, /hermes auth status openai-codex/);
+});
+
+test('relogin_required with different accounts is a warning, not a block', () => {
+  const result = evaluatePreflight({
+    hermes: hermesAuth({lastAuthError: {reason: 'credential_pool_refresh_failure', relogin_required: true, at: '2026-09-21T04:11:09Z'}}),
+    codex: codexAuth({account: 'other'}),
+    now: NOW,
+  });
+  assert.equal(result.status, 'warn');
+});
+
+test('relogin_required plus an accepted shared quota passes with warnings', () => {
+  const result = evaluatePreflight({
+    hermes: hermesAuth({lastAuthError: {reason: 'credential_pool_refresh_failure', relogin_required: true, at: '2026-09-21T04:11:09Z'}}),
+    codex: codexAuth(),
+    now: NOW,
+    acceptSharedQuota: true,
+  });
+  assert.equal(result.status, 'warn');
 });
 
 test('same account blocks unless the shared quota is accepted', () => {
@@ -177,6 +199,21 @@ test('CLI blocks with the reset time when the Hermes pool is exhausted', () => {
     assert.equal(result.code, 2, result.output);
     assert.match(result.output, /2026-09-27T21:09:21\.000Z/);
     assert.match(result.output, /different/);
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('CLI exits 0 when only relogin_required is reported', () => {
+  const {dir, paths} = fixtureDir({
+    hermes: hermesAuth({lastAuthError: {reason: 'credential_pool_refresh_failure', relogin_required: true, at: '2026-09-21T04:11:09Z'}}),
+    codex: codexAuth(),
+  });
+  try {
+    const result = runCli({ORBIT_HERMES_AUTH: paths.hermes, ORBIT_CODEX_AUTH: paths.codex}, ['--accept-shared-quota']);
+    assert.equal(result.code, 0, result.output);
+    assert.match(result.output, /WARN Hermes openai-codex needs relogin/);
+    assert.match(result.output, /preflight: warn/);
   } finally {
     rmSync(dir, {recursive: true, force: true});
   }

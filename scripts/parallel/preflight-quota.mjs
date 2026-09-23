@@ -99,12 +99,15 @@ export function hermesQuotaFindings(auth, now = Date.now()) {
   const fromPool = entries
     .map((entry, index) => (isActive(entry) ? credentialFinding(entry, index, now) : null))
     .filter(Boolean);
+  // relogin_required is a stored auth record that can outlive a successful
+  // relogin (2026-09-21 record while `hermes auth status` said logged in). It
+  // says nothing about quota, so it warns instead of blocking the publication.
   const authError = auth?.providers?.[PROVIDER]?.last_auth_error;
   const relogin = authError?.relogin_required === true
     ? [{
-      block: true,
+      block: false,
       resetAt: null,
-      message: `Hermes ${PROVIDER} needs relogin (${authError.reason ?? 'no reason'} at ${authError.at ?? 'unknown time'}) / Hermes 재로그인 필요`,
+      message: `Hermes ${PROVIDER} needs relogin (${authError.reason ?? 'no reason'} at ${authError.at ?? 'unknown time'}); unrelated to publishing, check \`hermes auth status ${PROVIDER}\` / Hermes 재로그인 필요 — 게시와 무관, \`hermes auth status ${PROVIDER}\` 확인`,
     }]
     : [];
   return [...fromPool, ...relogin];

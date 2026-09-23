@@ -24,7 +24,7 @@
 
 ## 막힌 것
 
-- **Hermes 계획 생성**: Hermes와 Codex CLI가 같은 OpenAI 계정으로 로그인되어 있어 `publish-sites.sh`의 Codex 실행이 Hermes 주간 쿼터를 함께 소모했다. 2026-09-23 계획 분석이 `429 quota exhausted (retry after 393141s)`로 실패했다([b0c9c58 기록](releases/2026-09-22-b0c9c58.md)). 2026-09-23T00:51Z UTC 기준 `node scripts/parallel/preflight-quota.mjs`는 `account: same account`와 Hermes `openai-codex` 재로그인 필요(`relogin_required`)를 보고하며 `blocked`(exit 2)다. 해결: Codex를 다른 계정으로 로그인하거나 Hermes 공급자 자격 증명을 다시 로그인한다(소유자 조치).
+- **Hermes 계획 생성**: Hermes와 Codex CLI가 같은 OpenAI 계정으로 로그인되어 있어 `publish-sites.sh`의 Codex 실행이 Hermes 주간 쿼터를 함께 소모했다. 2026-09-23 계획 분석이 `429 quota exhausted (retry after 393141s)`로 실패했다([b0c9c58 기록](releases/2026-09-22-b0c9c58.md)). 2026-09-23T01:00Z UTC 기준 `node scripts/parallel/preflight-quota.mjs`는 `account: same account`로 `blocked`(exit 2)이고, `--accept-shared-quota`를 주면 `warn`(exit 0)이다. Hermes `openai-codex`의 `relogin_required`(2026-09-21 기록)는 게시와 무관한 경고로만 표시된다(`hermes auth status openai-codex`는 logged in). 해결: Codex를 다른 계정으로 로그인한다(소유자 조치).
 - **자동 runtime 검증**: `verify-deploy.sh`에 필요한 `ORBIT_RELEASE_HEALTH_TOKEN`이 이 머신에 없어, 운영 tree 확인은 소유자 브라우저의 same-origin `/api/version` 조회에 의존한다.
 
 ## 작동 중인 에이전트/작업
@@ -37,7 +37,7 @@
 
 ## 다음 행동
 
-1. 소유자: Codex CLI를 Hermes와 다른 OpenAI 계정으로 로그인하고, Hermes `openai-codex` 재로그인 후 `node scripts/parallel/preflight-quota.mjs`가 `ok`인지 확인한다.
+1. 소유자: Codex CLI를 Hermes와 다른 OpenAI 계정으로 로그인하고 `node scripts/parallel/preflight-quota.mjs`가 `account: different`인지 확인한다. 남은 `relogin_required` 경고는 `hermes auth status openai-codex`로 확인한다.
 2. 이 PR 머지 후 `scripts/parallel/cleanup.sh --publish-clones`로 남은 게시 클론(`orbit-publish-*`, 약 7GB)을 정리한다. 보고가 없는 `orbit-publish-a6f4ee0`은 확인 후 `--force`로만 지운다.
 3. `41016f9` 게시의 Codex 보고(`.sites-publish-result.md`)는 `docs/releases/publish-reports/`에 아직 없다. 원본이 남아 있으면 `publish-reports/41016f9.md`로 추가한다.
 4. 다음 게시는 1번 해결 후 `release.sh` → `publish-sites.sh` → 브라우저/`verify-deploy.sh` 순서로 한다.
