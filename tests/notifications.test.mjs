@@ -7,6 +7,7 @@ import {subscribePush,flushPushNotifications,subscriptionId,pushPublicKey} from 
 import {encryptPush,pushRequest,vapidKeys,base64url,unbase64,validPushEndpoint} from '../lib/orbit/notifications/web-push.ts';
 import {beginTurn,finishTurn,failTurn} from '../lib/orbit/agent/repository.ts';
 import {readWorkspace,writeCommand} from '../db/repository.ts';
+import {groupNotifications} from '../lib/orbit/notifications/grouping.ts';
 const subscription=()=>{const ecdh=createECDH('prime256v1');ecdh.generateKeys();return {ecdh,sub:{endpoint:'https://fcm.googleapis.com/fcm/send/test-endpoint',keys:{p256dh:ecdh.getPublicKey().toString('base64url'),auth:Buffer.alloc(16,8).toString('base64url')},subject:'https://orbit.example'}}};
 test('Web Push decrypts independently and VAPID validates for the subscription audience',async()=>{const {ecdh,sub}=subscription(),payload={title:'승인 필요',href:'/?note=record'},body=Buffer.from(await encryptPush(sub,JSON.stringify(payload))),salt=body.subarray(0,16),pub=body.subarray(21,86);assert.equal(body.readUInt32BE(16),4096);assert.equal(body[20],65);const shared=ecdh.computeSecret(pub),ikm=hkdfSync('sha256',shared,Buffer.from(sub.keys.auth,'base64url'),Buffer.concat([Buffer.from('WebPush: info\0'),ecdh.getPublicKey(),pub]),32),cek=hkdfSync('sha256',ikm,salt,Buffer.from('Content-Encoding: aes128gcm\0'),16),iv=hkdfSync('sha256',ikm,salt,Buffer.from('Content-Encoding: nonce\0'),12);const decipher=createDecipheriv('aes-128-gcm',cek,iv);decipher.setAuthTag(body.subarray(-16));const plain=Buffer.concat([decipher.update(body.subarray(86,-16)),decipher.final()]);assert.equal(plain.at(-1),2);assert.deepEqual(JSON.parse(plain.subarray(0,-1)),payload);
  const keys=await vapidKeys(),req=await pushRequest(sub,keys,payload),token=req.headers.Authorization.split('t=')[1].split(',')[0],parts=token.split('.'),claims=JSON.parse(Buffer.from(parts[1],'base64url'));assert.equal(claims.aud,'https://fcm.googleapis.com');const publicKey=await crypto.subtle.importKey('raw',unbase64(keys.publicKey),{name:'ECDSA',namedCurve:'P-256'},false,['verify']);assert.equal(await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},publicKey,unbase64(parts[2]),new TextEncoder().encode(parts.slice(0,2).join('.'))),true);assert.ok(validPushEndpoint('https://web.push.apple.com/Qabc'));for(const url of ['http://fcm.googleapis.com/x','https://localhost/x','https://fcm.googleapis.com.evil/x','https://user@fcm.googleapis.com/x','https://127.0.0.1/x'])assert.equal(validPushEndpoint(url),false);
@@ -51,4 +52,19 @@ test('a repeated failure alerts a device once per window while the inbox keeps e
   await flushPushNotifications(db,'a');
   assert.equal(sent,2);
  }finally{globalThis.fetch=real;db.close()}
+});
+
+test('repeated titles group without ever sharing a row key',()=>{
+ const n=(id,kind,title)=>({id,kind,title,body:'',href:'/',createdAt:'2026-09-22T00:00:00.000Z',readAt:null});
+ // The same failure title comes back in groups that are not next to each other, which is exactly
+ // when a kind+title key repeats among siblings and React renders rows in the wrong place.
+ const items=[n('a','failed','회의 분석 실패'),n('b','failed','회의 분석 실패'),n('c','approval','회의 요약 완료'),n('d','failed','회의 분석 실패'),n('e','failed','회의 분석 실패')];
+ const groups=groupNotifications(items);
+ assert.deepEqual(groups.map(g=>[g.head.id,g.rest.map(r=>r.id)]),[['a',['b']],['c',[]],['d',['e']]]);
+ assert.equal(new Set(groups.map(g=>g.key)).size,groups.length,'row keys must be unique among siblings');
+ // Dismissing a head gives its group a new key instead of re-using the dismissed row's identity.
+ const after=groupNotifications(items.filter(i=>i.id!=='a'));
+ assert.deepEqual(after.map(g=>g.key),['b','c','d']);
+ assert.equal(new Set(after.map(g=>g.key)).size,after.length);
+ assert.deepEqual(groupNotifications([]),[]);
 });
