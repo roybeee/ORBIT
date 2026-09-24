@@ -149,3 +149,10 @@ test('an edit with a name or colour the proposal cannot carry registers nothing'
  await assert.rejects(()=>decide(db,owner,{id:task.id,decision:'approve',overrides:{color:'#123456'}},env),e=>e.code==='ACTION_INVALID');
  assert.equal((await readWorkspace(db,owner)).data.tasks.length,0,'a refused colour registers nothing');
 }finally{db.close()}});
+
+test('a model-supplied task noteId/noteCitation is replaced by the server citation instead of failing validation',async()=>{const db=createDatabase();try{await seed(db);const data=(await readWorkspace(db,owner)).data;const task=proposals()[1];
+ // Hermes echoed the citation without a revision (and once as a plain string); the server owns both fields.
+ for(const noteCitation of [{line:2,quote:source.split('\n')[1]},'바다 프로젝트 제안서']){
+  const [out]=await meetingProposals(note,data,[{...task,action:{...task.action,task:{...task.action.task,projectId:'oda',noteId:'plaud:forged',noteCitation}}}],[]);
+  assert.equal(out.action.task.noteId,note.id);assert.deepEqual(out.action.task.noteCitation,{revision:1,line:2,quote:source.split('\n')[1]});
+ }}finally{db.close()}});
