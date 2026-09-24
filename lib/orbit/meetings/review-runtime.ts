@@ -85,7 +85,9 @@ export async function meetingReviewDetail(db:Database,owner:string,noteId:string
  const response=JSON.parse(row.response_json??'{}');
  const cards=await db.prepare('SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id JOIN orbit_meeting_reviews r ON r.owner_id=a.owner_id AND r.conversation_id=t.conversation_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC,a.created_at,a.rowid').bind(owner,noteId).all<Parameters<typeof toAction>[0]>();
  const data=(await readWorkspace(db,owner)).data;
- return {status:['queued','waiting_quota'].includes(row.status)?row.status:row.turn_status??row.status,summary:response.text||row.summary||'',error:response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal})),candidates:mergeCandidates(data)};
+ // A deferred record keeps an older turn (often one that hit the AI limit); its error is not current.
+ const deferred=row.status==='deferred';
+ return {status:['queued','waiting_quota','deferred'].includes(row.status)?row.status:row.turn_status??row.status,summary:response.text||row.summary||'',error:deferred?'':response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal})),candidates:mergeCandidates(data)};
 }
 
 // Scheduled and import callers use the same bounded worker as the UI. Reading a

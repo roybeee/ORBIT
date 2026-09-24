@@ -51,3 +51,16 @@ test('an old meeting with no review yet shows as deferred, not as running',()=>f
  await db.prepare('DELETE FROM orbit_meeting_reviews WHERE owner_id=?').bind(owner).run();
  assert.equal((await meetingReviewDetail(db,owner,old.id)).status,'deferred');
 }));
+
+test('a deferred review whose earlier turn failed on the AI limit shows as deferred, without that error',()=>fixture(async db=>{
+ await importRecording(db,owner,record('old','2026-05-12T01:00:00Z'));
+ const old=await noteOf(db,'old');
+ const row=await db.prepare('SELECT turn_id,conversation_id FROM orbit_meeting_reviews WHERE owner_id=? AND note_id=?').bind(owner,old.id).first();
+ const now=new Date().toISOString();
+ await db.prepare("INSERT INTO orbit_agent_turns(owner_id,id,conversation_id,input,status,response_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+  .bind(owner,row.turn_id,row.conversation_id,'회의록 요약','failed',JSON.stringify({error:'Codex provider quota exhausted (429)'}),now,now).run();
+ await db.prepare("UPDATE orbit_meeting_reviews SET status='waiting_quota',error='Codex provider quota exhausted (429)' WHERE owner_id=? AND note_id=?").bind(owner,old.id).run();
+ await drain(db);
+ const detail=await meetingReviewDetail(db,owner,old.id);
+ assert.equal(detail.status,'deferred');assert.equal(detail.error,'');
+}));
