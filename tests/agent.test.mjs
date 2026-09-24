@@ -300,3 +300,15 @@ test('chat acknowledges a durable job before external work and duplicate receipt
  assert.match((await listAgent(db,'owner')).turns[0].error,/중지/);
  assert.equal(calls,0);
 }));
+
+test('a failure that is not an AgentError keeps its real message instead of the generic line',()=>fixture(async db=>{
+ await connectHermes(db);
+ globalThis.fetch=async(url,options)=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):completed(final([{type:'project.upsert',project}]));
+ // A storage-layer error is a plain Error, not an AgentError. It must stay visible to the owner.
+ const prepare=db.prepare.bind(db);db.prepare=sql=>{if(/INSERT INTO orbit_agent_actions/.test(sql))throw new Error('D1_ERROR: no such column: fixture_column');return prepare(sql)};
+ const input={id:randomUUID(),message:'프로젝트'};
+ await assert.rejects(()=>complete(db,input),/fixture_column/);
+ const state=await listAgent(db,'owner');assert.equal(state.turns[0].status,'failed');
+ assert.match(state.turns[0].error,/응답을 완료하지 못했습니다/);assert.match(state.turns[0].error,/D1_ERROR: no such column: fixture_column/);
+ assert.equal(state.actions.length,0);
+}));

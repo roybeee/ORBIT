@@ -109,6 +109,9 @@ async function scope(owner:string,conversationId:string){const digest=await cryp
 async function discard(db:Database,owner:string,id:string,lease:string,message:string){await failTurn(db,owner,id,lease,message);await clearBatches(db,owner,id);await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=? AND turn_lease=?').bind(owner,id,lease).run()}
 // Hermes reports why a run failed (provider errors are redacted upstream). Show it instead of a generic line.
 const hermesError=(result:Record<string,unknown>)=>{const raw=result.error;const text=typeof raw==='string'?raw:raw&&typeof raw==='object'?String((raw as {message?:unknown}).message??JSON.stringify(raw)):'';return text.replace(/\s+/g,' ').trim().slice(0,300)};
+// A failure that is not an AgentError (storage, a schema, a bug) used to be replaced by a generic
+// line, so nothing outside the process could see what it was. Keep the thrown message; the owner is the only reader.
+const thrownDetail=(error:unknown)=>{const text=error instanceof Error?`${error.name}: ${error.message}`:String(error);return text.replace(/\s+/g,' ').trim().slice(0,300)};
 const AUTH_FAILURE=/authentication failed|api key|unauthori[sz]ed|invalid.{0,20}key|\b40[13]\b/i;
 // A spent provider quota does not get better by sending the same catalog again, so it skips the
 // retry ladder like an auth failure does, and it earns its own hint: no API key is wrong.
@@ -511,7 +514,8 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   // Retain native run IDs across transport loss; publish no partial changes.
   if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_CAPACITY','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
   if(job.provider!=='openai')await recordSource(db,owner,'hermes',{state:'error',detail:'분석 단계를 완료하지 못했습니다. 실행 기록의 오류를 확인해 주세요.'});
-  await failPlanning(db,owner,id,row.turn_lease,job,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'연결 상태를 확인해 주세요.') :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 입력을 확인하고 다시 요청해 주세요.');throw error;
+  if(!(error instanceof AgentError))console.error('orbit.agent.failure',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,planning:!!job.planning,name:error instanceof Error?error.name:typeof error,message:error instanceof Error?error.message:String(error),stack:error instanceof Error?error.stack:undefined});
+  await failPlanning(db,owner,id,row.turn_lease,job,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'오류: '+thrownDetail(error)) :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 오류: '+thrownDetail(error)+' 입력을 확인하고 다시 요청해 주세요.');throw error;
  }finally{
   console.info('orbit.agent.timing',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,round:job.round,durationMs:Date.now()-stepStarted,elapsedMs:Date.now()-job.started,posts:job.posts,reused:job.batch?.reused});
   await db.prepare('UPDATE orbit_hermes_jobs SET lease_until=0 WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(owner,id,lock).run();
