@@ -5,6 +5,7 @@ import {reorderProjectSlots} from './project-order.ts';
 import {taskScheduleProblem,taskAfterWaiting} from './task-scheduling.ts';
 import {categoryOf} from './calendar-categories.ts';
 import {monthlyReport} from './phase4.ts';
+import {suggestVerdict} from './experiment-review.ts';
 import {prepareReplan,replanBasis} from './reschedule.ts';
 import {planningFloor,minuteInZone} from './dates.ts';
 import {careEvents,goalIsActive} from './chief.ts';
@@ -156,6 +157,7 @@ export function applyAction(
     dominoProjectId: data.dominoProjectId,
     projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
     calibration: (t: Task) => calibrationFactor(data.tasks, t, date, data.executionHistory),
+    rules: data.improvements,
   });
   const finishSession = (t: Task) => {
     if (!t.startedAt) return;
@@ -181,16 +183,35 @@ export function applyAction(
       const e=action.experiment,n=data.notes.find(n=>n.id===e.noteId);
       if(!n||(n.revision??1)!==e.noteRevision)fail('근거 원문이 변경됐습니다. 다시 확인해 주세요.');
       if(e.from>e.through||e.through<today||e.baseline===e.target)fail('실험 기간과 성공 기준을 확인해 주세요.');
-      if(e.direction==='up'?e.target<e.baseline:e.target>e.baseline)fail('목표와 개선 방향이 다릅니다.');
+      if(e.baseline!==null&&(e.direction==='up'?e.target<e.baseline:e.target>e.baseline))fail('목표와 개선 방향이 다릅니다.');
       if(data.experiments?.some(x=>x.id===e.id)||data.tasks.some(t=>t.id==='experiment:'+e.id))fail('이미 등록된 실험입니다.');
+      if(e.parentId&&!data.experiments?.some(x=>x.id===e.parentId))fail('다시 시도할 원래 실험을 찾을 수 없습니다.');
       const taskId='experiment:'+e.id;
-      data.tasks.push({id:taskId,title:e.title,projectId:e.projectId,status:'todo',duration:e.minutes,due:e.through,impact:3,focus:false,definition:e.action+'\n성공 기준: '+e.metric+' '+e.target+' '+e.unit,noteId:e.noteId});
+      data.tasks.push({id:taskId,title:e.title,projectId:e.projectId,status:'todo',duration:e.minutes,due:e.through,impact:3,focus:false,definition:e.action+(e.baseline===null?'\n먼저 기준값을 측정해 기록합니다: '+e.metric:'')+'\n성공 기준: '+e.metric+' '+e.target+' '+e.unit,noteId:e.noteId});
       data.experiments=[...data.experiments??[],{...e,taskId,status:'active',createdAt:now.toISOString()}];break;
     }
     case 'experiment.finish': {
       const e=data.experiments?.find(e=>e.id===action.id)??fail('실험을 찾을 수 없습니다.');
       if(e.status!=='active'||today<e.from)fail('진행 중인 실험만 결과를 기록할 수 있습니다.');
       e.result={value:action.value,evidence:action.evidence,conclusion:action.conclusion,at:now.toISOString(),met:e.direction==='up'?action.value>=e.target:action.value<=e.target};e.status='completed';break;
+    }
+    case 'experiment.baseline': {
+      const e=data.experiments?.find(e=>e.id===action.id)??fail('실험을 찾을 수 없습니다.');
+      if(e.status!=='active'||e.baseline!==null)fail('기준값을 아직 측정하지 않은 진행 중 실험만 기록할 수 있습니다.');
+      const target=action.target??e.target;
+      if(target===action.value||(e.direction==='up'?target<action.value:target>action.value))fail('기준값과 목표가 개선 방향과 맞지 않습니다. 목표값도 함께 고쳐 주세요.');
+      e.baseline=action.value;e.target=target;e.baselineEvidence=action.evidence;e.baselineAt=now.toISOString();break;
+    }
+    case 'experiment.decide': {
+      const e=data.experiments?.find(e=>e.id===action.id)??fail('실험을 찾을 수 없습니다.');
+      if(e.status!=='completed'||!e.result||e.decision)fail('결과를 기록했고 아직 결정하지 않은 실험만 결정할 수 있습니다.');
+      let ruleId:string|undefined;
+      if(action.verdict==='adopt'){
+        const r=action.rule??fail('계속 적용할 규칙을 한 문장으로 적어 주세요.');
+        ruleId=(data.improvements??[]).find(i=>i.active&&i.rule.trim()===r.rule.trim())?.id??r.id;
+        addImprovement(data,{id:r.id,rule:r.rule,kind:r.kind,createdOn:today,active:true,source:'experiment',experimentId:e.id,...(r.effect?{effect:r.effect}:{})});
+      }
+      e.decision={verdict:action.verdict,suggested:suggestVerdict(e)?.verdict,at:now.toISOString(),...(ruleId?{ruleId}:{}),...(action.note?.trim()?{note:action.note.trim()}:{})};break;
     }
     case 'experiment.stop': {const e=data.experiments?.find(e=>e.id===action.id)??fail('실험을 찾을 수 없습니다.');if(e.status!=='active')fail('진행 중인 실험만 중단할 수 있습니다.');e.status='stopped';break;}
     case 'contact.upsert':data.contacts=replace(data.contacts??[],{...action.contact,updatedAt:now.toISOString()});break;

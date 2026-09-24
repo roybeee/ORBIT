@@ -4,7 +4,7 @@ import type { WorkspaceData, Note, Task } from '../model.ts';
 import { AgentError } from './errors.ts';
 export interface AgentSource {
   title:string; label:string;
-  id?:string; kind?:'metric'|'note'|'task'|'project'|'goal'|'event'|'review'|'conversation'|'decision'|'delegation'|'plaud'|'memory'|'feedback';
+  id?:string; kind?:'metric'|'note'|'task'|'project'|'goal'|'event'|'review'|'conversation'|'decision'|'delegation'|'plaud'|'memory'|'rule'|'feedback';
   recordId?:string; revision?:number; date?:string; excerpt?:string;
   scope?:'metadata'|'excerpt'|'full'; retrievedAt?:string;
 }
