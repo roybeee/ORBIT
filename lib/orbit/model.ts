@@ -257,6 +257,8 @@ export interface ReviewDetail {
   gratitude: string[];
   habitChecks: string[];
   confirmation?: ReviewConfirmation;
+  // The one improvement the owner chose to carry into the next day's plan.
+  carry?: string;
 }
 export interface DailyReview {
   id: string;
@@ -270,6 +272,7 @@ export interface DailyReview {
   habitChecks?: string[];
   highlight?: string;
   hasDetail?: boolean;
+  carry?: string;
 }
 export interface DecisionRecord {
   id:string; title:string; projectId:string; choice:string; rationale:string; alternatives:string;

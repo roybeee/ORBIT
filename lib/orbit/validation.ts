@@ -253,6 +253,7 @@ export const reviewDetailSchema = z
       })
       .strict()
       .optional(),
+    carry: z.string().max(200).optional(),
   })
   .strict();
 export const decisionSchema=z.object({id,title,projectId:id,choice:z.string().trim().min(1).max(2000),rationale:z.string().trim().min(1).max(2000),alternatives:z.string().max(2000),reviewDate:dateSchema,status:z.enum(['active','revised','closed']),outcome:z.string().max(2000),noteId:id.optional(),noteRevision:z.number().int().positive().optional(),taskId:id.optional()}).strict();
