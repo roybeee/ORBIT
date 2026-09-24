@@ -1,3 +1,8 @@
+## 2026-09-25 · Google Tasks 동기화가 할 일 수와 무관하게 요청 1번으로 끝납니다
+
+- 연결된 할 일마다 Google에 묻던 방식을 목록 조회 1번으로 바꿨습니다. 첫 동기화(또는 아직 확인되지 않은 연결이 있을 때)는 목록 전체를, 이후에는 마지막 동기화 이후 바뀐 할 일만 받아 옵니다.
+- 호출이 줄어서 동기화 간격을 1분에서 30초로 줄였습니다. Google Tasks 수정이 실패하면 이제 상태에 '확인하지 못한 할 일'로 표시됩니다.
+
 ## 2026-09-25 · Slack 지시가 Google과 ORBIT에 함께 등록되고, 캘린더·할 일이 양쪽으로 동기화됩니다
 
 - **Slack 할 일·메모:** Hermes의 새 플러그인(`integrations/hermes-orbit-commands`)이 할 일은 Google Tasks와 ORBIT 할 일에 함께, 메모는 ORBIT 지식 메모로 등록합니다(`/api/integrations/slack/commands`).
