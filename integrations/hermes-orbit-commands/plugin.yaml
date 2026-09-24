@@ -1,0 +1,12 @@
+name: orbit-slack-directive-sync
+version: "2.0.0"
+description: Slack instructions registered in Google (Tasks) and ORBIT together
+provides_tools:
+  - orbit_slack_task
+  - orbit_slack_note
+  - orbit_slack_choose
+  - orbit_slack_directive_sync
+requires_env:
+  - ORBIT_SLACK_INGEST_KEY
+  - ORBIT_SLACK_DIRECTIVE_URL
+  - ORBIT_SLACK_SITES_BEARER

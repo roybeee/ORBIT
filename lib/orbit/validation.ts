@@ -83,6 +83,7 @@ export const taskSchema = z
     outcomeOn: dateSchema.optional(),
     startedAt: z.string().datetime().optional(),
     laserDate: dateSchema.optional(),
+    googleTask: z.object({ taskListId: z.string().min(1).max(200), taskId: z.string().min(1).max(200) }).strict().optional(),
   })
   .strict();
 export const goalSchema = z

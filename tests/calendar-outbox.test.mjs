@@ -256,3 +256,17 @@ test('task memo, scope, phone category and color propagate to due reminders and 
   assert.equal(g.posts,1);assert.equal(g.patches,1);assert.equal(g.remote.description,'');assert.equal(g.remote.extendedProperties.private.orbitScope,'personal');assert.equal(g.remote.colorId,'6');assert.equal(g.remote.summary,'채용 후속 통화');
  }
 }));
+test('a task linked to a Google Task gets no all-day reminder, and linking an existing task removes its reminder',()=>fixture(async db=>{
+ await connect(db);const g=google();
+ let snapshot=await readWorkspace(db,'a');
+ snapshot=await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'project.upsert',project:{id:'hr',name:'채용',goal:'채용 제안',due:'2026-09-30',priority:3,color:'#5484ed',symbol:'H'}}});
+ const linked={id:'slack-task',title:'Slack 할 일',projectId:'hr',status:'todo',due:'2026-09-21',duration:30,impact:3,focus:false,definition:'',googleTask:{taskListId:'@default',taskId:'gt-1'}};
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task:linked}});
+ await flushCalendarOutbox(db,'a',env,'task-due:slack-task');
+ assert.equal(g.posts,0,'Google Tasks already shows the task in Google Calendar');
+ const task=await taskFixture(db);await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.posts,1);assert.ok(g.remote);
+ snapshot=await readWorkspace(db,'a');
+ await writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.upsert',task:{...task,googleTask:{taskListId:'@default',taskId:'gt-2'}}}});
+ await flushCalendarOutbox(db,'a',env,'task-due:recruit');assert.equal(g.remote,null,'the duplicate reminder is removed once the task is linked');
+ assert.deepEqual((await readWorkspace(db,'a')).data.tasks.find(t=>t.id==='recruit').googleTask,{taskListId:'@default',taskId:'gt-2'});
+}));

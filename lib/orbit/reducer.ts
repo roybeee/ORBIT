@@ -450,6 +450,7 @@ export function applyAction(
         'startedAt',
         'laserDate',
         'unplanned',
+        'googleTask',
       ] as const)
         if (t[key] === undefined && old?.[key] !== undefined) (t as Record<string, unknown>)[key] = old[key];
       if (

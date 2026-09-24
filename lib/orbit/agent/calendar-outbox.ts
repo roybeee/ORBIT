@@ -44,7 +44,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
  const snapshot=await readWorkspace(db,owner);
  const taskId=state.eventId.startsWith('task-due:')?state.eventId.slice(9):undefined;
  const task=taskId?snapshot.data.tasks.find(t=>t.id===taskId):undefined;
- let event=task?taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone)):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
+ let event=task?(task.googleTask?undefined:taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone))):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
  const linkedTask=event?.taskId?snapshot.data.tasks.find(t=>t.id===event!.taskId):undefined;
  if(event&&linkedTask)event={...event,description:linkedTask.description??event.description,scope:linkedTask.scope??event.scope,category:linkedTask.category??event.category};
  if(!event&&!taskId){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
@@ -92,7 +92,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
     const removed=await fetchJson(base+'/'+googleId+'?sendUpdates=none',{method:'DELETE',headers:{...headers,'If-Match':current.data.etag}},6000);
     if(!removed.response.ok&&![404,410].includes(removed.response.status))throw new AgentError('Google 할 일 삭제를 확인하지 못했습니다.','CALENDAR',502);
    }else if(!current.response.ok&&![404,410].includes(current.response.status))throw new AgentError('Google 할 일을 확인하지 못했습니다.','CALENDAR',502);
-   state.status='cancelled';state.message='삭제한 할 일의 Google 일정 정리 완료';return calendarDeliveryStatus(db,owner);
+   state.status='cancelled';state.message=task?.googleTask?'Google Tasks와 연결되어 종일 표시를 두지 않음':'삭제한 할 일의 Google 일정 정리 완료';return calendarDeliveryStatus(db,owner);
   }
 
   if(current.response.ok){

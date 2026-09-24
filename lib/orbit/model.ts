@@ -67,6 +67,8 @@ export interface Task {
   outcomeOn?: string;
   startedAt?: string;
   laserDate?: string;
+  // Set when the task was also created as a Google Task (Slack instruction); the pair stays linked.
+  googleTask?: { taskListId: string; taskId: string };
 }
 export interface Goal {
   id: string;
