@@ -1,0 +1,1 @@
+ALTER TABLE `orbit_meeting_reviews` ADD `manual` integer DEFAULT 0 NOT NULL;

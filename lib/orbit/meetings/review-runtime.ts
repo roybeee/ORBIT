@@ -16,9 +16,21 @@ import {directChatConfigured} from '../agent/direct-model.ts';
 import {activeHold,waitsForLimit} from '../agent/provider-hold.ts';
 // Same choice runAgent makes for a meeting turn (no planning, no attachments).
 const meetingProvider=(env:Runtime)=>directChatConfigured(env)?'openai' as const:'hermes' as const;
+// Automatic reviews cover meetings recorded in the last 30 days. Older ones (e.g. a bulk Plaud
+// backfill) are deferred until the owner asks, so they cannot drain the shared AI quota.
+export const AUTO_REVIEW_DAYS=30;
+const recordedOn=(note:{source?:{date?:string};updated:string})=>note.source?.date??note.updated;
+const reviewCutoff=async(db:Database,owner:string)=>addDays(todayInZone((await readWorkspace(db,owner)).data.preferences.timeZone),-AUTO_REVIEW_DAYS);
+async function deferOldReviews(db:Database,owner:string){
+ await db.prepare(`UPDATE orbit_meeting_reviews SET status='deferred',updated_at=? WHERE owner_id=? AND manual=0 AND status IN ('queued','waiting_quota')
+  AND COALESCE((SELECT COALESCE(json_extract(n.note_json,'$.source.date'),json_extract(n.note_json,'$.updated')) FROM orbit_note_revisions n WHERE n.owner_id=orbit_meeting_reviews.owner_id AND n.note_id=orbit_meeting_reviews.note_id AND n.revision=orbit_meeting_reviews.revision),'9999-12-31')<?`)
+  .bind(new Date().toISOString(),owner,await reviewCutoff(db,owner)).run();
+}
 export async function requestMeetingReview(db:Database,owner:string,noteId:string,retry=false){
  const note=await readNote(db,owner,noteId);if(note.kind!=='meeting'||!note.body.trim())throw new AgentError('본문이 있는 회의록을 선택해 주세요.');
  await enqueueMeetingStatement(db,owner,note).run();
+ // An explicit request is never deferred by date; a deferred record is queued again right here.
+ await db.prepare("UPDATE orbit_meeting_reviews SET manual=1,status=CASE WHEN status='deferred' THEN 'queued' ELSE status END,updated_at=? WHERE owner_id=? AND note_id=? AND revision=?").bind(new Date().toISOString(),owner,note.id,note.revision??1).run();
  if(retry){
   await advanceMeetingReviews(db,owner);
   const row=await db.prepare('SELECT turn_id,status,conversation_id FROM orbit_meeting_reviews WHERE owner_id=? AND note_id=? AND revision=?').bind(owner,note.id,note.revision??1).first<{turn_id:string;status:string;conversation_id:string}>();
@@ -38,6 +50,7 @@ export async function advanceMeetingReviews(db:Database,owner:string,env?:Runtim
  const done=await db.prepare("SELECT r.note_id,r.revision,r.turn_id,t.status AS turn_status,COALESCE(json_extract(t.response_json,'$.error'),'') AS error FROM orbit_meeting_reviews r JOIN orbit_agent_turns t ON t.owner_id=r.owner_id AND t.id=r.turn_id WHERE r.owner_id=? AND r.status='running' AND t.status IN ('completed','failed')").bind(owner).all<{note_id:string;revision:number;turn_id:string;turn_status:string;error:string}>();
  for(const r of done.results)await db.prepare("UPDATE orbit_meeting_reviews SET status=?,error=?,updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND turn_id=? AND status='running'").bind(r.turn_status==='failed'&&waitsForLimit(r.error)?'waiting_quota':r.turn_status,r.error,new Date().toISOString(),owner,r.note_id,r.revision,r.turn_id).run();
  if(!env)return {active:false};
+ await deferOldReviews(db,owner);
  if(await db.prepare("SELECT turn_id FROM orbit_meeting_reviews WHERE owner_id=? AND status='running' LIMIT 1").bind(owner).first())return {active:true};
  // While the provider's limit is spent nothing new starts; every waiting record is tagged with the episode.
  // After the next check time one record starts and becomes the single recovery probe in the runner.
@@ -68,11 +81,13 @@ export function mergeCandidates(data:WorkspaceData){
 export async function meetingReviewDetail(db:Database,owner:string,noteId:string){
  const note=await readNote(db,owner,noteId);
  const row=await db.prepare('SELECT r.*,t.status AS turn_status,t.response_json FROM orbit_meeting_reviews r LEFT JOIN orbit_agent_turns t ON t.owner_id=r.owner_id AND t.id=r.turn_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC LIMIT 1').bind(owner,noteId).first<{note_id:string;revision:number;turn_id:string;conversation_id:string;status:string;error:string;summary:string;turn_status:string|null;response_json:string|null}>();
- if(!row)return {status:'not_started',summary:'',actions:[],revision:note.revision??1,projects:[]};
+ if(!row)return {status:recordedOn(note)<await reviewCutoff(db,owner)?'deferred':'not_started',summary:'',actions:[],revision:note.revision??1,projects:[]};
  const response=JSON.parse(row.response_json??'{}');
  const cards=await db.prepare('SELECT a.*,t.conversation_id FROM orbit_agent_actions a JOIN orbit_agent_turns t ON t.owner_id=a.owner_id AND t.id=a.turn_id JOIN orbit_meeting_reviews r ON r.owner_id=a.owner_id AND r.conversation_id=t.conversation_id WHERE r.owner_id=? AND r.note_id=? ORDER BY r.revision DESC,a.created_at,a.rowid').bind(owner,noteId).all<Parameters<typeof toAction>[0]>();
  const data=(await readWorkspace(db,owner)).data;
- return {status:['queued','waiting_quota'].includes(row.status)?row.status:row.turn_status??row.status,summary:response.text||row.summary||'',error:response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal})),candidates:mergeCandidates(data)};
+ // A deferred record keeps an older turn (often one that hit the AI limit); its error is not current.
+ const deferred=row.status==='deferred';
+ return {status:['queued','waiting_quota','deferred'].includes(row.status)?row.status:row.turn_status??row.status,summary:response.text||row.summary||'',error:deferred?'':response.error||row.error,progress:response.progress,revision:row.revision,stale:row.revision!==(note.revision??1),turnId:row.turn_id,actions:cards.results.filter(r=>r.note!=='새 분석으로 대체').map(toAction),projects:data.projects.map(p=>({id:p.id,name:p.name,goal:p.goal})),candidates:mergeCandidates(data)};
 }
 
 // Scheduled and import callers use the same bounded worker as the UI. Reading a
@@ -82,7 +97,8 @@ export async function processMeetingReviews(db:Database,owner:string,env:Runtime
  await advanceMeetingReviews(db,owner);
  const snapshot=await readWorkspace(db,owner);
  const known=await db.prepare('SELECT note_id,revision,status,engine_version,attempts FROM orbit_meeting_reviews WHERE owner_id=?').bind(owner).all<{note_id:string;revision:number;status:string;engine_version:number;attempts:number}>();
- const missing=snapshot.data.notes.filter(n=>n.kind==='meeting'&&(!noteId||n.id===noteId)&&!known.results.some(r=>r.note_id===n.id&&r.revision===(n.revision??1))).sort((a,b)=>b.updated.localeCompare(a.updated)).slice(0,4);
+ const cutoff=await reviewCutoff(db,owner);
+ const missing=snapshot.data.notes.filter(n=>n.kind==='meeting'&&(!noteId||n.id===noteId)&&recordedOn(n)>=cutoff&&!known.results.some(r=>r.note_id===n.id&&r.revision===(n.revision??1))).sort((a,b)=>b.updated.localeCompare(a.updated)).slice(0,4);
  for(const meta of missing)await enqueueMeetingStatement(db,owner,await readNote(db,owner,meta.id)).run();
  // Upgrade the old failed extractor exactly once. Do not revive user-cancelled work.
  await db.prepare("UPDATE orbit_meeting_reviews SET turn_id=lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-4'||substr(lower(hex(randomblob(2))),2)||'-a'||substr(lower(hex(randomblob(2))),2)||'-'||lower(hex(randomblob(6))),status='queued',error='',engine_version=2,attempts=0 WHERE owner_id=? AND status='failed' AND engine_version<2 AND error NOT LIKE '%중지%'").bind(owner).run();
