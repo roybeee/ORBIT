@@ -116,10 +116,11 @@ async function history(db:Database,owner:string,today:string,zone:string):Promis
  });
 }
 
-export async function planStatus(db:Database,owner:string,_env:Runtime,now=new Date()):Promise<PlanStatus>{
+// `date` pins the target (the GoTEM messages describe today's plan even after the evening hour).
+export async function planStatus(db:Database,owner:string,_env:Runtime,now=new Date(),date?:string):Promise<PlanStatus>{
  const [snapshot,runtime]=await Promise.all([readWorkspace(db,owner),runtimeStatus(db,owner)]);
  const zone=snapshot.data.preferences.timeZone,today=todayInZone(zone,now),afterEvening=eveningDue(now,zone,runtime.config.eveningHour);
- const target={date:afterEvening?addDays(today,1):today,timeZone:zone,eveningHour:runtime.config.eveningHour,afterEvening};
+ const target={date:date??(afterEvening?addDays(today,1):today),timeZone:zone,eveningHour:runtime.config.eveningHour,afterEvening};
  const collected=await collection(db,owner,runtime);
  const [analyzed,planned,runs]=await Promise.all([analysis(db,owner,target.date),plan(db,owner,snapshot,target.date,collected.pending.total),history(db,owner,today,zone)]);
  return {now:now.toISOString(),target,collection:collected,analysis:analyzed,plan:planned,history:runs};

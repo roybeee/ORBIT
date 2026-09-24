@@ -750,6 +750,17 @@ export function applyAction(
                 ? data.tasks.find((t) => t.id === fb.taskId)?.title.slice(0, 60)
                 : '저녁 회고',
             });
+        const carry = detail.carry?.trim();
+        // The carried improvement is also a kept rule, even when it was not typed as feedback.
+        if (carry)
+          addImprovement(data, {
+            id: `rule:${action.review.date}:carry:${(data.improvements ?? []).length}`,
+            rule: carry,
+            kind: detail.feedback.find((f) => f.rule.trim() === carry)?.kind ?? 'other',
+            createdOn: action.review.date,
+            active: true,
+            source: '저녁 회고',
+          });
         for (const habitId of detail.habitChecks) {
           const habit = (data.habits ?? []).find((h) => h.id === habitId);
           if (habit && !habit.log.includes(action.review.date)) {
@@ -779,6 +790,7 @@ export function applyAction(
         ...(stats ? { stats } : {}),
         ...(detail ? { habitChecks: detail.habitChecks, hasDetail: true } : {}),
         ...(detail?.smallWins[0] ? { highlight: detail.smallWins[0] } : {}),
+        ...(detail?.carry?.trim() ? { carry: detail.carry.trim() } : {}),
       });
       if (action.type === 'review.save') break;
       const date = addDays(action.review.date, 1);

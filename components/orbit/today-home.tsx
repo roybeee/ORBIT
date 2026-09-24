@@ -7,6 +7,7 @@ import {workspaceDashboard} from '@/lib/orbit/dashboard';
 import {protectedEvents} from '@/lib/orbit/allocation-policy';
 import {addDays} from '@/lib/orbit/dates';
 import {questReadiness} from '@/lib/orbit/pacemaker';
+import {todayFocus} from '@/lib/orbit/today-focus';
 import {orderActive,orderStatusLabel,type WorkOrder} from '@/lib/orbit/agent/orders-schema';
 import {TimeBudget} from './time-budget';
 import {AiHoldBanner} from './brief/ai-hold-banner';
@@ -19,7 +20,11 @@ export function TodayHome({orders=[],onOrder,data,now,busy,demo,pendingAI,perfor
  const d=useMemo(()=>workspaceDashboard(data,now),[data,now]);
  const primary=d.chief.primary;
  const loadSignal=primary.key===`load:${d.today}`;
- const next=d.active??(primary.taskId?data.tasks.find(t=>t.id===primary.taskId):loadSignal?d.ready[0]:undefined);
+ // The saved plan's first priority leads the hero unless a focus session is already running.
+ const focus=useMemo(()=>todayFocus(data,d.today),[data,d.today]);
+ const planned=!d.active&&focus?.taskId?data.tasks.find(t=>t.id===focus.taskId&&t.status!=='done'):undefined;
+ const fromPlan=!!planned;
+ const next=d.active??planned??(primary.taskId?data.tasks.find(t=>t.id===primary.taskId):loadSignal?d.ready[0]:undefined);
  const actionableOrders=orders.filter(o=>orderActive(o.status)||(o.status==='completed'&&o.review!=='accepted')).sort((a,b)=>Number(b.status==='waiting_for_approval')-Number(a.status==='waiting_for_approval')||Number(b.status==='completed')-Number(a.status==='completed')||b.updatedAt.localeCompare(a.updatedAt));
  const timeCard=<TimeBudget state={d.chief} embedded={false} disabled={demo} onCalendar={()=>onCalendar(d.today)} onSettings={onTimeSettings} onTask={id=>onOpen({kind:'task',id})} onAdjust={()=>onAsk(`오늘 일정에 없는 할 일 예상 ${d.chief.demand}분, 쓸 수 있는 시간 ${d.chief.capacity}분을 기준으로 오늘 할 일을 조정해 줘. 반드시 할 일, 미룰 일, 위임할 일을 구분하고 변경 전 승인할 수 있게 제안해 줘.`)}/>;
  const ready=next?questReadiness(data,next,d.today):null;
@@ -38,11 +43,12 @@ export function TodayHome({orders=[],onOrder,data,now,busy,demo,pendingAI,perfor
    <div className="mission-copy">
    <span className="today-eyebrow"><Orbit size={16}/> TODAY’S MISSION</span>{!loadSignal&&<p className="mission-intro">{d.active?'몰입의 궤도를 이어가세요':'오늘, 한 걸음 더 멀리'}</p>}
    <h2 id="today-next-title">{next?.title??primary.title}</h2>
-   <p className="mission-reason">{primary.reason}</p>
-   {next&&<div className="today-meta"><span>{data.projects.find(p=>p.id===next.projectId)?.name??'개인'}</span><span><Clock3 size={15}/>{next.duration}분</span></div>}
+   {fromPlan?<p className="mission-first-step">첫 10분: {focus?.firstStep??'타이머 10분을 켜고 바로 시작'}</p>:<p className="mission-reason">{primary.reason}</p>}
+   {next&&<div className="today-meta"><span>{data.projects.find(p=>p.id===next.projectId)?.name??'개인'}</span><span><Clock3 size={15}/>{fromPlan&&focus?.slot?`추천 ${formatTime(focus.slot.start)}–${formatTime(focus.slot.end)}`:`${next.duration}분`}</span></div>}
+   {fromPlan&&focus?.carry&&<p className="mission-carry">어제 회고({focus.carry.reviewDate.slice(5).replace('-','/')}) 반영 · {focus.carry.rule}</p>}
    {<div className="today-actions">
-    {next&&!d.active&&!ready?.canStart?<button className="primary-button" onClick={()=>onOpen({kind:'task',id:next.id})}>{primary.kind==='followup'?'대기 조건 확인':'시작 조건 확인'}<ArrowRight size={17}/></button>:next?<button className="primary-button" disabled={busy||demo||(!d.active&&!ready?.canStart)} onClick={async()=>{if(d.active||await perform({type:'task.start',id:next.id},'집중을 시작했습니다.'))onOpen({kind:'task',id:next.id})}}><Play size={17}/>{d.active?'이어서 하기':'집중 시작'}</button>:primary.kind==='care'&&primary.routineId?<button className="primary-button" disabled={busy||demo} onClick={()=>void perform({type:'care.check',id:primary.routineId!,checked:true},'오늘의 실천을 기록했습니다.')}><Check size={17}/>실천 완료</button>:<button className="primary-button" disabled={demo} onClick={()=>onAsk(primary.ask)}>Orbit과 정리하기<ArrowRight size={17}/></button>}
-    {next&&primary.kind==='followup'&&<button className="text-button" disabled={demo} onClick={()=>onAsk(primary.ask)}>해결 방법 정리</button>}{next&&<button className="text-button" onClick={()=>onOpen({kind:'task',id:next.id})}>내용 보기</button>}
+    {next&&!d.active&&!ready?.canStart?<button className="primary-button" onClick={()=>onOpen({kind:'task',id:next.id})}>{!fromPlan&&primary.kind==='followup'?'대기 조건 확인':'시작 조건 확인'}<ArrowRight size={17}/></button>:next?<button className="primary-button" disabled={busy||demo||(!d.active&&!ready?.canStart)} onClick={async()=>{if(d.active||await perform({type:'task.start',id:next.id},'집중을 시작했습니다.'))onOpen({kind:'task',id:next.id})}}><Play size={17}/>{d.active?'이어서 하기':fromPlan?'오늘 시작':'집중 시작'}</button>:primary.kind==='care'&&primary.routineId?<button className="primary-button" disabled={busy||demo} onClick={()=>void perform({type:'care.check',id:primary.routineId!,checked:true},'오늘의 실천을 기록했습니다.')}><Check size={17}/>실천 완료</button>:<button className="primary-button" disabled={demo} onClick={()=>onAsk(primary.ask)}>Orbit과 정리하기<ArrowRight size={17}/></button>}
+    {next&&!fromPlan&&primary.kind==='followup'&&<button className="text-button" disabled={demo} onClick={()=>onAsk(primary.ask)}>해결 방법 정리</button>}{next&&<button className="text-button" onClick={()=>onOpen({kind:'task',id:next.id})}>내용 보기</button>}
    </div>
    }
    {next&&!ready?.canStart&&!d.active&&<p className="form-hint">{ready?.reason}</p>}

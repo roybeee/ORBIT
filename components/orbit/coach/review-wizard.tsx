@@ -438,6 +438,7 @@ export function ReviewWizard({
         .filter(Boolean)
         .slice(0, 3),
       habitChecks: habitChecks.filter((id) => habits.some((h) => h.id === id)).slice(0, 3),
+      ...(dayRule.rule.trim() ? { carry: dayRule.rule.trim().slice(0, 200) } : {}),
       confirmation: {
         shown: Math.min(100, items.length),
         confirmed: Math.min(100, decided.length),
@@ -456,7 +457,7 @@ export function ReviewWizard({
   const evidenceNote = <p className="muted candidate-status" role="status">{evidenceState==='loading'?'회의록·Slack 기록 원문에서 근거를 찾는 중… 앱에 있는 기록으로 먼저 보여줍니다.':evidenceState==='failed'?'원문 근거를 불러오지 못해 앱에 있는 기록만 보여줍니다.':''}{pendingCount?` 확인 전 ${pendingCount}개는 저장되지 않습니다.`:''}</p>;
   if(conflict)return <div className="review-wizard"><p>다른 기기에서 저장된 회고와 이 기기의 초안이 다릅니다.</p><p>기기 초안: {conflict.win||'(성과 미입력)'} / {conflict.block||'(막힌 점 미입력)'}</p><button className="primary-button" disabled={!ready} onClick={()=>{hydrate(conflict);dirty.current=true;setConflict(null);setReady(true);}}>기기 초안을 이어서 검토</button><button className="secondary-button" onClick={()=>{clearDraft(ownerId,'review',reviewDate);setConflict(null);dirty.current=false;}}>서버의 최신 회고 사용</button></div>;
   if(!ready)return <div className="review-wizard" role="status">{draftError||'저장된 회고를 확인하고 있습니다…'}</div>;
-  if(quick)return <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><h3>1분 회고 · 근거 보고 확인</h3><p className="muted">기록에서 찾은 결과 후보입니다. 맞음 · 수정 · 아직 모름으로 답하면 됩니다. 답하지 않았거나 ‘아직 모름’인 결과는 완료·실패로 저장하지 않습니다.</p>{evidenceNote}{draftError&&<p role="alert">{draftError}</p>}<div className="wizard-body">{items.length===0&&<p className="wizard-empty">이 날짜에 확인할 결과 후보가 없습니다.</p>}{items.map(i=><CandidateRow key={i.taskId} i={i} laser={i.taskId===laser?.id} choose={choose} accept={accept} unknown={unknown} undo={undo} update={update} open={open}/>)}<label>오늘의 성과<input className="form-field" maxLength={500} value={win} onChange={e=>setWin(e.target.value)} placeholder="작은 진전도 좋아요"/></label><label>막힌 점 · 내일 이어갈 일<input className="form-field" maxLength={500} value={block} onChange={e=>setBlock(e.target.value)}/></label><label>지금 에너지<select className="form-field" value={energy} onChange={e=>setEnergy(e.target.value as Proposal['energy'])}><option value="low">낮음 · 회복 우선</option><option value="normal">보통</option><option value="high">높음</option></select></label><p className="muted">기기 임시 보관 중 · 서버 저장은 아래 버튼으로 확인합니다.</p><div className="order-actions"><button className="primary-button" disabled={busy||loading} onClick={()=>void save()}>확인한 결과 저장 · 내일 제안</button><button className="secondary-button" onClick={()=>setQuick(false)}>자세히 회고하기</button></div></div></div>;
+  if(quick)return <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><h3>1분 회고 · 근거 보고 확인</h3><p className="muted">기록에서 찾은 결과 후보입니다. 맞음 · 수정 · 아직 모름으로 답하면 됩니다. 답하지 않았거나 ‘아직 모름’인 결과는 완료·실패로 저장하지 않습니다.</p>{evidenceNote}{draftError&&<p role="alert">{draftError}</p>}<div className="wizard-body">{items.length===0&&<p className="wizard-empty">이 날짜에 확인할 결과 후보가 없습니다.</p>}{items.map(i=><CandidateRow key={i.taskId} i={i} laser={i.taskId===laser?.id} choose={choose} accept={accept} unknown={unknown} undo={undo} update={update} open={open}/>)}<label>오늘의 성과<input className="form-field" maxLength={500} value={win} onChange={e=>setWin(e.target.value)} placeholder="작은 진전도 좋아요"/></label><label>막힌 점 · 내일 이어갈 일<input className="form-field" maxLength={500} value={block} onChange={e=>setBlock(e.target.value)}/></label><label>내일 계획에 반영할 개선점 1개 (선택)<input className="form-field" maxLength={200} value={dayRule.rule} onChange={e=>setDayRule({...dayRule,rule:e.target.value})} placeholder="예: 오전 첫 블록 전에는 메일을 열지 않기"/></label><label>지금 에너지<select className="form-field" value={energy} onChange={e=>setEnergy(e.target.value as Proposal['energy'])}><option value="low">낮음 · 회복 우선</option><option value="normal">보통</option><option value="high">높음</option></select></label><p className="muted">기기 임시 보관 중 · 서버 저장은 아래 버튼으로 확인합니다.</p><div className="order-actions"><button className="primary-button" disabled={busy||loading} onClick={()=>void save()}>확인한 결과 저장 · 내일 제안</button><button className="secondary-button" onClick={()=>setQuick(false)}>자세히 회고하기</button></div></div></div>;
   return (
     <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><button className="text-button" onClick={()=>setQuick(true)}>1분 회고로 돌아가기</button>{draftError&&<p role="alert">{draftError}</p>}
       <ol className="wizard-steps" aria-label="회고 단계">
@@ -554,7 +555,7 @@ export function ReviewWizard({
                 <input
                   className="form-field"
                   maxLength={200}
-                  placeholder="★ 지킬 규칙 (선택)"
+                  placeholder="★ 내일 계획에 반영할 개선점 1개 (선택)"
                   value={dayRule.rule}
                   onChange={(e) => setDayRule({ ...dayRule, rule: e.target.value })}
                 />
