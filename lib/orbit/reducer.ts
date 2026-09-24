@@ -450,6 +450,7 @@ export function applyAction(
         'startedAt',
         'laserDate',
         'unplanned',
+        'googleTask',
       ] as const)
         if (t[key] === undefined && old?.[key] !== undefined) (t as Record<string, unknown>)[key] = old[key];
       if (
@@ -693,6 +694,15 @@ export function applyAction(
     }
     case 'event.attach': {
       if (!data.events.some((e) => e.id === action.id)) fail('첨부할 일정을 찾을 수 없습니다.');
+      break;
+    }
+    case 'calendar.adopt': {
+      const old = data.events.find((x) => x.id === action.event.id);
+      if (!old || old.id.startsWith('google:')) fail('반영할 Orbit 일정을 찾을 수 없습니다.');
+      const e = action.event;
+      // A block tied to a task keeps the task's title; only its time follows Google.
+      data.events = replace(data.events, {...old!, date: e.date, start: e.start, end: e.end,
+        ...(old!.taskId ? {} : {title: e.title, description: e.description})});
       break;
     }
     case 'event.delete': {

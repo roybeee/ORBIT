@@ -253,6 +253,20 @@
       "when": 1790263183759,
       "tag": "0035_task_starts",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1790265333144,
+      "tag": "0036_slack_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1790266148757,
+      "tag": "0037_google_task_links",
+      "breakpoints": true
     }
   ]
 }

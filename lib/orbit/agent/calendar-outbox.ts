@@ -16,10 +16,10 @@ export interface CalendarDelivery {
  calendarId?:string;url?:string;verifiedAt?:string;lastSignature?:string;attemptedSignatures?:string[];
 }
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
-const signature=(event:{summary?:string;start?:{dateTime?:string;date?:string};end?:{dateTime?:string;date?:string}})=>
+export const signature=(event:{summary?:string;start?:{dateTime?:string;date?:string};end?:{dateTime?:string;date?:string}})=>
  JSON.stringify([event.summary??'',event.start?.date??Date.parse(event.start?.dateTime??''),event.end?.date??Date.parse(event.end?.dateTime??'')]);
 
-const detailsSignature=(event:{description?:string;extendedProperties?:{private?:Record<string,string>}})=>JSON.stringify([event.description??'',event.extendedProperties?.private?.orbitScope??'']);
+export const detailsSignature=(event:{description?:string;extendedProperties?:{private?:Record<string,string>}})=>JSON.stringify([event.description??'',event.extendedProperties?.private?.orbitScope??'']);
 
 export async function calendarDeliveryStatus(db:Database,owner:string){
  const {results}=await db.prepare("SELECT state_json FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.automatic')=1").bind(owner).all<{state_json:string}>();
@@ -44,10 +44,14 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
  const snapshot=await readWorkspace(db,owner);
  const taskId=state.eventId.startsWith('task-due:')?state.eventId.slice(9):undefined;
  const task=taskId?snapshot.data.tasks.find(t=>t.id===taskId):undefined;
- let event=task?taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone)):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
+ let event=task?(task.googleTask?undefined:taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone))):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
  const linkedTask=event?.taskId?snapshot.data.tasks.find(t=>t.id===event!.taskId):undefined;
  if(event&&linkedTask)event={...event,description:linkedTask.description??event.description,scope:linkedTask.scope??event.scope,category:linkedTask.category??event.category};
- if(!event&&!taskId){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
+ // An event deleted before it ever reached Google needs no Google call. A published one is removed
+ // below, but only when its deletion was queued: an explicit re-check of a verified receipt whose
+ // event is gone (e.g. a revoked approval that may be approved again) never deletes anything.
+ const published=!!(state.calendarId||state.verifiedAt||state.lastSignature||state.attemptedSignatures?.length);
+ if(!event&&!taskId&&(!published||state.status==='verified')){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
    .bind(JSON.stringify({...state,status:'cancelled',leaseUntil:0,message:'Orbit에서 삭제되어 등록을 중단했습니다.'}),owner,state.eventId,row.state_json).run();return calendarDeliveryStatus(db,owner);}
  state.status='publishing';state.leaseUntil=Date.now()+60000;
  let lease=JSON.stringify(state);
@@ -87,12 +91,12 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   if(payload){payload.description=event?.description??remote.description??(task?'Orbit 프로젝트 할 일 · 날짜 기준, 시간 미지정':'Orbit에서 등록한 일정');payload.extendedProperties.private={...remote.extendedProperties?.private,...payload.extendedProperties.private};}
   if(!payload){
    if(current.response.ok&&current.data.status!=='cancelled'){
-    if(current.data.extendedProperties?.private?.orbitAction!==actionId||current.data.extendedProperties?.private?.orbitEventId!==state.eventId||!current.data.etag||!previousSignatures.includes(signature(current.data)))throw new AgentError('Google에서 변경한 할 일입니다. 삭제 전 확인이 필요합니다.','CONFLICT',409);
+    if(current.data.extendedProperties?.private?.orbitAction!==actionId||current.data.extendedProperties?.private?.orbitEventId!==state.eventId||!current.data.etag||!previousSignatures.includes(signature(current.data)))throw new AgentError(taskId?'Google에서 변경한 할 일입니다. 삭제 전 확인이 필요합니다.':'Google에서 변경한 일정입니다. 삭제 전 확인이 필요합니다.','CONFLICT',409);
     await beforeMutation();
     const removed=await fetchJson(base+'/'+googleId+'?sendUpdates=none',{method:'DELETE',headers:{...headers,'If-Match':current.data.etag}},6000);
     if(!removed.response.ok&&![404,410].includes(removed.response.status))throw new AgentError('Google 할 일 삭제를 확인하지 못했습니다.','CALENDAR',502);
    }else if(!current.response.ok&&![404,410].includes(current.response.status))throw new AgentError('Google 할 일을 확인하지 못했습니다.','CALENDAR',502);
-   state.status='cancelled';state.message='삭제한 할 일의 Google 일정 정리 완료';return calendarDeliveryStatus(db,owner);
+   state.status='cancelled';state.message=task?.googleTask?'Google Tasks와 연결되어 종일 표시를 두지 않음':taskId?'삭제한 할 일의 Google 일정 정리 완료':'삭제한 일정의 Google 사본 정리 완료';return calendarDeliveryStatus(db,owner);
   }
 
   if(current.response.ok){

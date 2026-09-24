@@ -83,6 +83,7 @@ export const taskSchema = z
     outcomeOn: dateSchema.optional(),
     startedAt: z.string().datetime().optional(),
     laserDate: dateSchema.optional(),
+    googleTask: z.object({ taskListId: z.string().min(1).max(200), taskId: z.string().min(1).max(200) }).strict().optional(),
   })
   .strict();
 export const goalSchema = z
@@ -396,7 +397,9 @@ export const actionSchema = z.discriminatedUnion('type', [
 ]);
 export type WorkspaceAction =
   | z.infer<typeof actionSchema>
-  | { type: 'proposal.brief'; brief: DailyBrief; energy: 'low' | 'normal' | 'high' };
+  | { type: 'proposal.brief'; brief: DailyBrief; energy: 'low' | 'normal' | 'high' }
+  // Server-only (never parsed from clients): takes over an edit made in Google to an event ORBIT created there.
+  | { type: 'calendar.adopt'; event: z.infer<typeof eventSchema> };
 export const commandSchema = z
   .object({
     operationId: z.string().uuid(),

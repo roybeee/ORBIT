@@ -6,6 +6,14 @@ export const slackCredentials=sqliteTable('orbit_slack_credentials',{
 export const slackDirectives=sqliteTable('orbit_slack_directives',{
  ownerId:text('owner_id').notNull(),workspaceId:text('workspace_id').notNull(),requesterId:text('requester_id').notNull(),operationKey:text('operation_key').notNull(),id:text('id').notNull(),payloadHash:text('payload_hash').notNull(),payloadJson:text('payload_json').notNull(),status:text('status').notNull(),targetId:text('target_id'),candidatesJson:text('candidates_json').notNull(),createdAt:text('created_at').notNull(),
 },t=>[primaryKey({columns:[t.ownerId,t.workspaceId,t.requesterId,t.operationKey]}),uniqueIndex('idx_slack_receipt_id').on(t.id)]);
+// One Slack instruction (task or note) per operation key; the ORBIT record commits with it.
+export const slackCommands=sqliteTable('orbit_slack_commands',{
+ ownerId:text('owner_id').notNull(),workspaceId:text('workspace_id').notNull(),requesterId:text('requester_id').notNull(),operationKey:text('operation_key').notNull(),id:text('id').notNull(),payloadHash:text('payload_hash').notNull(),payloadJson:text('payload_json').notNull(),status:text('status').notNull(),targetId:text('target_id'),candidatesJson:text('candidates_json').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.workspaceId,t.requesterId,t.operationKey]}),uniqueIndex('idx_slack_command_id').on(t.id)]);
+// Last state both sides agreed on for an ORBIT task linked to a Google Task (three-way sync base).
+export const googleTaskLinks=sqliteTable('orbit_google_task_links',{
+ ownerId:text('owner_id').notNull(),taskId:text('task_id').notNull(),taskListId:text('task_list_id').notNull(),googleTaskId:text('google_task_id').notNull(),stateJson:text('state_json').notNull(),updatedAt:text('updated_at').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.taskId]})]);
 // One GoTEM Slack message decision per owner, date and slot (sent or skipped); the claim is the dedupe.
 export const gotemSends=sqliteTable('orbit_gotem_sends',{
  ownerId:text('owner_id').notNull(),date:text('date').notNull(),slot:text('slot').notNull(),status:text('status').notNull(),reason:text('reason').notNull(),payloadJson:text('payload_json').notNull(),createdAt:text('created_at').notNull(),

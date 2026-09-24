@@ -1,3 +1,12 @@
+## 2026-09-25 · Slack 지시가 Google과 ORBIT에 함께 등록되고, 캘린더·할 일이 양쪽으로 동기화됩니다
+
+- **Slack 할 일·메모:** Hermes의 새 플러그인(`integrations/hermes-orbit-commands`)이 할 일은 Google Tasks와 ORBIT 할 일에 함께, 메모는 ORBIT 지식 메모로 등록합니다(`/api/integrations/slack/commands`).
+  - 말한 프로젝트가 하나로 분명하면 바로 저장합니다. 여러 프로젝트에 걸리면 번호 목록을 묻고 번호 답장으로 저장합니다.
+  - 프로젝트를 말하지 않았고 자동 매칭도 없으면 `Slack 보관함` 프로젝트에 넣습니다.
+  - 같은 메시지를 다시 처리해도 Google Tasks와 ORBIT 어느 쪽에도 중복이 생기지 않습니다.
+- **Google Tasks와 연결된 할 일:** Google Calendar에 따로 종일 표시를 만들지 않습니다(Google Tasks가 이미 보여 줍니다). 제목·마감일·완료 여부와 삭제가 양쪽으로 반영되고, 양쪽이 모두 바뀌면 ORBIT 쪽을 따릅니다. 이 동기화에는 Google Tasks 권한이 필요하므로 **Google Calendar를 한 번 다시 연결**해야 합니다. 권한이 없으면 실행 패널의 Google Tasks 상태가 재연결을 안내합니다.
+- **ORBIT이 Google Calendar에 만든 일정:** Google에서 수정하면 ORBIT 일정도 따라가고(중복 표시 해소), Google에서 삭제하면 ORBIT에서도 지웁니다. ORBIT에서 삭제하면 Google 사본도 지웁니다. 아직 Google에 반영되지 않은 ORBIT 변경은 덮어쓰지 않습니다.
+
 ## 2026-09-25 · 기록 탭에서 Slack 알림 효과를 봅니다
 
 - 기록 탭 맨 위에 **Slack 알림 효과** 카드를 추가했습니다(`/api/gotem/metrics`, 최근 14일).
