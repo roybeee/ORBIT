@@ -77,7 +77,11 @@ export async function collectPlanningContext(db:Database,owner:string,snapshot:W
 }
 export function completeBrief(content:BriefContent,context:PlanningContext,request:PlanningRequest,revision:number,turnId:string):DailyBrief{
  const refs=[...content.progress,...content.priorities,...content.tradeoffs,...content.risks].flatMap(item=>item.evidence),known=new Set(context.evidence.map(e=>e.id));
- if(refs.some(ref=>!known.has(ref)))throw new AgentError('제안의 근거를 실제 기록에서 확인하지 못했습니다.','BRIEF_EVIDENCE',422);
+ // Name what did not resolve. A rejection here ends a run that has already analysed every record,
+ // and without the ids there is no way to tell a fabricated citation from a real record the plan
+ // was simply not allowed to cite.
+ const unresolved=[...new Set(refs.filter(ref=>!known.has(ref)))];
+ if(unresolved.length)throw new AgentError(`제안의 근거를 실제 기록에서 확인하지 못했습니다. 확인되지 않은 근거 ${unresolved.length}건: ${unresolved.slice(0,6).join(', ').slice(0,300)}`,'BRIEF_EVIDENCE',422);
  return {...content,date:request.date,cutoff:context.cutoff,generatedAt:new Date().toISOString(),sourceRevision:revision,sourceTurnId:turnId,coverage:context.coverage,evidence:context.evidence.filter(e=>refs.includes(e.id))};
 }
 export const planningInstructions=`WEEKLY ALLOCATION: Respect approved weeklyAllocation: pause excludes new execution for that project; focus is preferred. Minutes are target guidance, not a booked calendar slot or a hard quota. protectedBlocks are unavailable. Preserve existing approved events. OPERATING SIGNALS: Use verified user-entered observations only. attention is a measured threshold crossing, not a confirmed cause; hypothesis remains a hypothesis. stale, baseline, missing, zero-baseline, source-changed require evidence refresh. Existing followup means continue it, not create duplicates. meetingResults reflect user-reviewed minutes, not independent transcript verification. Cite metric evidence when using an operating signal.
