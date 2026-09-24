@@ -7,7 +7,7 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 `3d72623`(PR #58~#62 포함, `appgdep_6ab33bed…`)이다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `69f17dc`이다. 2026-09-24 오전에 `a4fdd50` → `34ec890` → `69f17dc`를 연달아 게시했고 앞의 둘은 같은 아침에 대체됐다.
 - 이 PR(`chore/ops-guardrails`)은 게시 전 쿼터 검사, 게시 클론 정리, 이 현황판, 위임 계약을 추가한다.
 
 ## 검증된 결과
@@ -25,6 +25,8 @@
 | `main`에 머지되지 않은 원격 브랜치 | 16개 (`archive/main-76769c8` 포함) | `git for-each-ref refs/remotes/origin` 중 `git merge-base --is-ancestor <b> origin/main` 실패 수 |
 
 ## 막힌 것
+
+- **2026-09-24 계획 생성**: 전수 분석은 끝났고(원문 1,313 + 통합 390 캐시, 9/23 브리핑 게시) 재실행은 전량 재사용하지만, 최종 합성에서 두 가지로 실패한다. (1) `completeBrief`의 근거 검증 — 분석은 전 기록을 다루는데 인용은 전송분으로 제한되어 서로 어긋난다(#67이 해당 id를 표시한다). (2) 정체불명 예외 — `advanceAgent`의 catch가 `AgentError`가 아닌 예외의 메시지를 안내문으로 덮어써서 원인을 볼 수 없다. **다음 한 수: 비-AgentError의 실제 메시지를 보존하는 작은 수정.** 그동안 해당 날짜는 규칙 기반 폴백이 채운다.
 
 - **Hermes 계획 생성**: Hermes와 Codex CLI가 같은 OpenAI 계정으로 로그인되어 있어 `publish-sites.sh`의 Codex 실행이 Hermes 주간 쿼터를 함께 소모했다. 2026-09-23 계획 분석이 `429 quota exhausted (retry after 393141s)`로 실패했다([b0c9c58 기록](releases/2026-09-22-b0c9c58.md)). 소유자 결정(2026-09-23): 계정을 분리하지 않고 같은 계정을 유지한다. 그래서 `preflight-quota.mjs`는 같은 계정을 경고만 하고(exit 0), 실제로 쿼터가 소진된 경우(재설정 시각이 미래인 429)만 차단한다. 대응: 게시를 Hermes 계획 분석 시간대와 분리하고, 게시를 묶어서 횟수를 줄인다.
 - **자동 runtime 검증**: `verify-deploy.sh`에 필요한 `ORBIT_RELEASE_HEALTH_TOKEN`이 이 머신에 없어, 운영 tree 확인은 소유자 브라우저의 same-origin `/api/version` 조회에 의존한다.
