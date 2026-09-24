@@ -89,7 +89,7 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
   if(payload){payload.description=event?.description??remote.description??(task?'Orbit 프로젝트 할 일 · 날짜 기준, 시간 미지정':'Orbit에서 등록한 일정');payload.extendedProperties.private={...remote.extendedProperties?.private,...payload.extendedProperties.private};}
   if(!payload){
    if(current.response.ok&&current.data.status!=='cancelled'){
-    if(current.data.extendedProperties?.private?.orbitAction!==actionId||current.data.extendedProperties?.private?.orbitEventId!==state.eventId||!current.data.etag||!previousSignatures.includes(signature(current.data)))throw new AgentError('Google에서 변경한 할 일입니다. 삭제 전 확인이 필요합니다.','CONFLICT',409);
+    if(current.data.extendedProperties?.private?.orbitAction!==actionId||current.data.extendedProperties?.private?.orbitEventId!==state.eventId||!current.data.etag||!previousSignatures.includes(signature(current.data)))throw new AgentError(taskId?'Google에서 변경한 할 일입니다. 삭제 전 확인이 필요합니다.':'Google에서 변경한 일정입니다. 삭제 전 확인이 필요합니다.','CONFLICT',409);
     await beforeMutation();
     const removed=await fetchJson(base+'/'+googleId+'?sendUpdates=none',{method:'DELETE',headers:{...headers,'If-Match':current.data.etag}},6000);
     if(!removed.response.ok&&![404,410].includes(removed.response.status))throw new AgentError('Google 할 일 삭제를 확인하지 못했습니다.','CALENDAR',502);

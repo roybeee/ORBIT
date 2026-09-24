@@ -6,6 +6,7 @@ import {readWorkspace,writeCommand} from '../db/repository.ts';
 import {saveConnection} from '../lib/orbit/agent/secrets.ts';
 import {sourceStatuses} from '../lib/orbit/source-status.ts';
 import {syncGoogleTasks} from '../lib/orbit/agent/google-tasks.ts';
+import {todayInZone} from '../lib/orbit/dates.ts';
 
 // ORBIT tasks linked to a Google Task (created together from Slack) stay in step both ways:
 // title, due date and completion, plus deletion. When both sides changed, ORBIT wins.
@@ -17,7 +18,7 @@ async function act(db,action){const s=await readWorkspace(db,'a');return writeCo
 const mine=async db=>(await readWorkspace(db,'a')).data.tasks.find(t=>t.id==='slack-1');
 const sync=db=>syncGoogleTasks(db,'a',env,{force:true});
 
-function tasksApi({forbidden=false}={}){
+function tasksApi({forbidden=false,onGet,broken=[]}={}){
  const items=new Map([['gt-1',{id:'gt-1',title:'계약서 검토',due:'2026-10-02T00:00:00.000Z',status:'needsAction',etag:'"1"',updated:'2026-09-25T00:00:00.000Z'}]]);
  let version=1;const calls=[];
  const touch=v=>({...v,etag:`"${++version}"`,updated:new Date(Date.now()+version*1000).toISOString()});
@@ -27,7 +28,7 @@ function tasksApi({forbidden=false}={}){
   const m=/^\/tasks\/v1\/lists\/([^/]+)\/tasks(?:\/([^/]+))?$/.exec(u.pathname);if(!m)throw new Error('Unexpected '+url);
   const id=m[2]&&decodeURIComponent(m[2]),current=id&&items.get(id);
   if(!id)return Response.json({items:[...items.values()].filter(v=>!u.searchParams.get('updatedMin')||v.updated>=u.searchParams.get('updatedMin'))});
-  if(method==='GET')return current?Response.json(current):Response.json({},{status:404});
+  if(method==='GET'){if(broken.includes(id))return Response.json({},{status:500});await onGet?.(id);return current?Response.json(current):Response.json({},{status:404})}
   if(init.headers?.['If-Match']&&current&&init.headers['If-Match']!==current.etag)return Response.json({},{status:412});
   if(method==='PATCH'){const next=touch({...current,...JSON.parse(init.body)});items.set(id,next);return Response.json(next)}
   if(method==='DELETE'){items.delete(id);return new Response(null,{status:204})}
@@ -45,7 +46,7 @@ test('completing in Google completes the ORBIT task; reopening in ORBIT reopens 
  const g=await linked(db);
  g.edit({status:'completed',completed:'2026-10-01T09:00:00.000Z'});
  await sync(db);
- assert.equal((await mine(db)).status,'done');assert.equal((await mine(db)).completedOn,'2026-10-01');
+ assert.equal((await mine(db)).status,'done');assert.equal((await mine(db)).completedOn,todayInZone('Asia/Seoul'),'completion is dated in the owner time zone');
  await act(db,{type:'task.upsert',task:{...(await mine(db)),status:'todo',completedOn:undefined}});
  await sync(db);
  assert.equal(g.items.get('gt-1').status,'needsAction');
@@ -108,3 +109,50 @@ test('connecting Google Calendar also asks for Google Tasks',async()=>{
  assert.ok(GOOGLE.scope.split(' ').includes('https://www.googleapis.com/auth/tasks'));
  assert.ok(GOOGLE.scope.split(' ').includes('https://www.googleapis.com/auth/calendar.events'));
 });
+
+test('a task Google has never shown is not deleted when Google answers 404',()=>fixture(async db=>{
+ await saveConnection(db,'a','google_calendar',{accessToken:'test',expiresAt:Date.now()+3600000},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+ await act(db,{type:'project.upsert',project});await act(db,{type:'task.upsert',task});
+ const g=tasksApi();g.items.clear();
+ await sync(db);await sync(db);
+ assert.ok(await mine(db),'another account or a restored task must not lose the ORBIT task');
+ assert.match((await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks').detail,/찾지 못한/);
+}));
+
+test('an ORBIT edit made while Google is being read is kept',()=>fixture(async db=>{
+ const g=await linked(db);
+ g.edit({status:'completed'});
+ let once=true;
+ globalThis.fetch=(inner=>async(url,init)=>{if(once&&(init?.method??'GET')==='GET'){once=false;const t=await mine(db);await act(db,{type:'task.upsert',task:{...t,duration:120}})}return inner(url,init)})(globalThis.fetch);
+ await sync(db);
+ const t=await mine(db);assert.equal(t.duration,120);assert.equal(t.status,'done');
+}));
+
+test('with the base stored at creation, a Google edit before the first sync comes to ORBIT',()=>fixture(async db=>{
+ await saveConnection(db,'a','google_calendar',{accessToken:'test',expiresAt:Date.now()+3600000},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+ await act(db,{type:'project.upsert',project});await act(db,{type:'task.upsert',task});
+ await db.prepare('INSERT INTO orbit_google_task_links VALUES(?,?,?,?,?,?)').bind('a','slack-1','@default','gt-1',JSON.stringify({title:task.title,due:task.due,status:'needsAction',etag:''}),'').run();
+ const g=tasksApi();g.edit({title:'Google에서 바꿈',status:'completed'});
+ await sync(db);
+ const t=await mine(db);assert.deepEqual([t.title,t.status],['Google에서 바꿈','done']);
+}));
+
+test('completing in Google closes a running focus session like completing in ORBIT',()=>fixture(async db=>{
+ const g=await linked(db);
+ await act(db,{type:'task.start',id:'slack-1'});
+ assert.ok((await mine(db)).startedAt);
+ g.edit({status:'completed'});
+ await sync(db);
+ const t=await mine(db);assert.equal(t.status,'done');assert.equal(t.startedAt,undefined);assert.equal(t.outcome,'done');
+}));
+
+test('one failing task does not stop the others',()=>fixture(async db=>{
+ await saveConnection(db,'a','google_calendar',{accessToken:'test',expiresAt:Date.now()+3600000},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+ await act(db,{type:'project.upsert',project});
+ await act(db,{type:'task.upsert',task:{...task,id:'slack-0',googleTask:{taskListId:'@default',taskId:'gt-0'}}});
+ await act(db,{type:'task.upsert',task});
+ const g=tasksApi({broken:['gt-0']});await sync(db);
+ g.edit({status:'completed'});await sync(db);
+ assert.equal((await mine(db)).status,'done');
+ assert.match((await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks').detail,/확인하지 못한/);
+}));

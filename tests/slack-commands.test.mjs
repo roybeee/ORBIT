@@ -90,3 +90,23 @@ test('credential, scope and input are enforced',async()=>{const s=await setup();
  assert.equal((await call(s,{operationKey:'missing',source,choice:1})).status,404);
  assert.equal((await readWorkspace(s.db,'owner')).data.tasks.length,0);
 }finally{s.db.close()}});
+
+test('a task created with a Google Task stores the shared starting point for two-way sync',async()=>{const s=await setup();try{
+ const r=await call(s,taskBody());
+ const link=await s.db.prepare('SELECT * FROM orbit_google_task_links WHERE owner_id=? AND task_id=?').bind('owner',r.data.target.id).first();
+ assert.equal(link.google_task_id,'gt-1');
+ assert.deepEqual(JSON.parse(link.state_json),{title:'가맹 계약서 검토',due:'2026-10-02',status:'needsAction',etag:''});
+ const plain=await call(s,{...taskBody({googleTask:undefined}),operationKey:'no-google'});
+ assert.equal(await s.db.prepare('SELECT 1 FROM orbit_google_task_links WHERE task_id=?').bind(plain.data.target.id).first(),null);
+}finally{s.db.close()}});
+
+test('a trashed Slack inbox gives a clear, non-retryable answer',async()=>{const s=await setup();try{
+ await s.db.prepare("INSERT INTO orbit_data_trash(owner_id,id,category,record_id,title,payload_json,deleted_at) VALUES('owner','t1','projects','slack-inbox','Slack 보관함','{}','2026-09-25T00:00:00Z')").run();
+ const r=await call(s,taskBody({project:undefined,title:'오후 4시 전화하기',googleTask:undefined}));
+ assert.equal(r.status,409);assert.equal(r.data.error,'slack_inbox_in_trash');
+}finally{s.db.close()}});
+
+test('preflight confirms only the provisioned requester',async()=>{const s=await setup();try{
+ assert.equal((await call(s,undefined,'?preflight=1&workspaceId=TTEST&requesterId=UTEST')).status,200);
+ assert.equal((await call(s,undefined,'?preflight=1&workspaceId=TTEST&requesterId=UOTHER')).status,403);
+}finally{s.db.close()}});

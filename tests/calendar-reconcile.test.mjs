@@ -13,6 +13,7 @@ import {syncCalendar} from '../lib/orbit/agent/calendar.ts';
 const env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
 const event={id:'meeting',title:'Planning',date:'2026-10-08',start:600,end:660,kind:'meeting'};
 const day='2026-10-08';
+const BLOCK='00000000-0000-4000-8000-000000000001';
 async function fixture(fn){const db=createDatabase(),original=globalThis.fetch;try{await fn(db)}finally{globalThis.fetch=original;db.close()}}
 async function connect(db){await saveConnection(db,'a','google_calendar',{accessToken:'test',expiresAt:Date.now()+3600000},{connected:true},env.ORBIT_ENCRYPTION_KEY)}
 async function act(db,action){const snapshot=await readWorkspace(db,'a');return writeCommand(db,'a',{operationId:randomUUID(),expectedRevision:snapshot.revision,action})}
@@ -104,4 +105,43 @@ test('an ORBIT event turned all-day in Google is left as it is in ORBIT',()=>fix
  await syncCalendar(db,'a',env,day);
  const [mine]=await local(db);
  assert.deepEqual([mine.start,mine.end],[600,660]);
+}));
+
+test('settled events without memos and task blocks are not rewritten on every sync',()=>fixture(async db=>{
+ const g=await published(db);
+ assert.equal(g.only().description,'Orbit에서 등록한 일정','the outbox placeholder is present in Google');
+ await act(db,{type:'project.upsert',project:{id:'hr',name:'채용',goal:'채용',due:'2026-12-31',priority:3,color:'#5484ed',symbol:'H'}});
+ await act(db,{type:'task.upsert',task:{id:'t1',title:'집중 업무',projectId:'hr',status:'todo',due:day,duration:60,impact:3,focus:false,definition:''}});
+ await act(db,{type:'task.schedule',taskId:'t1',eventId:BLOCK,date:day,start:780,minutes:60});
+ await flushCalendarOutbox(db,'a',env,BLOCK);
+ g.events.forEach((e,id)=>{if(e.extendedProperties?.private?.orbitEventId===BLOCK)g.events.set(id,{...e,summary:'Google에서 바꾼 제목'})});
+ await syncCalendar(db,'a',env,day);
+ const before=(await readWorkspace(db,'a')).revision;
+ await syncCalendar(db,'a',env,day);await syncCalendar(db,'a',env,day);
+ assert.equal((await readWorkspace(db,'a')).revision,before,'no workspace write once both sides agree');
+ const meeting=(await local(db)).find(e=>e.id==='meeting');
+ assert.equal(meeting.description,undefined,'the placeholder is not copied into ORBIT');
+ assert.equal((await local(db)).find(e=>e.id===BLOCK).title,'집중 업무','a task block keeps the task title');
+}));
+
+test('after reconnecting another Google account, ORBIT events are never deleted',()=>fixture(async db=>{
+ const g=await published(db);
+ const inner=globalThis.fetch;
+ globalThis.fetch=async(url,init)=>new URL(url).pathname.endsWith('/calendarList/primary')?Response.json({id:'someone-else@example.test'}):inner(url,init);
+ g.remove();
+ await syncCalendar(db,'a',env,day);
+ assert.equal((await local(db)).length,1);
+}));
+
+test('deleting a task also removes its scheduled block from Google',()=>fixture(async db=>{
+ const g=await published(db);
+ await act(db,{type:'project.upsert',project:{id:'hr',name:'채용',goal:'채용',due:'2026-12-31',priority:3,color:'#5484ed',symbol:'H'}});
+ await act(db,{type:'task.upsert',task:{id:'t1',title:'집중 업무',projectId:'hr',status:'todo',due:day,duration:60,impact:3,focus:false,definition:''}});
+ await act(db,{type:'task.schedule',taskId:'t1',eventId:BLOCK,date:day,start:780,minutes:60});
+ await flushCalendarOutbox(db,'a',env,BLOCK);
+ const blocks=()=>[...g.events.values()].filter(e=>e.extendedProperties?.private?.orbitEventId===BLOCK);
+ assert.equal(blocks().length,1);
+ await act(db,{type:'task.delete',id:'t1'});
+ await flushCalendarOutbox(db,'a',env,BLOCK);
+ assert.equal(blocks().length,0);
 }));

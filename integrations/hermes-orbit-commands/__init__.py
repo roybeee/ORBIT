@@ -188,6 +188,10 @@ def add_task(params, **kwargs):
             row = db.execute('SELECT google_list,google_id FROM requests WHERE key=?', (key,)).fetchone()
         google_task = {'taskListId': row['google_list'], 'taskId': row['google_id']} if row['google_id'] else None
         if not google_task:
+            # Confirm ORBIT accepts this requester before anything is created in Google.
+            status, data = orbit('GET', query={'preflight': '1', 'workspaceId': origin['workspace'], 'requesterId': origin['user']})
+            if status != 200:
+                return summarize(status, data, key)
             try:
                 google_task = create_google_task(title, due, notes)
             except Exception as exc:

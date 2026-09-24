@@ -71,7 +71,7 @@ class PluginTest(unittest.TestCase):
 
     def test_task_goes_to_google_tasks_and_orbit_once_even_when_retried(self):
         done = {'status': 'completed', 'target': {'type': 'task', 'id': 'slack-1', 'title': '가맹 계약서 검토'}, 'project': {'id': 'ofd', 'name': 'Old Ferry Donut'}, 'inbox': False}
-        self.orbit_replies = [(200, done), (200, done)]
+        self.orbit_replies = [(200, {'ok': True}), (200, done), (200, done)]
         params = {'title': '가맹 계약서 검토', 'due': '2026-10-02', 'time': '16:00', 'project': '올드페리'}
         first = json.loads(self.plugin.add_task(params))
         second = json.loads(self.plugin.add_task(params))
@@ -81,7 +81,8 @@ class PluginTest(unittest.TestCase):
         google_body = json.loads(self.google_creates()[0]['body'])
         self.assertEqual(google_body['due'], '2026-10-02T00:00:00.000Z')
         self.assertIn('16:00', google_body['notes'])
-        posts = self.orbit_calls()
+        preflight, *posts = self.orbit_calls()
+        self.assertIn('preflight=1', preflight['url'])
         self.assertEqual(posts[0]['url'], 'https://orbit.example/api/integrations/slack/commands')
         self.assertEqual(posts[0]['headers']['Authorization'], 'Bearer ingest')
         self.assertEqual(posts[0]['headers']['Oai-sites-authorization'], 'Bearer gate')
@@ -94,9 +95,16 @@ class PluginTest(unittest.TestCase):
 
     def test_google_failure_stops_before_orbit(self):
         self.google_fails = True
+        self.orbit_replies = [(200, {'ok': True})]
         result = json.loads(self.plugin.add_task({'title': '전화', 'due': '2026-10-02'}))
         self.assertEqual((result['state'], result['stage']), ('failed', 'google_task'))
-        self.assertEqual(self.orbit_calls(), [])
+        self.assertEqual([c['method'] for c in self.orbit_calls()], ['GET'], 'only the preflight reached ORBIT')
+
+    def test_a_requester_orbit_rejects_creates_nothing_in_google(self):
+        self.orbit_replies = [(403, {'error': 'source_scope_mismatch'})]
+        result = json.loads(self.plugin.add_task({'title': '전화', 'due': '2026-10-02'}))
+        self.assertEqual((result['state'], result['error']), ('failed', 'source_scope_mismatch'))
+        self.assertEqual(self.google_creates(), [])
 
     def test_ambiguous_project_asks_by_number_and_only_the_requester_can_answer(self):
         asked = {'status': 'needs_confirmation', 'candidates': [{'number': 1, 'id': 'a', 'name': '맵달SEOUL'}, {'number': 2, 'id': 'b', 'name': '맵달BUNSIK'}]}

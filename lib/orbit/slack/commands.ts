@@ -69,6 +69,8 @@ async function readback(db:Database,p:Principal,row:Row){
 async function ensureInbox(db:Database,owner:string,receiptId:string){
  const snapshot=await readWorkspace(db,owner);
  if(snapshot.data.projects.some(p=>p.id===SLACK_INBOX.id))return;
+ // A trashed inbox cannot be recreated under the same id until it is restored or emptied.
+ if(await db.prepare("SELECT 1 FROM orbit_data_trash WHERE owner_id=? AND category='projects' AND record_id=?").bind(owner,SLACK_INBOX.id).first())throw new Failure(409,'slack_inbox_in_trash');
  await writeCommand(db,owner,{operationId:'slack-inbox:'+receiptId,expectedRevision:snapshot.revision,action:{type:'project.upsert',project:{...SLACK_INBOX,goal:'Slack에서 프로젝트 없이 받은 할 일과 메모',color:'#4a154b',symbol:'S',due:todayInZone(snapshot.data.preferences.timeZone),priority:1}}});
 }
 
@@ -82,7 +84,10 @@ async function commit(db:Database,p:Principal,input:Create,projectId:string,rece
    ?{type:'task.upsert' as const,task:{id:recordId,title:command.title,projectId,status:'todo' as const,duration:command.duration??30,due:command.due,impact:3,focus:false,definition:'',...(command.description?{description:command.description}:{}),...(command.googleTask?{googleTask:command.googleTask}:{})}}
    :{type:'note.upsert' as const,note:{id:recordId,kind:'knowledge' as const,title:command.title,body:command.text,projectId,summary:'',tags:[],updated:todayInZone(snapshot.data.preferences.timeZone)}};
   try{
-   await writeCommand(db,p.owner_id,{operationId:'slack-command:'+receiptId,expectedRevision:snapshot.revision,action},new Date(),{gate:`${authGate} AND ${fence.sql}`,values:[...authValues(p),...fence.values],statements:(gate,values)=>[receipt(gate,values)]});
+   // A linked Google Task starts from the state it was created with (base for the two-way sync).
+   const link=command.kind==='task'&&command.googleTask?(gate:string,values:SqlValue[])=>db.prepare(`INSERT OR IGNORE INTO orbit_google_task_links(owner_id,task_id,task_list_id,google_task_id,state_json,updated_at) SELECT ?,?,?,?,?,? WHERE ${gate}`)
+    .bind(p.owner_id,recordId,command.googleTask!.taskListId,command.googleTask!.taskId,JSON.stringify({title:command.title,due:command.due,status:'needsAction',etag:''}),'',...values):undefined;
+   await writeCommand(db,p.owner_id,{operationId:'slack-command:'+receiptId,expectedRevision:snapshot.revision,action},new Date(),{gate:`${authGate} AND ${fence.sql}`,values:[...authValues(p),...fence.values],statements:(gate,values)=>[receipt(gate,values),...(link?[link(gate,values)]:[])]});
    return recordId;
   }catch(error){if(!(error instanceof RevisionConflict)||attempt>=2)throw error}
  }
@@ -149,7 +154,13 @@ export async function handleCommand(db:Database,request:Request):Promise<Respons
  try{
   const p=await authenticate(db,request);
   if(request.method==='GET'){
-   const key=new URL(request.url).searchParams.get('operationKey');
+   const url=new URL(request.url);
+   // Lets the Hermes plugin confirm the requester before it creates anything in Google.
+   if(url.searchParams.has('preflight')){
+    if(url.searchParams.get('workspaceId')!==p.workspace_id||url.searchParams.get('requesterId')!==p.requester_id)throw new Failure(403,'source_scope_mismatch');
+    return respond({ok:true});
+   }
+   const key=url.searchParams.get('operationKey');
    if(!key||key.length>200)throw new Failure(422,'lookup_required');
    const row=await lookup(db,p,key);if(!row)throw new Failure(404,'not_found');
    return respond(await readback(db,p,row));

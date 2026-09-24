@@ -366,8 +366,6 @@ export const actionSchema = z.discriminatedUnion('type', [
     .object({ type: z.literal('event.upsert'), event: eventSchema, overlapConfirmation:z.string().max(1000000).optional(), attachmentIds: attachmentIds.optional() })
     .strict(),
   z.object({ type: z.literal('event.delete'), id }).strict(),
-  // Server-only: takes over an edit made in Google to an event ORBIT created there.
-  z.object({ type: z.literal('calendar.adopt'), event: eventSchema }).strict(),
   z.object({ type: z.literal('event.attach'), id, attachmentIds }).strict(),
   z.object({ type: z.literal('review.save'), review, detail: reviewDetailSchema.optional() }).strict(),
   z
@@ -399,7 +397,9 @@ export const actionSchema = z.discriminatedUnion('type', [
 ]);
 export type WorkspaceAction =
   | z.infer<typeof actionSchema>
-  | { type: 'proposal.brief'; brief: DailyBrief; energy: 'low' | 'normal' | 'high' };
+  | { type: 'proposal.brief'; brief: DailyBrief; energy: 'low' | 'normal' | 'high' }
+  // Server-only (never parsed from clients): takes over an edit made in Google to an event ORBIT created there.
+  | { type: 'calendar.adopt'; event: z.infer<typeof eventSchema> };
 export const commandSchema = z
   .object({
     operationId: z.string().uuid(),
