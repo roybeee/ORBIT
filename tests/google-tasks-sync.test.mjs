@@ -156,3 +156,12 @@ test('one failing task does not stop the others',()=>fixture(async db=>{
  assert.equal((await mine(db)).status,'done');
  assert.match((await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks').detail,/확인하지 못한/);
 }));
+
+test('a Slack task whose Google Task this account cannot see is kept, not deleted',()=>fixture(async db=>{
+ await saveConnection(db,'a','google_calendar',{accessToken:'test',expiresAt:Date.now()+3600000},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+ await act(db,{type:'project.upsert',project});await act(db,{type:'task.upsert',task});
+ await db.prepare('INSERT INTO orbit_google_task_links VALUES(?,?,?,?,?,?)').bind('a','slack-1','@default','gt-1',JSON.stringify({title:task.title,due:task.due,status:'needsAction',etag:''}),'').run();
+ const g=tasksApi();g.items.clear();
+ await sync(db);
+ assert.ok(await mine(db),'a base link never confirmed in Google is not proof of deletion');
+}));

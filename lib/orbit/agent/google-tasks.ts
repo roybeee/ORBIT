@@ -48,7 +48,8 @@ async function syncOne(db:Database,owner:string,token:string,task:Task,link:Link
  const remote=await remoteOf(token,list,id,task.due);
  // Only a task this sync has seen in Google before can have been deleted there. Without a link
  // a 404 may mean another Google account or a task restored after its Google copy was removed.
- if(!remote){if(!link)return 'missing';if(await update(db,owner,task.id,()=>({type:'task.delete',id:task.id})))await dropLink(db,owner,task.id);return}
+ // A base link stored at creation (no etag yet) has not been confirmed in this account either.
+ if(!remote){if(!link||!JSON.parse(link.state_json).etag)return 'missing';if(await update(db,owner,task.id,()=>({type:'task.delete',id:task.id})))await dropLink(db,owner,task.id);return}
  const local=sideOf(task),last:Side=link?JSON.parse(link.state_json):remote;
  if(!same(local,last)){
   if(same(local,remote)){await saveLink(db,owner,task,{...local,etag:remote.etag});return}

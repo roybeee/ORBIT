@@ -355,7 +355,8 @@ export async function writeCommand(
     : action.type === 'proposal.approve' ? 'approved:' + action.itemId : undefined;
   // Any local event this command removed (event.delete, a deleted task's blocks, ...) gets its
   // published Google copy removed through the same delivery; unpublished ones never call Google.
-  const removedEventIds = working.events.filter(e => !e.id.startsWith('google:') && !next.events.some(n => n.id === e.id)).map(e => e.id);
+  // Approved focus blocks keep a fixed id and are re-approved in place, so they keep their copy.
+  const removedEventIds = working.events.filter(e => !e.id.startsWith('google:') && !e.id.startsWith('approved:') && !next.events.some(n => n.id === e.id)).map(e => e.id);
   const calendarEventIds=action.type==='preferences.update'&&(JSON.stringify(working.preferences.categoryColors)!==JSON.stringify(next.preferences.categoryColors)||JSON.stringify(working.preferences.taskCategoryColors)!==JSON.stringify(next.preferences.taskCategoryColors)||JSON.stringify(working.preferences.eventCategories)!==JSON.stringify(next.preferences.eventCategories)||JSON.stringify(working.preferences.eventColors)!==JSON.stringify(next.preferences.eventColors))?next.events.filter(e=>!e.id.startsWith('google:')&&googleItemColor(e,working.preferences,working.tasks.find(t=>t.id===e.taskId))!==googleItemColor(e,next.preferences,next.tasks.find(t=>t.id===e.taskId))).map(e=>e.id):action.type==='task.upsert'||action.type==='task.schedule'&&action.color!==undefined?next.events.filter(e=>e.taskId===(action.type==='task.upsert'?action.task.id:action.taskId)&&!e.id.startsWith('google:')).map(e=>e.id):calendarEventId?[calendarEventId]:[];
   for (const calendarEventId of [...new Set([...calendarEventIds, ...removedEventIds])].filter(id=>!id.startsWith('google:'))) {
     // Keep existing, explicitly exported focus blocks on their original flow.

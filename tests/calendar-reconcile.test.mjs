@@ -145,3 +145,19 @@ test('deleting a task also removes its scheduled block from Google',()=>fixture(
  await flushCalendarOutbox(db,'a',env,BLOCK);
  assert.equal(blocks().length,0);
 }));
+
+test('revoking an approved focus block and approving it again keeps its Google copy working',()=>fixture(async db=>{
+ await connect(db);const g=google();
+ const date='2026-09-28';
+ await act(db,{type:'project.upsert',project:{id:'project',name:'Release',color:'#5558e8',symbol:'O',goal:'Ship',due:'2026-10-13',priority:5}});
+ await act(db,{type:'task.upsert',task:{id:'task',title:'Prepare release',projectId:'project',status:'todo',duration:60,due:date,impact:5,focus:false,definition:'x'}});
+ const s=await act(db,{type:'proposal.generate',date,energy:'normal'});
+ const item=s.data.proposals.find(p=>p.date===date).items[0],id='approved:'+item.id;
+ const copies=()=>[...g.events.values()].filter(e=>e.extendedProperties?.private?.orbitEventId===id).length;
+ await act(db,{type:'proposal.approve',date,itemId:item.id});await flushCalendarOutbox(db,'a',env,id);
+ assert.equal(copies(),1);
+ await act(db,{type:'proposal.revoke',date,itemId:item.id});await flushCalendarOutbox(db,'a',env,id);
+ await act(db,{type:'proposal.approve',date,itemId:item.id});await flushCalendarOutbox(db,'a',env,id);
+ assert.equal(copies(),1);
+ assert.equal((await calendarExports(db,'a')).find(r=>r.eventId===id).status,'verified');
+}));

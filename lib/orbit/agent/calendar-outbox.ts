@@ -47,9 +47,11 @@ export async function flushCalendarOutbox(db:Database,owner:string,env:Runtime,e
  let event=task?(task.googleTask?undefined:taskCalendarEvent(task,todayInZone(snapshot.data.preferences.timeZone))):snapshot.data.events.find(e=>e.id===state.eventId&&!e.id.startsWith('google:'));
  const linkedTask=event?.taskId?snapshot.data.tasks.find(t=>t.id===event!.taskId):undefined;
  if(event&&linkedTask)event={...event,description:linkedTask.description??event.description,scope:linkedTask.scope??event.scope,category:linkedTask.category??event.category};
- // An event deleted before it ever reached Google needs no Google call; a published one is removed below.
+ // An event deleted before it ever reached Google needs no Google call. A published one is removed
+ // below, but only when its deletion was queued: an explicit re-check of a verified receipt whose
+ // event is gone (e.g. a revoked approval that may be approved again) never deletes anything.
  const published=!!(state.calendarId||state.verifiedAt||state.lastSignature||state.attemptedSignatures?.length);
- if(!event&&!taskId&&!published){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
+ if(!event&&!taskId&&(!published||state.status==='verified')){await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=? AND state_json=?')
    .bind(JSON.stringify({...state,status:'cancelled',leaseUntil:0,message:'Orbit에서 삭제되어 등록을 중단했습니다.'}),owner,state.eventId,row.state_json).run();return calendarDeliveryStatus(db,owner);}
  state.status='publishing';state.leaseUntil=Date.now()+60000;
  let lease=JSON.stringify(state);
