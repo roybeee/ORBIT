@@ -217,13 +217,14 @@ test('the cache is owner-scoped',()=>fixture(async db=>{
  assert.equal((await metricsOf(db,other.id,'other')).reused,0);
 }));
 
-test('revalidation reuses accepted analyses',()=>fixture(async db=>{
+test('a workspace change during the analysis does not restart it; the plan records the change',()=>fixture(async db=>{
  await bulk(db);await hermes(db);const m=mock();let written=false,revalidations=0,total;
  const {turn}=await run(db,date,{onStep:async job=>{total??=job.batch?.total;revalidations=Math.max(revalidations,job.revalidations??0);
   if(!written&&(job.batch?.completed??0)>=5){written=true;const s=await readWorkspace(db,'owner');await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:s.revision,action:{type:'task.status',id:'t',status:'doing'}})}}});
- assert.equal(turn.status,'completed',turn.response_json);assert.ok(written);assert.equal(revalidations,1);
- assert.ok(m.sources.length<=total+2,'only the changed unit is re-analyzed after revalidation');
- const data=(await readWorkspace(db,'owner')).data;assert.equal(data.tasks.find(t=>t.id==='t').status,'doing');assert.ok(data.proposals.find(p=>p.date===date)?.brief);
+ assert.equal(turn.status,'completed',turn.response_json);assert.ok(written);assert.equal(revalidations,0,'a 30-minute analysis is not restarted by ingestion');
+ assert.equal(m.sources.length,total,'nothing is re-analyzed');assert.equal(m.finals,1);
+ const data=(await readWorkspace(db,'owner')).data;assert.equal(data.tasks.find(t=>t.id==='t').status,'doing');const plan=data.proposals.find(p=>p.date===date);
+ assert.ok(plan?.brief);assert.ok(plan.brief.coverage.warnings.some(w=>/분석 시작 후 기록이 변경/.test(w)),JSON.stringify(plan.brief.coverage.warnings));
 }));
 
 test('gateway loss and a failed part retry only that part',()=>fixture(async db=>{
