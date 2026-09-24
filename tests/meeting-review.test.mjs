@@ -156,3 +156,23 @@ test('a model-supplied task noteId/noteCitation is replaced by the server citati
   const [out]=await meetingProposals(note,data,[{...task,action:{...task.action,task:{...task.action.task,projectId:'oda',noteId:'plaud:forged',noteCitation}}}],[]);
   assert.equal(out.action.task.noteId,note.id);assert.deepEqual(out.action.task.noteCitation,{revision:1,line:2,quote:source.split('\n')[1]});
  }}finally{db.close()}});
+
+test('an extra key inside a proposal source (evidenceId) does not reject the whole meeting answer',async()=>{const db=createDatabase();try{await seed(db);
+ const items=proposals().map(p=>({...p,source:{...p.source,evidenceId:'note:meeting-source:v1'}}));
+ const d=await analyze(db,items);assert.equal(d.status,'completed',d.error);assert.ok(d.actions.length>0);
+}finally{db.close()}});
+
+test('a meeting repair after two unreadable answers still sends the meeting source, not only the correction',async()=>{const db=createDatabase();try{await seed(db);
+ await advanceMeetingReviews(db,owner,env);
+ const row=await db.prepare('SELECT turn_id FROM orbit_meeting_reviews WHERE owner_id=? AND note_id=? ORDER BY revision DESC LIMIT 1').bind(owner,note.id).first();
+ const bodies=[],real=globalThis.fetch;
+ const reply=text=>Response.json({status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text}]}]});
+ globalThis.fetch=async(url,init)=>{bodies.push(init.body);return reply(bodies.length<3?'{"kind":"final","text":"요약","proposals":[{"title":"x","reason":"y","action":{},"extra":1}]}':JSON.stringify({kind:'final',text:'핵심 요약\n바다 프로젝트.',proposals:proposals()}))};
+ try{let d;for(let i=0;i<8;i++){await advanceAgent(db,owner,row.turn_id,env).catch(()=>{});d=await meetingReviewDetail(db,owner,note.id);if(['completed','failed'].includes(d.status))break}
+  assert.ok(bodies.length>=3,'expected a repair request, got '+bodies.length);
+  // The second answer is the one that fails; its correction must say why, and the repair must carry the source.
+  assert.match(bodies[1],/proposals\.0/);
+  assert.ok(bodies[2].includes('바다 프로젝트의 제안서'),'repair request lost the meeting source');
+  assert.equal(d.status,'completed',d.error);assert.ok(d.actions.length>0);
+ }finally{globalThis.fetch=real}
+}finally{db.close()}});
