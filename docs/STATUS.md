@@ -7,7 +7,7 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 `d73694d`이다(2026-09-24T03:47Z, [기록](releases/2026-09-24-d73694d.md), 소유자 브라우저 `/api/version` tree `7854ebd4…` 확인). 같은 날의 `a4fdd50` → … → `9e57e1b`는 이것으로 대체됐다. 오늘 Codex 게시는 총 7회(이 세션 4회)로 Hermes 주간 쿼터를 함께 썼으니 추가 게시는 묶어서 할 것.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `aab5c62`이다(2026-09-24T15:01Z 확인, [기록](releases/2026-09-24-aab5c62.md), 소유자 브라우저 `/api/version` tree `bd2fbfc0…`). PR #91(AI 한도 공동 대기, `f98cbb9`)이 이 릴리스에 포함됐다. 이전 확인분 `d73694d`는 이것으로 대체됐다.
 - 이 PR(`docs/status-d73694d`)은 d73694d 게시 기록을 반영한다. 열린 후속은 `fix/plan-stale-basis`(별도 작업)만 남았다.
 
 ## 검증된 결과
@@ -37,14 +37,13 @@
 |---|---|---|---|
 | 같은 계정 경고 전환 | `orbit-shared-account-warn` / `fix/shared-account-warn` | Claude | 이 PR |
 | 계획 stale-basis 수정 | `incremental` / `fix/plan-stale-basis` | 별도 작업 | 미커밋 변경 있음, 건드리지 말 것 |
-| AI 한도 공동 대기·자동 복구 (ORBIT-20260923-01) | `orbit-provider-hold` / `feat/provider-hold` | Claude | 이 PR · 마이그레이션 0033 포함, 미게시 |
 
 ## 다음 행동
 
 1. 게시할 때는 Hermes 계획 분석과 시간대를 나누고, 여러 머지를 한 번에 묶어 게시한다(같은 계정이라 쿼터를 함께 쓴다).
 2. Hermes `openai-codex`의 `relogin_required` 경고(2026-09-21 기록)는 `hermes auth status openai-codex`로 확인한다.
 3. 다음 게시는 `release.sh` → `publish-sites.sh` → 브라우저/`verify-deploy.sh` 순서로 한다.
-4. `feat/provider-hold` 게시 직후 앱 페이지에서 `fetch('/api/ai-hold')`의 `limitFailures7d`를 적용 전 기준값으로 기록하고, 7일 뒤 에피소드별 `leaked`(0이 목표, `probes`는 별도)와 `completed/affected`를 다시 읽는다.
+4. AI 한도 공동 대기 효과 확인: 적용 전 기준값 `limitFailures7d` = 541(2026-09-24T15:01Z). 2026-10-02 이후 `/api/ai-hold`에서 에피소드별 `leaked`(0이 목표, `probes`는 별도)와 `completed/affected`, `limitFailures7d`를 다시 읽는다.
 
 ## 마지막 갱신(UTC)
 
