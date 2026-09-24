@@ -49,7 +49,7 @@ export function InstallRootHint(){
  },[ready,standalone]);
  if(!manual)return null;
  const guide=installGuide(manual.platform,manual.browser);
- return <Dialog open onOpenChange={open=>{if(!open)setManual(null)}}><DialogContent className="install-instruction-dialog"><DialogHeader><DialogTitle>{platformLabels[manual.platform]}에 Orbit 설치</DialogTitle><DialogDescription>설치하면 이 대화 화면에서 시작합니다.</DialogDescription></DialogHeader><div className="install-menu-callout"><strong>{guide.steps[1].title}</strong><p>{guide.steps[1].text}</p></div><p className="install-dialog-note">설치가 끝나면 {guide.launcher}에서 Orbit을 열어 주세요.</p><button className="primary-button" onClick={()=>setManual(null)}>안내 닫고 계속하기</button><a href="/install" className="text-button">다른 기기·브라우저 설치 방법 <ArrowRight size={15}/></a></DialogContent></Dialog>;
+ return <Dialog open onOpenChange={open=>{if(!open)setManual(null)}}><DialogContent className="install-instruction-dialog"><DialogHeader><DialogTitle>{platformLabels[manual.platform]}에 Orbit 설치</DialogTitle><DialogDescription>설치하면 오늘 화면에서 시작합니다.</DialogDescription></DialogHeader><div className="install-menu-callout"><strong>{guide.steps[1].title}</strong><p>{guide.steps[1].text}</p></div><p className="install-dialog-note">설치가 끝나면 {guide.launcher}에서 Orbit을 열어 주세요.</p><button className="primary-button" onClick={()=>setManual(null)}>안내 닫고 계속하기</button><a href="/install" className="text-button">다른 기기·브라우저 설치 방법 <ArrowRight size={15}/></a></DialogContent></Dialog>;
 }
 
 export default function InstallApp(){
@@ -80,7 +80,7 @@ export default function InstallApp(){
     <p>컴퓨터에서 정리하고,<br/>폰에서 이어서 실행하세요.</p>
     <div className="install-device-summary"><Monitor size={18}/><span>독립된 앱 창 · 같은 계정의 기록</span></div>
     {standalone?<div className="install-success" role="status"><CheckCircle2 size={19}/>{platformLabels[platform]}의 앱으로 실행 중입니다</div>:installed?<div className="install-success" role="status"><CheckCircle2 size={19}/>설치 이벤트 수신 · 공유 앱 등록은 아래에서 확인하세요</div>:ready&&!onThisDevice?<button className="primary-button install-primary" onClick={()=>void copy()} disabled={!url}><Copy size={19}/>{platformLabels[selected]}에서 열 주소 복사</button>:canInstall?<button className="primary-button install-primary" onClick={()=>void startInstall()} disabled={installing}><Download size={20}/>{installing?'설치 확인 중…':platformLabels[platform]+'에 Orbit 설치하기'}</button>:<a href="#install-steps" className="primary-button install-primary"><Download size={19}/>{platformLabels[selected]} 설치 방법<ArrowRight size={17}/></a>}
-    <Link href="/#agent" className="install-continue">{standalone?'헤르메스와 대화 시작하기':'Orbit 먼저 열어 보기'}<ArrowRight size={15}/></Link>
+    <Link href="/#today" className="install-continue">{standalone?'오늘 화면에서 시작하기':'Orbit 먼저 열어 보기'}<ArrowRight size={15}/></Link>
     {message&&<p className="install-feedback" role="status">{message}</p>}
     <p className="install-account-note">폰에서 쓰던 것과 같은 ChatGPT 계정으로 로그인하세요. 업무·위키·대화 기록을 이어서 사용할 수 있습니다.</p>
    </section>

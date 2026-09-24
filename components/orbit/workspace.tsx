@@ -7,7 +7,12 @@ import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import Link from 'next/link';
 import {afterPopupClose,replacePopupRoute,pushPopupRoute} from '@/components/ui/use-popup-history';
-import {OrbitWordmark} from './brand';
+import {AppNavigation,AreaSections,SearchTrigger} from './shell/app-navigation';
+import {OrbitSearch,useSearchShortcut,type SearchAction} from './shell/orbit-search';
+import {MeSheet} from './shell/me-sheet';
+import {IaIntro} from './shell/ia-intro';
+import {InboxPanel} from './inbox/inbox-panel';
+import {areaOf,inboxCounts,viewLabels} from '@/lib/orbit/navigation';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {AppearanceShortcut} from './appearance';
@@ -51,7 +56,6 @@ import {
   Link2,
   FileText,
   Layers,
-  Menu,
   Target,
   Inbox,
   Settings2,
@@ -72,17 +76,7 @@ import {
 } from 'lucide-react';
 import {
   SidebarProvider,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
   SidebarTrigger,
-  useSidebar,
 } from '@/components/ui/sidebar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from '@/components/ui/sheet';
@@ -140,7 +134,7 @@ import { suggestProject, automaticProject, projectDraft, assignmentPlan } from '
 import { WikiLibrary, WikiRelated } from '@/components/orbit/wiki/wiki-library';
 import { GraphView } from '@/components/orbit/graph/graph-view';
 import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
-import { addDays, todayInZone, koreanDate, weekDates, weekday } from '@/lib/orbit/dates';
+import { addDays, todayInZone, koreanDate, weekDates, weekday, minuteInZone } from '@/lib/orbit/dates';
 import type { Preferences } from '@/lib/orbit/model';
 import type { WorkspaceAction } from '@/lib/orbit/validation';
 import {
@@ -172,6 +166,7 @@ import {
   type ReviewDetail,
 } from '@/lib/orbit/model';
 const navigation: { id: View; label: string; icon: typeof Sun }[] = [
+  { id: 'inbox', label: '결재함', icon: Inbox },
   { id: 'dashboard', label: '전체 현황', icon: LayoutGrid },
   { id: 'data', label: '데이터 관리', icon: Database },
   { id: 'agent', label: 'AI 에이전트', icon: MessagesSquare },
@@ -200,6 +195,7 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  inbox:{title:'결재함',subtitle:'승인·보류·확인이 필요한 것만 출처와 함께 모았습니다.',eyebrow:'DECISIONS'},
   experiments:{title:'지식에서 사업 실험으로',subtitle:'작게 실행하고 근거로 판단합니다.',eyebrow:'EXPERIMENTS'},
   contacts:{title:'사람·거래처',subtitle:'만남 전에 합의와 약속을 확인합니다.',eyebrow:'PEOPLE'},
   monthly:{title:'월간 업무방식 개선',subtitle:'중단·위임·표준화하고 다음 달 효과를 확인합니다.',eyebrow:'MONTHLY REVIEW'},
@@ -251,24 +247,6 @@ const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string 
     eyebrow: 'NEXT DAY',
   },
 };
-const primaryNavigation: {id:View;label:string;icon:typeof Sun;children:View[]}[] = [
- {id:'today',label:'오늘',icon:Sun,children:['today','dashboard','review','proposal','voice','sound','monthly','learning']},
- {id:'calendar',label:'일정',icon:CalendarDays,children:['calendar']},
- {id:'agent',label:'대화',icon:MessagesSquare,children:['agent','aside','automation']},
- {id:'projects',label:'프로젝트',icon:FolderKanban,children:['projects','tasks','goals','portfolio','signals','meetings','followup','experiments','contacts']},
- {id:'wiki',label:'기록',icon:BookOpen,children:['wiki','knowledge','understanding','data','backup']},
-];
-function primaryView(view:View){return primaryNavigation.find(n=>n.children.includes(view))??primaryNavigation[0];}
-function AppNavigation({view,navigate,pending,displayName,onSettings,onAllMenu}:{view:View;navigate:(v:View)=>void;pending:number;displayName:string;onSettings:()=>void;onAllMenu:()=>void}){
- const {setOpenMobile}=useSidebar();
- const go=(v:View)=>{navigate(v);setOpenMobile(false)};
- return <><Sidebar className="app-sidebar"><SidebarHeader className="p-0"><div className="brand"><OrbitWordmark/></div></SidebarHeader><SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent><SidebarMenu>{primaryNavigation.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton className="nav-item" isActive={primaryView(view).id===n.id} onClick={()=>go(n.id)}><n.icon/><span>{n.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu><button className="all-menu-sidebar secondary-button" onClick={onAllMenu}><Menu size={18}/>전체 메뉴</button></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="p-0"><div className="user-box"><div className="avatar">{displayName.slice(0,1)}</div><div><strong>{displayName}</strong></div><button className="settings-link" aria-label="설정 열기" onClick={onSettings}><Settings2 size={19}/></button></div></SidebarFooter></Sidebar><nav className="mobile-nav" aria-label="주요 화면">{primaryNavigation.map(n=><button key={n.id} className={primaryView(view).id===n.id?'active':''} onClick={()=>go(n.id)} aria-current={primaryView(view).id===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav></>;
-}
-function WorkspaceSections({view,navigate}:{view:View;navigate:(v:View)=>void}){
- const group=primaryView(view);
- if(group.id!=='projects')return null;
- return <nav className="workspace-sections" aria-label="업무 화면"><div>{(['projects','tasks','goals'] as View[]).map(id=><button key={id} className={view===id?'is-selected':''} aria-current={view===id?'page':undefined} onClick={()=>navigate(id)}>{id==='projects'?'프로젝트':id==='tasks'?'할 일':'목표'}</button>)}</div><DropdownMenu><DropdownMenuTrigger asChild><button className="secondary-button">업무 도구</button></DropdownMenuTrigger><DropdownMenuContent align="end">{group.children.filter(id=>!['projects','tasks','goals'].includes(id)).map(id=><DropdownMenuItem key={id} onSelect={()=>navigate(id)}>{navigation.find(n=>n.id===id)?.label}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu></nav>;
-}
 function Empty({ title, description }: { title: string; description: string }) {
   return (
     <div className="empty-state">
@@ -337,16 +315,9 @@ function WorkspaceContent({
   const eventUploads = useAttachments(attachmentDraft);
   const [briefLaunch, setBriefLaunch] = useState<{ date: string; id: string }>();
   const [reflection, setReflection] = useState<ReviewReflection | null>(null);
-  const proposal: Proposal = data.proposals.find((p) => p.date === proposalDate) ?? {
-    id: `plan:${proposalDate}`,
-    date: proposalDate,
-    items: [],
-    unscheduled: [],
-    budget: 0,
-    energy: 'normal',
-  };
-  const [allMenuOpen,setAllMenuOpen]=useState(false);
-  const menuTrigger=useRef<HTMLButtonElement>(null);
+  const [searchOpen,setSearchOpen]=useState(false);
+  const [meOpen,setMeOpen]=useState(false);
+  const [decisionAI,setDecisionAI]=useState<number|null>(null);
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
@@ -410,7 +381,6 @@ function WorkspaceContent({
       title: string;
     } | null>(null),
     [refreshConfirm, setRefreshConfirm] = useState(false);
-  const pending = proposal.items.filter((i) => i.state === 'pending').length;
   const completed = tasks.filter((t) => t.status === 'done' && t.completedOn === TODAY);
   const focus = tasks.filter((t) => focusIds(data, TODAY).has(t.id));
   const waiting = tasks
@@ -467,7 +437,8 @@ function WorkspaceContent({
     };
   }, []);
   const navigate = (v: View) => {
-    setAllMenuOpen(false);
+    setSearchOpen(false);
+    setMeOpen(false);
     setView(v);
     setDetail(null);
     setSearch('');
@@ -1008,6 +979,17 @@ function WorkspaceContent({
     }
     return ok;
   };
+  const inbox = inboxCounts({today:TODAY,proposals:data.proposals,aiPending:decisionAI,orders:homeOrders,decisions:data.decisions,delegations:data.delegations});
+  const openSearch = () => setSearchOpen(true);
+  const searchActions: SearchAction[] = [
+    {id:'task',label:'새 할 일',hint:'제목만 적어도 됩니다',icon:<Plus/>,keywords:['할 일 추가','투두'],disabled:!loaded||busy,run:()=>openCreate(projects.length?'task':'project')},
+    {id:'event',label:'새 일정',hint:'Google 일정과 함께 저장',icon:<CalendarDays/>,keywords:['일정 추가','캘린더'],disabled:!loaded||busy,run:()=>openCreate('event')},
+    {id:'project',label:'새 프로젝트',hint:'목표 결과물부터',icon:<FolderKanban/>,keywords:['프로젝트 추가'],disabled:!loaded||busy,run:()=>openCreate('project')},
+    {id:'review',label:'저녁 회고 시작',hint:'PAFI 4단계 · 5분',icon:<Moon/>,keywords:['회고하기','하루 마무리'],run:()=>navigate('review')},
+    {id:'ask',label:'Orbit에게 묻기',hint:'대화 열기',icon:<MessagesSquare/>,keywords:['질문','AI','채팅'],run:()=>navigate('agent')},
+    {id:'settings',label:'업무 시간·계획 기준',hint:'설정',icon:<Settings2/>,keywords:['설정','환경','리듬'],run:openSettings},
+  ];
+  useSearchShortcut(setSearchOpen);
   return (
     <CityThemeProvider preferences={data.preferences} view={view} title={navigation.find(n=>n.id===view)?.label??pageInfo[view].title} busy={busy||hasPending||!loaded} perform={perform} demo={demo}><SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''}`} data-illustration-collection={illustrationTheme(screenIllustration(data.preferences,view)).collection} style={{ '--sidebar-width': '248px', '--illustration-accent':illustrationTheme(screenIllustration(data.preferences,view)).accent } as CSSProperties}>
       <CosmicBackdrop/>
@@ -1018,30 +1000,23 @@ function WorkspaceContent({
       <AppNavigation
         view={view}
         navigate={navigate}
-        pending={pending}
+        inboxCount={inbox.total}
         displayName={displayName}
-        onSettings={openSettings}
-        onAllMenu={()=>setAllMenuOpen(true)}
+        onMe={()=>setMeOpen(true)}
+        onSearch={openSearch}
       />
-      <Sheet open={allMenuOpen} onOpenChange={setAllMenuOpen}>
-        <SheetContent side="left" className="all-menu-panel" onCloseAutoFocus={event=>{event.preventDefault();menuTrigger.current?.focus()}}>
-          <SheetHeader><SheetTitle>전체 메뉴</SheetTitle><SheetDescription>필요한 기능으로 바로 이동하세요.</SheetDescription></SheetHeader>
-          <nav className="all-menu-groups" aria-label="전체 기능">
-            {primaryNavigation.map(group=><section key={group.id}><h2>{group.label}</h2><div>{group.children.map(id=>{const item=navigation.find(n=>n.id===id)!;const Icon=item.icon;return <button key={id} onClick={()=>navigate(id)} aria-current={view===id?'page':undefined}><Icon size={19}/><span>{id==='agent'?'대화':id==='wiki'?'전체 기록':item.label}</span></button>})}</div></section>)}
-            <section><h2>설정</h2><button onClick={()=>{setAllMenuOpen(false);openSettings()}}><Settings2 size={19}/><span>연결·환경 설정</span></button></section>
-          </nav>
-        </SheetContent>
-      </Sheet>
+      <OrbitSearch open={searchOpen} onOpenChange={setSearchOpen} view={view} navigate={navigate} actions={searchActions}/>
+      <MeSheet open={meOpen} onOpenChange={setMeOpen} displayName={displayName} view={view} demo={demo} loaded={loaded} navigate={navigate} onSettings={()=>{setMeOpen(false);afterPopupClose(openSettings)}} onConnections={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:connections')))}} onRuntime={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:runtime')))}}/>
       <div className="app-main">
         <header className="topbar">
           <div className="breadcrumb">
-            <button ref={menuTrigger} className="all-menu-trigger" aria-haspopup="dialog" aria-expanded={allMenuOpen} onClick={()=>setAllMenuOpen(true)}><Menu size={21}/><span>전체 메뉴</span></button>
             <span className="breadcrumb-brand">ORBIT</span>
             <ChevronRight size={13} />
-            <strong>{primaryNavigation.some(n=>n.id===view)?primaryView(view).label:navigation.find((n) => n.id === view)?.label}</strong>
+            <strong>{areaOf(view).label}</strong>
+            {areaOf(view).views[0]!==view&&<><ChevronRight size={13} className="breadcrumb-sub"/><span className="breadcrumb-sub">{viewLabels[view]}</span></>}
           </div>
-          <div className="top-actions"><NotificationCenter key={ownerId} ownerId={ownerId} demo={demo}/><CityThemeButton/><AppearanceShortcut/>
-            <button className="icon-button" onClick={openSettings} aria-label="설정 열기"><Settings2 size={20}/></button>
+          <div className="top-actions"><SearchTrigger onSearch={openSearch} open={searchOpen}/><NotificationCenter key={ownerId} ownerId={ownerId} demo={demo}/><CityThemeButton/><AppearanceShortcut/>
+            <button className="me-trigger" onClick={()=>setMeOpen(true)} aria-haspopup="dialog" aria-expanded={meOpen} aria-label="나 · 설정과 관리 열기">{displayName.slice(0,1)}</button>
 
             {loaded && (
               <ShareIntake ownerId={ownerId} demo={demo} snapshot={snapshot} onChat={shareToChat} onEvent={shareToEvent} />
@@ -1102,6 +1077,7 @@ function WorkspaceContent({
           id="main-content"
           className={`content ${view === 'agent' ? 'agent-content' : view === 'sound' ? 'sound-content' : ''} ${!loaded ? 'is-loading' : ''}`}
         >
+          {loaded&&!demo&&<IaIntro onSearch={openSearch}/>}
           <div className={`page-heading ${view === 'agent' || view === 'sound' ? 'agent-page-heading' : ''}`}>
             <div>
               <div className="eyebrow">
@@ -1112,7 +1088,7 @@ function WorkspaceContent({
                     : pageInfo[view].eyebrow}
               </div>
               <h1>{view==='today'?'오늘':view==='projects'?'프로젝트':view==='wiki'||view==='knowledge'?'기록':pageInfo[view].title}</h1>
-              {!['today','projects','wiki','knowledge'].includes(view)&&<p>{pageInfo[view].subtitle}</p>}
+              {!['today','projects','wiki','knowledge','inbox'].includes(view)&&<p>{pageInfo[view].subtitle}</p>}
             </div>
             {view === 'projects' ? <div className="heading-actions"><button className="primary-button" aria-label="새 프로젝트 추가" disabled={busy||!loaded} onClick={()=>openCreate('project')}><Plus size={20}/><span>프로젝트 추가</span></button><DropdownMenu><DropdownMenuTrigger asChild><button className="secondary-button" aria-label="프로젝트 보기·정리"><MoreHorizontal size={20}/></button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>setProjectsMode(projectsMode==='cards'?'graph':'cards')}>{projectsMode==='cards'?'관계 그래프':'프로젝트 목록'}</DropdownMenuItem><DropdownMenuItem onSelect={()=>navigate('tasks')}>전체 할 일</DropdownMenuItem><DropdownMenuItem onSelect={()=>navigate('goals')}>목표</DropdownMenuItem><DropdownMenuItem onSelect={openProjectTrash}>휴지통</DropdownMenuItem><DropdownMenuItem onSelect={()=>setAssignOpen(true)}>프로젝트 자동 분류</DropdownMenuItem><DropdownMenuItem onSelect={()=>setBrainyOpen(true)}>목표 관리</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div> : view==='wiki'||view==='knowledge'?<DropdownMenu><DropdownMenuTrigger asChild><button className="primary-button"><Plus size={16}/>기록 추가</button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>openCreate('wiki')}>문서</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('meeting')}>회의록</DropdownMenuItem><DropdownMenuItem onSelect={()=>openCreate('knowledge')}>참고 자료</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : view === 'calendar' ? (
               <button className="secondary-button" onClick={() => openCreate('event')}>
@@ -1121,8 +1097,8 @@ function WorkspaceContent({
               </button>
             ) : null}
           </div>
-          {loaded&&!['today','projects'].includes(view)&&<CityScreenBanner compact={view==='agent'||view==='sound'}/>}
-          {view!=='projects'&&<WorkspaceSections view={view} navigate={navigate}/>}
+          <AreaSections view={view} navigate={navigate} inboxCount={inbox.total}/>
+          {loaded&&!['today','projects','inbox'].includes(view)&&<CityScreenBanner compact={view==='agent'||view==='sound'}/>}
           {!loaded && (
             <section className="load-state" role="status">
               <RefreshCw size={22} />
@@ -1156,6 +1132,7 @@ function WorkspaceContent({
               <AgentWorkspace
                 visible={view==='agent'}
                 onPendingCount={setPendingAI}
+                onDecisionCount={setDecisionAI}
                 onOrdersChange={setHomeOrders}
                 ownerId={ownerId}
                 perform={perform}
@@ -1183,6 +1160,7 @@ function WorkspaceContent({
           {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
+          {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReviewAI={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
           {loaded&&view==='today'&&<TodayHome orders={homeOrders} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} pendingAI={pendingAI} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}}/>}
           {view === 'tasks' && (
             <>
