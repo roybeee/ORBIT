@@ -179,6 +179,15 @@ class PluginTest(unittest.TestCase):
         self.assertLessEqual(len(self.plugin.GUIDANCE), 1200)
         self.assertIn('needs_confirmation', self.plugin.GUIDANCE)
 
+    def test_title_is_the_to_do_itself_without_instruction_words(self):
+        self.assertIn("'추가'", self.plugin.GUIDANCE)
+        self.assertIn("title 'A'", self.plugin.GUIDANCE)
+        ctx = Context()
+        self.plugin.register(ctx)
+        title = ctx.tools['orbit_slack_task']['schema']['parameters']['properties']['title']
+        self.assertIn('never add instruction words', title['description'])
+        self.assertEqual(title['maxLength'], 160)
+
 
 if __name__ == '__main__':
     unittest.main()

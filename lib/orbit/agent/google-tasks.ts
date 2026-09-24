@@ -12,6 +12,18 @@ type Side={title:string;due:string;status:'needsAction'|'completed'};
 type Remote=Side&{etag:string;completed?:string};
 type Link={task_id:string;task_list_id:string;google_task_id:string;state_json:string;updated_at:string};
 class Forbidden extends Error {}
+type GoogleError={error?:{message?:string;errors?:{reason?:string}[];details?:{reason?:string;metadata?:{consumer?:string}}[]}};
+// Google answers 403 both when the Tasks API is off in the OAuth client's Cloud project and when the
+// connection lacks the Tasks scope; the fix differs, so the status names which one it is.
+export function forbiddenReason(body:GoogleError){
+ const reasons=[...(body.error?.details??[]).map(d=>d.reason),...(body.error?.errors??[]).map(e=>e.reason)].filter(Boolean);
+ if(reasons.some(r=>r==='SERVICE_DISABLED'||r==='accessNotConfigured')){
+  const project=body.error?.details?.find(d=>d.metadata?.consumer)?.metadata?.consumer?.replace('projects/','')??/project (\d+)/.exec(body.error?.message??'')?.[1];
+  return `ORBIT의 Google Cloud 프로젝트${project?`(${project})`:''}에서 Google Tasks API가 꺼져 있습니다. Google Cloud Console에서 Google Tasks API를 사용 설정해 주세요.`;
+ }
+ if(reasons.some(r=>r==='ACCESS_TOKEN_SCOPE_INSUFFICIENT'||r==='insufficientPermissions'))return 'Google Tasks 권한이 없습니다. 연결 관리에서 Google Calendar를 다시 연결하고 Tasks 권한을 승인해 주세요.';
+ return `Google Tasks 접근이 거부되었습니다(${reasons.join(', ')||'사유 없음'}). 연결 관리에서 Google Calendar를 다시 연결해 주세요.`;
+}
 const MAX_PER_RUN=25,THROTTLE_MS=60000;
 const sideOf=(t:Task):Side=>({title:t.title,due:t.due,status:t.status==='done'?'completed':'needsAction'});
 const same=(a:Side,b:Side)=>a.title===b.title&&a.due===b.due&&a.status===b.status;
@@ -19,7 +31,7 @@ const same=(a:Side,b:Side)=>a.title===b.title&&a.due===b.due&&a.status===b.statu
 async function call(token:string,list:string,id:string,init:RequestInit={}){
  const url='https://tasks.googleapis.com/tasks/v1/lists/'+encodeURIComponent(list)+'/tasks/'+encodeURIComponent(id);
  const result=await fetchJson<Record<string,string|boolean>>(url,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...init.headers}},8000);
- if(result.response.status===401||result.response.status===403)throw new Forbidden();
+ if(result.response.status===401||result.response.status===403)throw new Forbidden(forbiddenReason(result.data as GoogleError));
  return result;
 }
 async function remoteOf(token:string,list:string,id:string,fallbackDue:string):Promise<Remote|null>{
@@ -95,7 +107,7 @@ export async function syncGoogleTasks(db:Database,owner:string,env:Runtime,optio
   const detail=missing?`Google Tasks에서 찾지 못한 할 일 ${missing}건(다른 Google 계정일 수 있음)`:failed?`확인하지 못한 할 일 ${failed}건, 다음에 다시 확인`:'연결된 할 일 확인 완료';
   await recordSource(db,owner,'google_tasks',{state:missing||failed?'partial':'ok',detail,count:tasks.length});
  }catch(error){
-  const detail=error instanceof Forbidden?'Google Tasks 권한이 없습니다. 연결 관리에서 Google Calendar를 다시 연결해 주세요.':error instanceof Error?error.message:'Google Tasks 동기화 실패';
+  const detail=error instanceof Error&&error.message?error.message:'Google Tasks 동기화 실패';
   await recordSource(db,owner,'google_tasks',{state:error instanceof Forbidden?'partial':'error',detail});
  }
 }
