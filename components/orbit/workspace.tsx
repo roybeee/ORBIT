@@ -12,6 +12,7 @@ import {OrbitSearch,useSearchShortcut,type SearchAction} from './shell/orbit-sea
 import {MeSheet} from './shell/me-sheet';
 import {IaIntro} from './shell/ia-intro';
 import {InboxPanel} from './inbox/inbox-panel';
+import {useEveningHour} from './today/use-evening-hour';
 import {areaOf,inboxCounts,viewLabels} from '@/lib/orbit/navigation';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
@@ -305,7 +306,6 @@ function WorkspaceContent({
     TOMORROW = addDays(TODAY, 1);
   const [view, setView] = useState<View>('today');
   const [homeOrders,setHomeOrders]=useState<WorkOrder[]>([]);
-  const [pendingAI,setPendingAI]=useState<number|null>(null);
   const [dataEditing, setDataEditing] = useState(false);
   const [demoDataTrash, setDemoDataTrash] = useState<TrashRecord[]>([]);
   const [projectAction,setProjectAction]=useState<{id:string;mode:'menu'|'delete'}|null>(null);
@@ -321,6 +321,7 @@ function WorkspaceContent({
   const [aiActions,setAiActions]=useState<AgentAction[]|null>(null);
   const [news,setNews]=useState<NewsSummary|null>(null);
   const [newsOpen,setNewsOpen]=useState(false);
+  const eveningHour=useEveningHour(demo);
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
@@ -1135,7 +1136,6 @@ function WorkspaceContent({
             <div hidden={view !== 'agent'}>
               <AgentWorkspace
                 visible={view==='agent'}
-                onPendingCount={setPendingAI}
                 onPendingActions={setAiActions}
                 onOrdersChange={setHomeOrders}
                 ownerId={ownerId}
@@ -1165,7 +1165,7 @@ function WorkspaceContent({
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
           {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onReviewDeferred={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
-          {loaded&&view==='today'&&<TodayHome orders={homeOrders} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} pendingAI={pendingAI} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}}/>}
+          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">
