@@ -6,6 +6,9 @@ const PopupParent=createContext<symbol|undefined>(undefined);
 let stack:ReturnType<typeof createOverlayStack>|undefined;
 function popupStack(){return stack??=createOverlayStack(window,fn=>flushSync(fn));}
 export function afterPopupClose(fn:()=>void){popupStack().afterClose(fn);}
+// Create the stack before any route listener: its capture-phase popstate handler must run
+// first, or a route handler sees the popup's base entry and changes the view underneath it.
+export function ensurePopupHistory(){popupStack();}
 export function pushPopupRoute(state:unknown,url:string){popupStack().push(state,url);}
 export function replacePopupRoute(state:unknown,url:string){popupStack().replace(state,url);}
 

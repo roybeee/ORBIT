@@ -8,27 +8,30 @@ import {areaOf,badgeText,tabAreas,viewLabels,type Area} from '@/lib/orbit/naviga
 import {OrbitWordmark} from '../brand';
 import {areaIcons,viewIcons} from './view-icons';
 
-interface NavProps {view:View;navigate:(v:View)=>void;inboxCount:number;newsUnread:number;displayName:string;onMe:()=>void;onSearch:()=>void}
+interface NavProps {view:View;navigate:(v:View)=>void;inboxCount:number;newsUnread:number;dockOpen:boolean;onOrbit:()=>void;displayName:string;onMe:()=>void;onSearch:()=>void}
 
 const tabLabel=(area:Area,count:number,news:number)=>area.id!=='inbox'?area.label:count>0?`${area.label}, 정할 일 ${count}건`:news>0?`${area.label}, 새 소식 있음`:area.label;
 // A red count only for decisions; unread news alone shows a quiet dot.
 function NavBadge({count,news=0}:{count:number;news?:number}){const text=badgeText(count);return text?<span className="nav-badge" aria-hidden="true">{text}</span>:news>0?<span className="nav-dot" aria-hidden="true"/>:null;}
 
 // Four question tabs (오늘 · 결재함 · 프로젝트 · 기록) around the Orbit button; 나 holds rarely used management.
-export function AppNavigation({view,navigate,inboxCount,newsUnread,displayName,onMe,onSearch}:NavProps){
+export function AppNavigation({view,navigate,inboxCount,newsUnread,dockOpen,onOrbit,displayName,onMe,onSearch}:NavProps){
  const {setOpenMobile}=useSidebar();
  const current=areaOf(view).id;
  const go=(v:View)=>{navigate(v);setOpenMobile(false)};
  const [first,second,...rest]=tabAreas;
  const tab=(area:Area)=>{const Icon=areaIcons[area.id];const on=current===area.id;return <button key={area.id} className={on?'active':''} onClick={()=>go(area.views[0])} aria-current={on?'page':undefined} aria-label={tabLabel(area,inboxCount,newsUnread)}><span className="nav-icon"><Icon/>{area.id==='inbox'&&<NavBadge count={inboxCount} news={newsUnread}/>}</span>{area.label}</button>;};
- const orbitOn=current==='orbit';
+ // The Orbit button toggles the dock; on the 대화 page itself it marks the current page.
+ const onPage=view==='agent',orbitOn=dockOpen||onPage;
+ const orbitState=onPage?{'aria-current':'page' as const}:{'aria-expanded':dockOpen};
+ const orbit=()=>{onOrbit();setOpenMobile(false)};
  return <>
   <Sidebar className="app-sidebar">
    <SidebarHeader className="p-0"><div className="brand"><OrbitWordmark/></div></SidebarHeader>
    <SidebarContent className="gap-0"><SidebarGroup className="px-4 pt-0"><SidebarGroupContent>
     <SidebarMenu>{tabAreas.map(area=>{const Icon=areaIcons[area.id];return <SidebarMenuItem key={area.id}><SidebarMenuButton className="nav-item" isActive={current===area.id} aria-current={current===area.id?'page':undefined} aria-label={tabLabel(area,inboxCount,newsUnread)} onClick={()=>go(area.views[0])}><Icon/><span>{area.label}</span>{area.id==='inbox'&&<NavBadge count={inboxCount} news={newsUnread}/>}</SidebarMenuButton></SidebarMenuItem>;})}</SidebarMenu>
     <div className="sidebar-shell-actions">
-     <button className={`sidebar-orbit${orbitOn?' is-active':''}`} onClick={()=>go('agent')} aria-current={orbitOn?'page':undefined}><Orbit size={18}/><span>Orbit에게 묻기</span></button>
+     <button className={`sidebar-orbit${orbitOn?' is-active':''}`} onClick={orbit} {...orbitState}><Orbit size={18}/><span>Orbit에게 묻기</span></button>
      <button className="sidebar-search" onClick={onSearch} aria-haspopup="dialog"><Search size={17}/><span>찾기</span><Kbd>⌘K</Kbd></button>
     </div>
    </SidebarGroupContent></SidebarGroup></SidebarContent>
@@ -36,7 +39,7 @@ export function AppNavigation({view,navigate,inboxCount,newsUnread,displayName,o
   </Sidebar>
   <nav className="mobile-nav orbit-tabbar" aria-label="주요 화면">
    {tab(first)}{tab(second)}
-   <button className={`orbit-tab${orbitOn?' active':''}`} onClick={()=>go('agent')} aria-current={orbitOn?'page':undefined}><span className="orbit-orb" aria-hidden="true"><Orbit/></span>Orbit</button>
+   <button className={`orbit-tab${orbitOn?' active':''}`} onClick={orbit} {...orbitState}><span className="orbit-orb" aria-hidden="true"><Orbit/></span>Orbit</button>
    {rest.map(tab)}
   </nav>
  </>;
