@@ -1,15 +1,19 @@
 'use client';
-import {ArrowRight,Check,CheckCheck,Crosshair,Inbox,MessagesSquare,Pause,Sparkles,Workflow} from 'lucide-react';
+import {ArrowRight,Check,CheckCheck,Crosshair,Inbox,Pause,Sparkles,Workflow} from 'lucide-react';
 import {useState,type ReactNode} from 'react';
 import {addDays,koreanDate} from '@/lib/orbit/dates';
-import {formatTime,type WorkspaceData} from '@/lib/orbit/model';
+import {formatTime,type WorkspaceData,type WorkspaceSnapshot} from '@/lib/orbit/model';
+import type {AgentAction} from '@/lib/orbit/agent/types';
+import type {NewsSummary} from '../notifications';
+import {InboxAiDecisions} from './inbox-ai';
+import {InboxNews} from './inbox-news';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 import {orderStatusLabel,type WorkOrder} from '@/lib/orbit/agent/orders-schema';
 import type {InboxCounts} from '@/lib/orbit/navigation';
 
 type Filter='all'|'plans'|'ai'|'orders'|'followups';
 type Perform=(action:WorkspaceAction,message?:string)=>Promise<boolean>;
-interface Props {data:WorkspaceData;today:string;nowMinute:number;counts:InboxCounts;orders:readonly WorkOrder[];busy:boolean;demo:boolean;perform:Perform;onProposal:(date:string)=>void;onReviewAI:()=>void;onOrder:(id:string)=>void;onFollowup:()=>void}
+interface Props {data:WorkspaceData;today:string;nowMinute:number;counts:InboxCounts;orders:readonly WorkOrder[];actions:readonly AgentAction[];snapshot:WorkspaceSnapshot;news:NewsSummary|null;busy:boolean;demo:boolean;perform:Perform;onProposal:(date:string)=>void;onOrder:(id:string)=>void;onFollowup:()=>void;onNews:()=>void;onOpenNote:(id:string)=>void;onOpenConversation:(id:string)=>void;onAskOrbit:(text:string)=>void;onReviewDeferred:()=>void}
 
 const dayLabel=(date:string,today:string)=>date===today?'오늘':date===addDays(today,1)?'내일':koreanDate(date,false);
 
@@ -37,7 +41,7 @@ function PlanCard({date,today,late,item,title,busy,demo,perform,onProposal}:{dat
 }
 
 // 결재함 v1: everything the owner must decide, with its source, in one list.
-export function InboxPanel({data,today,nowMinute,counts,orders,busy,demo,perform,onProposal,onReviewAI,onOrder,onFollowup}:Props){
+export function InboxPanel({data,today,nowMinute,counts,orders,actions,snapshot,news,busy,demo,perform,onProposal,onOrder,onFollowup,onNews,onOpenNote,onOpenConversation,onAskOrbit,onReviewDeferred}:Props){
  const [picked,setPicked]=useState<Filter>('all');
  // When the chosen category empties, fall back to everything instead of a blank list.
  const filter:Filter=picked!=='all'&&counts[picked]===0?'all':picked;
@@ -54,9 +58,10 @@ export function InboxPanel({data,today,nowMinute,counts,orders,busy,demo,perform
   <header className="inbox-summary"><div><strong>{counts.total?<>내가 정할 일 <em>{counts.total}</em>건</>:'지금 정할 일이 없습니다'}</strong><p>승인한 항목만 할 일·일정에 반영됩니다. 외부 연락과 Google 일정 등록은 따로 한 번 더 확인합니다.</p></div></header>
   <div className="inbox-filters" role="group" aria-label="결재함 분류">{chips.filter(([id,,n])=>id==='all'||n>0).map(([id,label,n])=><button key={id} className={filter===id?'is-selected':''} aria-pressed={filter===id} onClick={()=>setPicked(id)}>{label}<span>{n}</span></button>)}</div>
   {show('plans')&&plans.map(({date,item})=><PlanCard key={date+item.id} date={date} today={today} late={date===today&&item.start<nowMinute} item={item} title={data.tasks.find(t=>t.id===item.taskId)?.title??item.draftTask?.title??'저장된 실행 항목'} busy={busy} demo={demo} perform={perform} onProposal={onProposal}/>)}
-  {show('ai')&&counts.ai>0&&<Card kind="AI 제안" tone="ai" source="Orbit 대화 · 회의 결재 포함" title={`Orbit 제안 ${counts.ai}건이 검토를 기다립니다`} actions={<button className="primary-button" onClick={onReviewAI}><MessagesSquare size={15}/>검토하기</button>}><p className="inbox-card-why">회의에서 뽑은 할 일, 기억, 일정 등록 제안입니다. 근거와 함께 하나씩 승인하거나 이유를 남겨 보류합니다.</p></Card>}
+  {show('ai')&&<InboxAiDecisions actions={actions} snapshot={snapshot} onOpenNote={onOpenNote} onOpenConversation={onOpenConversation} onAskOrbit={onAskOrbit} onReviewDeferred={onReviewDeferred}/>}
   {show('orders')&&actionable.map(o=><Card key={o.id} kind="업무 지시" tone="order" source={orderStatusLabel[o.status]} title={o.title} actions={<button className="primary-button" onClick={()=>onOrder(o.id)}><Workflow size={15}/>{o.status==='waiting_for_approval'?'실행 승인하기':'결과 확인하기'}</button>}>{o.approval&&<p className="inbox-card-why">{o.approval.description}</p>}</Card>)}
   {show('followups')&&due.map(d=><Card key={d.id} kind={d.kind} tone="follow" source={`${project(d.projectId)} · 확인일 ${dayLabel(d.date,today)}`} title={d.title} actions={<button className="secondary-button" onClick={onFollowup}><CheckCheck size={15}/>확인하고 기록</button>}/>)}
   {counts.total===0&&<div className="inbox-empty"><Inbox size={30} aria-hidden="true"/><h3>정할 일이 모두 처리됐습니다</h3><p>새 실행 제안, 회의 결재, 업무 지시 결과, 확인일이 된 위임이 생기면 여기와 탭 배지에 표시됩니다.</p><button className="text-button" onClick={()=>onProposal(addDays(today,1))}><Sparkles size={15}/>내일 제안 보기</button></div>}
+  {filter==='all'&&<InboxNews news={news} onNews={onNews}/>}
  </section>;
 }

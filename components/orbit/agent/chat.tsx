@@ -1,5 +1,4 @@
 'use client';
-import {isConnectionError,scopedRequest,decisionReceiptMatches} from '@/lib/orbit/agent/client-request';
 import {replacePopupRoute} from '@/components/ui/use-popup-history';
 import {AnswerFeedback} from './answer-feedback';
 import {OrbitMark} from '../brand';
@@ -8,13 +7,12 @@ import {VoiceInput} from '../phase4/voice';
 import {ActivityLibrary} from './activity-library';
 import type {WorkOrder} from '@/lib/orbit/agent/orders-schema';
 import {OrderRoom,useWorkOrders} from './order-room';
-import {AgentRequestError,type OverlapDetails} from '@/lib/orbit/agent/approval-feedback';
-import {Orbit,ArrowUp,ArrowUpRight,Check,Clock3,Link2,LoaderCircle,Mic,Moon,RefreshCw,Sparkles,Target,X,ChevronDown,Ellipsis,Square} from 'lucide-react';
+import {Orbit,ArrowUp,ArrowUpRight,Check,Link2,LoaderCircle,Mic,Moon,RefreshCw,Sparkles,Target,Ellipsis,Square} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
 import {Connections,agentRequest} from './connections';
-import {addDays,todayInZone,koreanDate} from '@/lib/orbit/dates';
-import {formatTime,type View,type WorkspaceSnapshot} from '@/lib/orbit/model';
+import {koreanDate} from '@/lib/orbit/dates';
+import type {View,WorkspaceSnapshot} from '@/lib/orbit/model';
 import type {AgentAction} from '@/lib/orbit/agent/types';
 import {useAttachments} from '../attachments/provider';
 import {AttachmentInput,FileCards,FileDrop} from '../attachments/files';
@@ -26,46 +24,26 @@ import type {AgentSource} from '@/lib/orbit/agent/evidence';
 import {ChiefPanel,useChiefSync} from '../coach/chief-panel';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 import {ConversationLibrary,ConversationHeading} from './conversation-library';
+import {ActionCard,useActionDecisions} from './action-review';
 function progressLabel(progress?:string){
  if(!progress||progress==='헤르메스가 기록을 검토하고 있습니다. 화면을 다시 열면 이어서 확인합니다.'||progress==='헤르메스가 기록을 확인하고 다음 단계를 정리하고 있습니다.')return '기록을 확인하고 있어요.';
  return progress;
 }
 const suggestions=[{icon:Target,title:'오늘의 우선순위',text:'오늘 일정과 프로젝트를 보고, 결과물에 가까워질 우선순위를 제안해 줘.'},{icon:Mic,title:'회의에서 다음 행동으로',text:'최근 Plaud 회의 기록을 찾아 핵심 결정, 개인 위키에 남길 내용과 후속 할 일을 제안해 줘. 프로젝트 연결이 불명확하면 먼저 물어봐 줘.'},{icon:Sparkles,title:'멈춘 프로젝트 점검',text:'진행 중인 프로젝트의 완료 조건과 막힌 일을 확인하고, 다음에 할 일을 제안해 줘.'},{icon:Moon,title:'회고하고 내일 설계',text:'오늘의 성과와 막힌 점을 함께 돌아보고, 내일 하루를 설계해 줘. 먼저 내가 답할 질문부터 해 줘.'}];
-const names:Record<string,string>={domain:'목표 분야',strain:'느끼는 부담',minutes:'실천 시간(분)',days:'요일(0=일요일)',baseline:'시작 수치',current:'현재 수치',target:'목표 수치',unit:'단위',startedOn:'시작일',updatedOn:'진척 확인일',active:'사용 여부',title:'제목',name:'이름',goal:'결과물',due:'기한',priority:'우선순위',symbol:'표시',color:'색상',projectId:'프로젝트',status:'진행 상태',duration:'예상 소요(분)',impact:'중요도',focus:'오늘 집중',definition:'완료 조건',blocker:'막힌 점',checkDate:'확인일',planHoldUntil:'보류 기한',dependsOn:'선행 업무',completedOn:'완료일',kind:'종류',summary:'요약',body:'본문',tags:'태그',updated:'기록 날짜',date:'날짜',start:'시작',end:'종료',timeZone:'시간대',description:'설명',win:'성과',block:'장애물',energy:'에너지',itemId:'계획 항목',reason:'이유',revisitDate:'다시 검토할 날짜',workStart:'업무 시작',workEnd:'업무 종료',breakStart:'휴식 시작',breakEnd:'휴식 종료',workDays:'업무 요일',focusLimit:'핵심 결과물 개수',breakMinutes:'휴식 간격(분)',bufferFraction:'여유 시간 비율',focusDate:'집중 날짜',noteId:'연결 문서',revision:'문서 버전',line:'원문 행',quote:'근거',result:'결과',planHoldReason:'보류 이유',planHoldProposalId:'보류한 계획',dailyBudget:'집중 예산',taskId:'할 일'};
-const values:Record<string,string>={work:'일·사업',health:'건강',mind:'마음·회복',learning:'학습',life:'삶',light:'여유 있음',heavy:'버거움',active:'진행 중',paused:'보류',achieved:'달성',todo:'할 일',doing:'진행 중',waiting:'대기',done:'완료',meeting:'회의',wiki:'위키',knowledge:'지식',normal:'보통',low:'낮음',high:'높음'};
-function ActionPreview({item,snapshot}:{item:AgentAction;snapshot:WorkspaceSnapshot}){
- const action=item.action;
- if(action.type==='google.event.deleteSeries')return <div className="agent-change"><p><strong>Google 반복 시리즈 전체 삭제</strong></p><p>{action.verified?.title??action.expectedTitle}</p><p>범위: 전체 회차 (과거·향후 포함)</p><p>기존 할 일의 상태와 내용은 그대로 유지합니다.</p><details><summary>확인한 대상 ID</summary><p style={{overflowWrap:'anywhere'}}>캘린더: {action.verified?.calendarId}<br/>반복 시리즈: {action.verified?.seriesId}</p></details>{item.result?.calendarDeletion&&<p role="status">{item.result.calendarDeletion.message}</p>}</div>;
- if(action.type==='agent.dispatch')return <details className="agent-change"><summary>실행할 지시 확인 <ChevronDown size={14}/></summary><p>{action.instruction}</p><p>{action.mode==='research'?'Orbit에 연결된 Plaud와 개인 위키를 읽어 분석합니다. 위키 수정이나 외부 전송은 하지 않습니다.':'Hermes의 연결된 도구와 에이전트로 실제 실행합니다.'} 진행·중단·결과는 실행실에서 확인합니다.</p><p>연결 프로젝트: {snapshot.data.projects.find(p=>p.id===action.projectId)?.name??"일반 업무"}</p>{action.taskIds.map(id=><p key={id}>연결 업무: {snapshot.data.tasks.find(t=>t.id===id)?.title??id}</p>)}{action.eventIds?.map(id=>{const event=snapshot.data.events.find(e=>e.id===id);return <p key={id}>참고 일정: {event?.title??id}{event&&<> · {event.date} · {formatTime(event.start)}–{formatTime(event.end)}</>}</p>})}</details>;
- if(action.type==='quest.plan')return <details className="agent-change"><summary>퀘스트와 선후 관계 확인 <ChevronDown size={14}/></summary><p>목표: {snapshot.data.goals?.find(g=>g.id===action.goalId)?.sentence??action.goalId}</p>{action.project&&<p>함께 만들 프로젝트: {action.project.name}</p>}<ol>{action.tasks.map(t=><li key={t.id}><strong>{t.title}</strong><p>{t.definition}</p><small>{t.due} · {t.duration}분 · {action.project?.id===t.projectId?action.project.name:snapshot.data.projects.find(p=>p.id===t.projectId)?.name}</small>{!!t.dependsOn?.length&&<p>먼저 완료: {t.dependsOn.map(id=>action.tasks.find(x=>x.id===id)?.title??snapshot.data.tasks.find(x=>x.id===id)?.title??id).join(', ')}</p>}</li>)}</ol></details>;
- if(action.type==='memory.upsert')return <details className="agent-change"><summary>기억할 내용 확인 <ChevronDown size={14}/></summary><p>{action.memory.statement}</p><p>{action.memory.kind==='reflection'?'자기 탐색에만 참고합니다.':'다음 대화와 하루 제안에 참고합니다.'}</p>{action.memory.sources.map((s,i)=><p key={i}>연결 기록: {s.kind==='note'?snapshot.data.notes.find(n=>n.id===s.id)?.title:s.kind==='task'?snapshot.data.tasks.find(t=>t.id===s.id)?.title:s.id+' 회고'}{s.revision?' · v'+s.revision:''}</p>)}</details>;
- const drafts=action.type==='task.upsert'&&action.project?[action.project]:action.type==='task.assign'?action.projects??[]:[];
- const projectName=(id:unknown)=>snapshot.data.projects.find(p=>p.id===id)?.name??drafts.find(p=>p.id===id)?.name??'새 프로젝트 · 선행 제안 승인 필요';
- const entries=(record:Record<string,unknown>):[string,unknown][]=>Object.entries(record).flatMap(([key,value]):[string,unknown][]=>['type','id','expectedNoteRevision','autoAssign'].includes(key)?[]:value&&typeof value==='object'&&!Array.isArray(value)?entries(value as Record<string,unknown>):[[key,value]]);
- const rows=action.type==='task.upsert'?entries(action.task as unknown as Record<string,unknown>):action.type==='task.assign'?action.assignments.map((a):[string,unknown]=>['할 일 연결',`${snapshot.data.tasks.find(t=>t.id===a.id)?.title??a.id} → ${projectName(a.projectId)}`]):entries(action as unknown as Record<string,unknown>);
- const targetId='id' in action?action.id:undefined;const target=snapshot.data.tasks.find(t=>t.id===targetId)?.title;if(target)rows.unshift(['taskId',target]);
- return <details className="agent-change"><summary>반영할 내용 확인 <ChevronDown size={14}/></summary>
- {drafts.map(p=><p key={p.id}><strong>함께 생성할 프로젝트: {p.name}</strong><br/>키워드: {p.keywords?.join(', ')||'없음'} · 목표일: {p.due}{p.goal&&<><br/>{p.goal}</>}</p>)}
- <dl>{rows.map(([key,value],i)=>{let text=typeof value==='boolean'?(value?'예':'아니요'):Array.isArray(value)?value.map(v=>v&&typeof v==='object'?Object.entries(v).map(([k,x])=>(names[k]??k)+': '+String(x??'')).join(' · '):snapshot.data.tasks.find(t=>t.id===v)?.title??snapshot.data.notes.find(n=>n.id===v)?.title??v).join(' / '):String(value??'없음');if(['start','end','workStart','workEnd','breakStart','breakEnd'].includes(key)&&typeof value==='number')text=formatTime(value);if(key==='projectId')text=projectName(value);if(key==='itemId')text=snapshot.data.tasks.find(t=>t.id===snapshot.data.proposals.flatMap(p=>p.items).find(i=>i.id===value)?.taskId)?.title??text;if(key==='taskId')text=snapshot.data.tasks.find(t=>t.id===value)?.title??text;return <div key={key+i} className={key==='body'?'agent-change-body':''}><dt>{names[key]??key}</dt><dd>{values[text]??text}</dd></div>})}</dl></details>;
-}
-
-export function AgentWorkspace({visible=true,ownerId, demo,displayName,snapshot,onWorkspaceChange,navigate,perform,busy,onGoals,onOpenRecord,onPendingCount,onDecisionCount,onOrdersChange}:{onDecisionCount?:(count:number)=>void;onOrdersChange?:(orders:WorkOrder[])=>void;onPendingCount?:(count:number)=>void;visible?:boolean;ownerId:string;onOpenRecord:(target:RecordTarget)=>void;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;busy:boolean;onGoals:()=>void;demo:boolean;displayName:string;snapshot:WorkspaceSnapshot;onWorkspaceChange:()=>void;navigate:(view:View)=>void}){
+export function AgentWorkspace({visible=true,ownerId, demo,displayName,snapshot,onWorkspaceChange,navigate,perform,busy,onGoals,onOpenRecord,onPendingCount,onPendingActions,onOrdersChange}:{onPendingActions?:(actions:AgentAction[])=>void;onOrdersChange?:(orders:WorkOrder[])=>void;onPendingCount?:(count:number)=>void;visible?:boolean;ownerId:string;onOpenRecord:(target:RecordTarget)=>void;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;busy:boolean;onGoals:()=>void;demo:boolean;displayName:string;snapshot:WorkspaceSnapshot;onWorkspaceChange:()=>void;navigate:(view:View)=>void}){
  const orders=useWorkOrders(demo),[orderRoom,setOrderRoom]=useState(false),[orderDraft,setOrderDraft]=useState(''),[orderSelection,setOrderSelection]=useState<string|null>(null);
  useEffect(()=>{const id=new URLSearchParams(location.search).get('order');if(id){setOrderSelection(id);setOrderRoom(true)}},[]);
  const chat=useAgentConversations(demo,ownerId),{state,loaded,draft,setDraft,sending,error,setError,older,load}=chat;
  const attachmentScope='chat:'+(chat.selected??'new'),uploads=useAttachments(attachmentScope);
  useEffect(()=>{const received=(event:Event)=>{const detail=(event as CustomEvent<{ownerId:string;conversationId:string;attachmentIds:string[]}>).detail;if(detail.ownerId!==ownerId)return;const scope='chat:'+detail.conversationId;uploads.clearAt(scope,detail.attachmentIds);void uploads.completeShare(scope,detail.attachmentIds).catch(()=>{})};window.addEventListener('orbit:message-received',received);return()=>window.removeEventListener('orbit:message-received',received)},[ownerId,uploads]);
  const [activityOpen,setActivityOpen]=useState(false);
- const [feedback,setFeedback]=useState(''),[settings,setSettings]=useState(false),[runtimeOpen,setRuntimeOpen]=useState(false),[coachOpen,setCoachOpen]=useState(false),[voiceRequest,setVoiceRequest]=useState(0),[acting,setActing]=useState<string|null>(null),[deferred,setDeferred]=useState<AgentAction|null>(null),[reason,setReason]=useState(''),[revisit,setRevisit]=useState(addDays(todayInZone(snapshot.data.preferences.timeZone),1)),[queue,setQueue]=useState(false);
- const [actionNotices,setActionNotices]=useState<Record<string,{message:string;success?:boolean;overlap?:OverlapDetails}>>({});
+ const [feedback,setFeedback]=useState(''),[settings,setSettings]=useState(false),[runtimeOpen,setRuntimeOpen]=useState(false),[coachOpen,setCoachOpen]=useState(false),[voiceRequest,setVoiceRequest]=useState(0),[acting,setActing]=useState<string|null>(null),[queue,setQueue]=useState(false);
  const [evidence,setEvidence]=useState<AgentSource|null>(null);
  const chiefSyncError=useChiefSync(snapshot.data,demo);
- const decisionLock=useRef(false);
  useEffect(()=>{onOrdersChange?.(orders.orders)},[orders.orders,onOrdersChange]);
  useEffect(()=>{const open=(e:Event)=>{setOrderSelection((e as CustomEvent<{id?:string}>).detail?.id??null);setOrderDraft('');setOrderRoom(true);};window.addEventListener('orbit:orders',open);return()=>window.removeEventListener('orbit:orders',open)},[]);
  useEffect(()=>{if(loaded)onPendingCount?.(state.pendingActions?.length??0)},[loaded,state.pendingActions?.length,onPendingCount]);
- const decisionCount=state.pendingActions?.filter(a=>a.state==='pending').length??0;
- useEffect(()=>{if(loaded)onDecisionCount?.(decisionCount)},[loaded,decisionCount,onDecisionCount]);
+ useEffect(()=>{if(loaded&&state.pendingActions)onPendingActions?.(state.pendingActions)},[loaded,state.pendingActions,onPendingActions]);
  useEffect(()=>{const compose=(e:Event)=>{setDraft((e as CustomEvent<{text:string}>).detail.text.slice(0,8000));setQueue(false);setTimeout(()=>input.current?.focus(),0)},connect=()=>setSettings(true),runtime=()=>setRuntimeOpen(true),review=()=>setQueue(true),coach=()=>setCoachOpen(true);window.addEventListener('orbit:review',review);window.addEventListener('orbit:coach-settings',coach);window.addEventListener('orbit:compose',compose);window.addEventListener('orbit:connections',connect);window.addEventListener('orbit:runtime',runtime);return()=>{window.removeEventListener('orbit:review',review);window.removeEventListener('orbit:coach-settings',coach);window.removeEventListener('orbit:compose',compose);window.removeEventListener('orbit:connections',connect);window.removeEventListener('orbit:runtime',runtime)}},[setDraft]);
  const input=useRef<HTMLTextAreaElement>(null),end=useRef<HTMLDivElement>(null),running=!!state.activeRuns?.some(r=>r.conversationId===chat.selected);
  // Size from content, including restored drafts and voice input. A cleared draft
@@ -88,43 +66,19 @@ export function AgentWorkspace({visible=true,ownerId, demo,displayName,snapshot,
  const lastTurn=state.turns.at(-1),failedTurn=!sending&&!running&&lastTurn?.status==='failed'?lastTurn:null;
  async function stopRun(id:string){setActing(id);setError('');try{await agentRequest('/api/agent/run','POST',{id,action:'cancel'});setFeedback('중지를 요청했습니다. 종료되면 알려드릴게요.');await load()}catch(e){setError(e instanceof Error?e.message:'중지 상태를 확인하지 못했습니다.')}finally{setActing(null)}}
  const opened=()=>{setQueue(false);setFeedback('')};
- async function decision(item:AgentAction,decision:'approve'|'defer'|'reconsider'|'reject',overlapConfirmation?:string){
-  if(decisionLock.current||acting)return;decisionLock.current=true;setActing(item.id);setError('');
-  setActionNotices(previous=>({...previous,[item.id]:{message:'처리 중입니다…'}}));
-  try{
-   let result;const request=scopedRequest(agentRequest);
-   try{result=await request('/api/agent','PATCH',{id:item.id,decision,...(overlapConfirmation?{overlapConfirmation}:{}),...(decision==='defer'?{reason,revisitDate:revisit}:{})});}catch(error){
-    if(!isConnectionError(error))throw error;
-    const check=await request('/api/agent?actionReceipt='+encodeURIComponent(item.id));
-    if(!decisionReceiptMatches(check.receipt,{decision,reason,revisitDate:revisit}))throw error;
-    result=decision==='approve'&&check.receipt.refreshTurnId&&check.receipt.state!=='approved'?{ok:true,refreshing:true}:{ok:true};
-   }
-   if(result.refreshing){setActionNotices(previous=>({...previous,[item.id]:{message:'관련 기록이 변경되어 최신 내용으로 제안을 다시 준비하고 있습니다. 새 제안을 확인한 뒤 승인해 주세요.',success:true}}));await refresh().catch(()=>{});return;}
-
-   setDeferred(null);
-   const message=decision==='approve'?(item.action.type==='agent.dispatch'?'업무 지시를 저장했습니다. 실행실에서 접수와 진행을 확인하세요.':'승인한 내용을 반영했습니다.'):decision==='defer'?'검토할 날짜와 보류 이유를 저장했습니다.':decision==='reject'?'제안을 닫았습니다.':'다시 검토할 수 있습니다.';
-   setActionNotices(previous=>({...previous,[item.id]:{message,success:true}}));setFeedback(message);
-   try{await refresh()}catch{setActionNotices(previous=>({...previous,[item.id]:{message:message+' 목록을 새로 불러오지 못했습니다. 대화 새로 불러오기를 누르면 결과를 확인할 수 있습니다.',success:true}}))}
-  }catch(e){
-   const message=e instanceof Error?e.message:'변경을 완료하지 못했습니다.';
-   setActionNotices(previous=>({...previous,[item.id]:{message,overlap:e instanceof AgentRequestError&&e.code==='CALENDAR_OVERLAP'?e.details:undefined}}));
-   await load().catch(()=>{});
-  }finally{decisionLock.current=false;setActing(null)}
- }
- const actionNotice=(item:AgentAction)=>{
-  const notice=actionNotices[item.id];if(!notice)return null;
-  return <div role={notice.success||acting===item.id?'status':'alert'} className={notice.success?'agent-feedback':'agent-error'}>
-   <p>{notice.message}</p>
-   {notice.overlap&&item.state!=='approved'&&<>
-    <ul className="agent-overlap-list">{notice.overlap.conflicts.map((event,index)=><li key={index}><strong>{event.title}</strong><span>{event.date} · {formatTime(event.start)}–{formatTime(event.end)}</span></li>)}</ul>
-    {notice.overlap.total>notice.overlap.conflicts.length&&<p>외 {notice.overlap.total-notice.overlap.conflicts.length}개 일정이 더 겹칩니다.</p>}
-    <div className="agent-overlap-options"><button className="primary-button" disabled={!!acting} onClick={()=>void decision(item,'approve',notice.overlap!.overlapConfirmation)}>겹침을 확인하고 등록</button><button className="secondary-button" disabled={!!acting} onClick={()=>{setDraft('“'+item.title+'” 제안을 기존 일정과 겹치지 않는 시간으로 다시 제안해 줘.');setQueue(false);input.current?.focus()}}>다른 시간 요청하기</button></div>
-   </>}
-  </div>;
- };
+ // The 결재함 decides on the same cards; it asks this single chat instance to reload them.
+ const refreshRef=useRef(refresh);
+ useLayoutEffect(()=>{refreshRef.current=refresh});
+ useEffect(()=>{const handle=(event:Event)=>{const done=(event as CustomEvent<{done?:(error?:unknown)=>void}>).detail?.done;refreshRef.current().then(()=>done?.(),error=>done?.(error??new Error('refresh failed')))};window.addEventListener('orbit:agent-refresh',handle);return()=>window.removeEventListener('orbit:agent-refresh',handle)},[]);
+ // Opening a conversation from elsewhere (e.g. the 결재함) shows that conversation, not the review queue.
+ useEffect(()=>{const show=()=>setQueue(false);window.addEventListener('orbit:open-chat',show);return()=>window.removeEventListener('orbit:open-chat',show)},[]);
+ const askOtherTime=(item:AgentAction)=>{setDraft('“'+item.title+'” 제안을 기존 일정과 겹치지 않는 시간으로 다시 제안해 줘.');setQueue(false);input.current?.focus()};
+ const review=useActionDecisions({timeZone:snapshot.data.preferences.timeZone,refresh,load,onStart:()=>setError(''),onFeedback:setFeedback,onAskOther:askOtherTime});
 
  const ready=state.directChatReady||state.connections.find(c=>c.provider==='hermes')?.connected,pending=state.pendingActions??[];
- const renderAction=(item:AgentAction)=><article key={item.id} className={'agent-action '+item.state}><div className="agent-action-top"><span>{item.action.type==='agent.dispatch'?'맡길 업무':item.action.type==='memory.upsert'?'기억 제안':item.action.type==='quest.plan'?'목표 퀘스트':item.action.type.startsWith('google.event.')?'GOOGLE 일정':item.action.type.startsWith('note.')?'기록 제안':item.action.type.startsWith('proposal.')||item.action.type.startsWith('review.')?'하루 설계':'업무 제안'}</span><small>{({pending:'승인 대기',applying:'적용 중',approved:'반영 완료',deferred:'보류',rejected:'닫힘'})[item.state]}</small></div>{queue&&item.conversationId&&<button className="text-button" onClick={()=>{chat.select(item.conversationId!);opened()}}>원래 대화 열기 <ArrowUpRight size={14}/></button>}<h3>{item.title}</h3><p>{item.reason}</p><ActionPreview item={item} snapshot={snapshot}/>{actionNotice(item)}{item.note&&<p className="agent-defer-note">{item.revisitDate} 다시 검토 · {item.note}</p>}{item.state==='approved'&&item.result?.orderId&&<button className="text-button" onClick={()=>{setOrderDraft('');setOrderSelection(item.result!.orderId!);setOrderRoom(true);void orders.refresh()}}>실행과 결과 확인 <ArrowUpRight size={14}/></button>}{item.state==='approved'&&item.result?.briefDate&&<button className="text-button" onClick={()=>navigate('proposal')}>원페이지 제안 확인 <ArrowUpRight size={14}/></button>}{item.state==='approved'&&item.result?.url&&/^https:\/\/(calendar\.google\.com|www\.google\.com)\//.test(item.result.url)&&<a className="text-button" href={item.result.url} target="_blank" rel="noreferrer">Google에서 일정 보기 <ArrowUpRight size={14}/></a>}{['pending','applying'].includes(item.state)&&<div className="agent-action-buttons"><button className="primary-button" disabled={!!acting} onClick={()=>void decision(item,'approve')}>{acting===item.id?<LoaderCircle size={15} className="animate-spin"/>:<Check size={15}/>} {item.state==='applying'?'결과 확인 / 재시도':item.action.type==='agent.dispatch'?'승인하고 실행':'승인하고 반영'}</button><button className="secondary-button" disabled={!!acting||item.state==='applying'} onClick={()=>{setDeferred(item);setReason('');setRevisit(addDays(todayInZone(snapshot.data.preferences.timeZone),1))}}><Clock3 size={15}/> 보류</button><button className="icon-button" aria-label={item.title+' 제안 닫기'} disabled={!!acting||item.state==='applying'} onClick={()=>void decision(item,'reject')}><X size={16}/></button></div>}{item.state==='deferred'&&<button className="text-button" disabled={!!acting} onClick={()=>void decision(item,'reconsider')}>다시 검토하기 <ArrowUpRight size={14}/></button>}</article>;
+ const renderAction=(item:AgentAction)=><ActionCard key={item.id} item={item} snapshot={snapshot} review={review} onAskOther={askOtherTime}
+  lead={queue&&item.conversationId&&<button className="text-button" onClick={()=>{chat.select(item.conversationId!);opened()}}>원래 대화 열기 <ArrowUpRight size={14}/></button>}
+  extra={<>{item.state==='approved'&&item.result?.orderId&&<button className="text-button" onClick={()=>{setOrderDraft('');setOrderSelection(item.result!.orderId!);setOrderRoom(true);void orders.refresh()}}>실행과 결과 확인 <ArrowUpRight size={14}/></button>}{item.state==='approved'&&item.result?.briefDate&&<button className="text-button" onClick={()=>navigate('proposal')}>원페이지 제안 확인 <ArrowUpRight size={14}/></button>}{item.state==='approved'&&item.result?.url&&/^https:\/\/(calendar\.google\.com|www\.google\.com)\//.test(item.result.url)&&<a className="text-button" href={item.result.url} target="_blank" rel="noreferrer">Google에서 일정 보기 <ArrowUpRight size={14}/></a>}</>}/>;
  return <FileDrop className="agent-layout" onFiles={uploads.add} disabled={demo||chat.creating}><ConversationLibrary chat={chat} projects={snapshot.data.projects} demo={demo} onOpen={opened}/><section className="agent-workspace" aria-label="Orbit AI 에이전트"><header className="agent-toolbar"><div className="agent-identity"><span><OrbitMark size={32}/></span><div><strong>ORBIT</strong><small>나의 페이스메이커</small></div></div><div className="agent-tools"><button className={'secondary-button '+(queue?'selected':'')} onClick={()=>setQueue(v=>!v)} aria-pressed={queue}><Check size={15}/><span>검토함</span>{pending.length>0&&<b>{pending.length}</b>}</button><DropdownMenu><DropdownMenuTrigger asChild><button type="button" className="icon-button" aria-label="대화 메뉴"><Ellipsis size={22}/></button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={demo} onSelect={()=>setActivityOpen(true)}>통합 기록</DropdownMenuItem><DropdownMenuItem disabled={demo} onSelect={()=>{setOrderDraft('');setOrderSelection(null);setOrderRoom(true);void orders.refresh()}}>업무 진행</DropdownMenuItem><DropdownMenuItem disabled={demo} onSelect={()=>setCoachOpen(true)}>나의 페이스 설정</DropdownMenuItem><DropdownMenuItem onSelect={()=>navigate('aside')}>웹 업무 진행</DropdownMenuItem><DropdownMenuItem onSelect={()=>navigate('automation')}>반복 업무</DropdownMenuItem><DropdownMenuItem disabled={demo} onSelect={()=>setSettings(true)}>연결 관리</DropdownMenuItem><DropdownMenuItem disabled={demo} onSelect={()=>setRuntimeOpen(true)}>자동 실행 설정</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></header><ConversationHeading chat={chat} projects={snapshot.data.projects} onOpen={opened}/>
  {!loaded?<div className="agent-loading"><LoaderCircle size={22} className="animate-spin"/>대화를 불러오는 중</div>:queue?<div className="agent-queue"><h2>내가 결정하는 다음 단계</h2><p>반영할 내용을 확인하고 승인하거나, 이유와 검토일을 남겨 보류하세요.</p>{pending.length?pending.map(renderAction):<div className="agent-empty-queue"><Check size={24}/><p>검토를 기다리는 제안이 없습니다.</p><button className="text-button" onClick={()=>setQueue(false)}>대화로 돌아가기</button></div>}</div>:<>
   {!state.turns.length&&<div className="agent-welcome"><h1>무엇을 도와드릴까요?</h1><div className="agent-suggestions">{suggestions.slice(0,2).map(s=><button key={s.title} onClick={()=>{setDraft(s.text);input.current?.focus()}}><s.icon size={18}/><span>{s.title}</span><ArrowUpRight size={15}/></button>)}</div>{demo?<p className="agent-setup-note">체험 화면입니다. 실제 AI 대화는 내 워크스페이스에서 연결 후 시작할 수 있습니다.</p>:!ready&&<div className="agent-setup"><span>대화를 시작하려면 AI 연결이 필요해요.</span><button onClick={()=>setSettings(true)}>연결하기 <ArrowUpRight size={15}/></button></div>}</div>}
@@ -147,6 +101,6 @@ export function AgentWorkspace({visible=true,ownerId, demo,displayName,snapshot,
  {activityOpen&&<ActivityLibrary projects={snapshot.data.projects} onClose={()=>setActivityOpen(false)}/>}
  {orderRoom&&<OrderRoom key={orderSelection??'all'} room={orders} data={snapshot.data} demo={demo} conversationId={chat.selected} initialText={orderDraft} initialOrderId={orderSelection} onCompose={text=>{setOrderRoom(false);setQueue(false);if(text)setDraft(text);setTimeout(()=>input.current?.focus(),0)}} onClose={()=>setOrderRoom(false)} onAsk={id=>{setOrderRoom(false);setQueue(false);setDraft('업무 지시 '+id+'의 실제 실행 결과와 원래 지시를 읽고 검토해 줘. Google 반복 시리즈 삭제가 도구 부재로 막혔다면 원래 대상·전체 시리즈 범위를 유지해 Orbit의 google.event.deleteSeries 승인 카드로 처리하도록 제안해 줘. 기존 할 일은 변경하지 마. 다른 업무는 완료된 내용과 남은 일을 정리해 줘.');input.current?.focus()}} onComplete={id=>perform({type:'task.status',id,status:'done'},'검토한 결과를 완료로 기록했습니다.')}/>}
  {settings&&<Connections connections={state.connections} onClose={()=>setSettings(false)} onChange={refresh}/>}
- {deferred&&<Dialog open onOpenChange={open=>{if(!open)setDeferred(null)}}><DialogContent><DialogHeader><DialogTitle>지금은 보류하기</DialogTitle><DialogDescription>{deferred.title}</DialogDescription></DialogHeader><form className="dialog-form agent-defer-form" onSubmit={e=>{e.preventDefault();void decision(deferred,'defer')}}><label>보류하는 이유<textarea className="form-field" value={reason} onChange={e=>setReason(e.target.value)} required maxLength={2000} placeholder="선행 자료가 도착한 뒤 진행하기"/></label><label>다시 검토할 날짜<input className="form-field" type="date" min={addDays(todayInZone(snapshot.data.preferences.timeZone),1)} value={revisit} onChange={e=>setRevisit(e.target.value)} required/></label>{actionNotice(deferred)}<button className="primary-button" disabled={!!acting||!reason.trim()}>이유를 남기고 보류</button></form></DialogContent></Dialog>}
+ {review.deferDialog}
  </section></FileDrop>;
 }
