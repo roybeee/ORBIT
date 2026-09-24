@@ -1,0 +1,7 @@
+GITHUB_SHA: 7abbcb99c45bb4f2507dc4c19c7a0df3b27f5cbb
+TREE: 47161271842868dfc4bae02b5dd20aa6f245ca0b
+SITES_COMMIT: 684119f40f8ed739380739da57318452c6c4c84d
+SITES_VERSION: appgprj_6a9d00d3209481919c9626ca51014318~appgver_97f446ab7c1481918179300a0f219066
+DEPLOYMENT_ID: appgdep_6ab54395574c8191b5395095a360f30c
+DEPLOYMENT_STATUS: succeeded
+NOTES: npm ci·빌드 passed(real), 테스트 777 passed(외부 연동 mocked 포함), 실패 0. Git 쓰기 제한은 임시 저장소로 해결. 원본 소스 변경 없음.
