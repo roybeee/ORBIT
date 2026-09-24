@@ -24,7 +24,9 @@ export function forbiddenReason(body:GoogleError){
  if(reasons.some(r=>r==='ACCESS_TOKEN_SCOPE_INSUFFICIENT'||r==='insufficientPermissions'))return 'Google Tasks 권한이 없습니다. 연결 관리에서 Google Calendar를 다시 연결하고 Tasks 권한을 승인해 주세요.';
  return `Google Tasks 접근이 거부되었습니다(${reasons.join(', ')||'사유 없음'}). 연결 관리에서 Google Calendar를 다시 연결해 주세요.`;
 }
-const MAX_PER_RUN=25,THROTTLE_MS=60000;
+// One list request per Google task list per sync: the first read (or any unconfirmed link) takes the
+// whole list, later reads only what changed since the last successful sync (with a clock margin).
+const THROTTLE_MS=30000,MARGIN_MS=5*60000,MAX_PAGES=10;
 const sideOf=(t:Task):Side=>({title:t.title,due:t.due,status:t.status==='done'?'completed':'needsAction'});
 const same=(a:Side,b:Side)=>a.title===b.title&&a.due===b.due&&a.status===b.status;
 
@@ -34,13 +36,25 @@ async function call(token:string,list:string,id:string,init:RequestInit={}){
  if(result.response.status===401||result.response.status===403)throw new Forbidden(forbiddenReason(result.data as GoogleError));
  return result;
 }
-async function remoteOf(token:string,list:string,id:string,fallbackDue:string):Promise<Remote|null>{
- const {response,data}=await call(token,list,id);
- if(response.status===404||response.status===410||(response.ok&&data.deleted===true))return null;
- if(!response.ok)throw new Error('Google Tasks 조회 실패 '+response.status);
+type Item={id:string;title?:string;due?:string;status?:string;etag?:string;completed?:string;deleted?:boolean};
+async function listChanges(token:string,list:string,updatedMin?:string){
+ const items=new Map<string,Item>();let page='';
+ for(let n=0;n<MAX_PAGES;n++){
+  const url=new URL('https://tasks.googleapis.com/tasks/v1/lists/'+encodeURIComponent(list)+'/tasks');
+  url.search=new URLSearchParams({showCompleted:'true',showHidden:'true',showDeleted:'true',maxResults:'100',...(updatedMin?{updatedMin}:{}),...(page?{pageToken:page}:{})}).toString();
+  const {response,data}=await fetchJson<{items?:Item[];nextPageToken?:string}&GoogleError>(url.href,{headers:{Authorization:'Bearer '+token}},8000);
+  if(response.status===401||response.status===403)throw new Forbidden(forbiddenReason(data));
+  if(!response.ok)throw new Error('Google Tasks 목록 조회 실패 '+response.status);
+  for(const item of data.items??[])items.set(item.id,item);
+  page=data.nextPageToken??'';if(!page)return items;
+ }
+ throw new Error('Google Tasks 목록이 너무 깁니다.');
+}
+function remoteOf(item:Item,fallbackDue:string):Remote|null{
+ if(item.deleted)return null;
  // A Google Task can lose its due date; ORBIT tasks always have one, so keep ORBIT's.
- const due=typeof data.due==='string'?data.due.slice(0,10):fallbackDue;
- return {title:String(data.title??''),due,status:data.status==='completed'?'completed':'needsAction',etag:String(data.etag??''),...(typeof data.completed==='string'?{completed:data.completed}:{})};
+ const due=typeof item.due==='string'?item.due.slice(0,10):fallbackDue;
+ return {title:String(item.title??''),due,status:item.status==='completed'?'completed':'needsAction',etag:String(item.etag??''),...(item.completed?{completed:item.completed}:{})};
 }
 
 // Built from a fresh read, so an ORBIT edit made while Google was being fetched is kept.
@@ -55,9 +69,11 @@ const saveLink=(db:Database,owner:string,task:Task,state:Side&{etag:string})=>db
  .bind(owner,task.id,task.googleTask!.taskListId,task.googleTask!.taskId,JSON.stringify(state),new Date().toISOString()).run();
 const dropLink=(db:Database,owner:string,taskId:string)=>db.prepare('DELETE FROM orbit_google_task_links WHERE owner_id=? AND task_id=?').bind(owner,taskId).run();
 
-async function syncOne(db:Database,owner:string,token:string,task:Task,link:Link|undefined):Promise<'missing'|void>{
+// remote: the Google state (null = gone); undefined = unchanged in Google since the last sync.
+async function syncOne(db:Database,owner:string,token:string,task:Task,link:Link|undefined,found:Remote|null|undefined):Promise<'missing'|void>{
  const {taskListId:list,taskId:id}=task.googleTask!;
- const remote=await remoteOf(token,list,id,task.due);
+ const confirmed:Remote|undefined=link&&JSON.parse(link.state_json).etag?JSON.parse(link.state_json):undefined;
+ const remote=found===undefined?confirmed??null:found;
  // Only a task this sync has seen in Google before can have been deleted there. Without a link
  // a 404 may mean another Google account or a task restored after its Google copy was removed.
  // A base link stored at creation (no etag yet) has not been confirmed in this account either.
@@ -67,7 +83,9 @@ async function syncOne(db:Database,owner:string,token:string,task:Task,link:Link
   if(same(local,remote)){await saveLink(db,owner,task,{...local,etag:remote.etag});return}
   const body={title:local.title,due:local.due+'T00:00:00.000Z',status:local.status,...(local.status==='needsAction'?{completed:null}:{})};
   const {response,data}=await call(token,list,id,{method:'PATCH',headers:{'If-Match':remote.etag},body:JSON.stringify(body)});
-  if(response.ok)await saveLink(db,owner,task,{...local,etag:String(data.etag??'')});
+  if(response.ok){await saveLink(db,owner,task,{...local,etag:String(data.etag??'')});return}
+  // 412: changed in Google meanwhile; the next change read brings it back for a fresh decision.
+  if(response.status!==412)throw new Error('Google Tasks 수정 실패 '+response.status);
   return;
  }
  if(!same(remote,last)){
@@ -83,20 +101,28 @@ async function syncOne(db:Database,owner:string,token:string,task:Task,link:Link
 export async function syncGoogleTasks(db:Database,owner:string,env:Runtime,options:{force?:boolean}={}){
  const snapshot=await readWorkspace(db,owner),today=todayInZone(snapshot.data.preferences.timeZone);
  const {results:links}=await db.prepare('SELECT task_id,task_list_id,google_task_id,state_json,updated_at FROM orbit_google_task_links WHERE owner_id=?').bind(owner).all<Link>();
- const checked=(t:Task)=>links.find(l=>l.task_id===t.id)?.updated_at??'';
- // Open tasks and ones finished in the last two weeks, least recently checked first so every
- // task gets its turn; older finished work is left alone.
- const tasks=snapshot.data.tasks.filter(t=>t.googleTask&&(t.status!=='done'||(t.completedOn??t.due)>=addDays(today,-14)))
-  .sort((a,b)=>checked(a).localeCompare(checked(b))).slice(0,MAX_PER_RUN);
+ // Open tasks and ones finished in the last two weeks; older finished work is left alone.
+ const tasks=snapshot.data.tasks.filter(t=>t.googleTask&&(t.status!=='done'||(t.completedOn??t.due)>=addDays(today,-14)));
  const removed=links.filter(l=>!snapshot.data.tasks.some(t=>t.id===l.task_id));
  if(!tasks.length&&!removed.length)return;
- if(!options.force){const last=(await sourceStatuses(db,owner)).find(s=>s.provider==='google_tasks');if(last&&Date.now()-Date.parse(last.attemptedAt)<THROTTLE_MS)return}
+ const last=(await sourceStatuses(db,owner)).find(s=>s.provider==='google_tasks');
+ if(!options.force&&last&&Date.now()-Date.parse(last.attemptedAt)<THROTTLE_MS)return;
  try{
   const token=await accessToken(db,owner,'google_calendar',env);
   let missing=0,failed=0;
-  for(const task of tasks){
-   try{if(await syncOne(db,owner,token,task,links.find(l=>l.task_id===task.id))==='missing')missing++}
-   catch(error){if(error instanceof Forbidden)throw error;failed++}
+  for(const list of new Set(tasks.map(t=>t.googleTask!.taskListId))){
+   const inList=tasks.filter(t=>t.googleTask!.taskListId===list);
+   const confirmed=(t:Task)=>!!JSON.parse(links.find(l=>l.task_id===t.id)?.state_json??'{}').etag;
+   // Incremental only when every task here has been seen in Google and the last sync succeeded.
+   const since=last?.succeededAt&&inList.every(confirmed)?new Date(Date.parse(last.succeededAt)-MARGIN_MS).toISOString():undefined;
+   const items=await listChanges(token,list,since);
+   for(const task of inList){
+    const item=items.get(task.googleTask!.taskId);
+    // In a full read an absent task is gone (or belongs to another account); in a change read it is unchanged.
+    const found=item?remoteOf(item,task.due):since?undefined:null;
+    try{if(await syncOne(db,owner,token,task,links.find(l=>l.task_id===task.id),found)==='missing')missing++}
+    catch(error){if(error instanceof Forbidden)throw error;failed++}
+   }
   }
   for(const link of removed){
    const last=JSON.parse(link.state_json) as {etag?:string};

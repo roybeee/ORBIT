@@ -27,11 +27,12 @@ function tasksApi({forbidden=false,forbiddenBody,onGet,broken=[]}={}){
   if(forbidden)return Response.json(forbiddenBody??{error:{code:403}},{status:403});
   const m=/^\/tasks\/v1\/lists\/([^/]+)\/tasks(?:\/([^/]+))?$/.exec(u.pathname);if(!m)throw new Error('Unexpected '+url);
   const id=m[2]&&decodeURIComponent(m[2]),current=id&&items.get(id);
-  if(!id)return Response.json({items:[...items.values()].filter(v=>!u.searchParams.get('updatedMin')||v.updated>=u.searchParams.get('updatedMin'))});
-  if(method==='GET'){if(broken.includes(id))return Response.json({},{status:500});await onGet?.(id);return current?Response.json(current):Response.json({},{status:404})}
+  if(!id){await onGet?.();return Response.json({items:[...items.values()].filter(v=>(u.searchParams.get('showDeleted')==='true'||!v.deleted)&&(!u.searchParams.get('updatedMin')||v.updated>=u.searchParams.get('updatedMin')))})}
+  if(method==='GET'){await onGet?.(id);return current?Response.json(current):Response.json({},{status:404})}
+  if(broken.includes(id))return Response.json({},{status:500});
   if(init.headers?.['If-Match']&&current&&init.headers['If-Match']!==current.etag)return Response.json({},{status:412});
   if(method==='PATCH'){const next=touch({...current,...JSON.parse(init.body)});items.set(id,next);return Response.json(next)}
-  if(method==='DELETE'){items.delete(id);return new Response(null,{status:204})}
+  if(method==='DELETE'){items.set(id,touch({...current,deleted:true}));return new Response(null,{status:204})}
   throw new Error('Unexpected '+method);
  };
  return {items,calls,edit(changes){items.set('gt-1',touch({...items.get('gt-1'),...changes}))}};
@@ -76,7 +77,7 @@ test('when both sides changed, ORBIT wins',()=>fixture(async db=>{
 
 test('deleting on either side deletes the other',()=>fixture(async db=>{
  const g=await linked(db);
- g.items.delete('gt-1');
+ g.edit({deleted:true});
  await sync(db);
  assert.equal(await mine(db),undefined);
  await act(db,{type:'task.upsert',task:{...task,id:'slack-2',googleTask:{taskListId:'@default',taskId:'gt-2'}}});
@@ -84,7 +85,7 @@ test('deleting on either side deletes the other',()=>fixture(async db=>{
  await sync(db);
  await act(db,{type:'task.delete',id:'slack-2'});
  await sync(db);
- assert.equal(g.items.has('gt-2'),false);
+ assert.equal(g.items.get('gt-2').deleted,true);
 }));
 
 test('without the Google Tasks permission nothing changes and the status asks to reconnect',()=>fixture(async db=>{
@@ -151,9 +152,12 @@ test('one failing task does not stop the others',()=>fixture(async db=>{
  await act(db,{type:'project.upsert',project});
  await act(db,{type:'task.upsert',task:{...task,id:'slack-0',googleTask:{taskListId:'@default',taskId:'gt-0'}}});
  await act(db,{type:'task.upsert',task});
- const g=tasksApi({broken:['gt-0']});await sync(db);
- g.edit({status:'completed'});await sync(db);
- assert.equal((await mine(db)).status,'done');
+ const g=tasksApi({broken:['gt-0']});
+ g.items.set('gt-0',{id:'gt-0',title:'계약서 검토',due:'2026-10-02T00:00:00.000Z',status:'needsAction',etag:'"0"',updated:'2026-09-25T00:00:00.000Z'});
+ await sync(db);
+ for(const id of ['slack-0','slack-1']){const t=(await readWorkspace(db,'a')).data.tasks.find(x=>x.id===id);await act(db,{type:'task.upsert',task:{...t,title:'바뀐 제목'}})}
+ await sync(db);
+ assert.equal(g.items.get('gt-1').title,'바뀐 제목','the other task still reaches Google');
  assert.match((await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks').detail,/확인하지 못한/);
 }));
 
@@ -176,4 +180,22 @@ test('the status names the real cause Google gives for a 403',()=>fixture(async 
  await sync(db);
  status=(await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks');
  assert.match(status.detail,/다시 연결/);assert.match(status.detail,/Tasks 권한/);
+}));
+
+test('each sync asks Google once for the whole list, and later syncs ask only for changes',()=>fixture(async db=>{
+ await saveConnection(db,'a','google_calendar',{accessToken:'test',expiresAt:Date.now()+3600000},{connected:true},env.ORBIT_ENCRYPTION_KEY);
+ await act(db,{type:'project.upsert',project});
+ const g=tasksApi();
+ for(const n of [1,2,3]){
+  await act(db,{type:'task.upsert',task:{...task,id:'slack-'+n,googleTask:{taskListId:'@default',taskId:'gt-'+n}}});
+  g.items.set('gt-'+n,{id:'gt-'+n,title:'계약서 검토',due:'2026-10-02T00:00:00.000Z',status:'needsAction',etag:'"'+n+'"',updated:'2026-09-25T00:00:00.000Z'});
+ }
+ const urls=[];const inner=globalThis.fetch;globalThis.fetch=async(url,init)=>{urls.push(new URL(url));return inner(url,init)};
+ await sync(db);
+ assert.deepEqual(urls.map(u=>(u.pathname.endsWith('/tasks')?'list':'item')),['list'],'three linked tasks, one request');
+ assert.equal(urls[0].searchParams.get('updatedMin'),null,'the first sync reads the whole list');
+ assert.equal(urls[0].searchParams.get('showDeleted'),'true');
+ urls.length=0;
+ await sync(db);
+ assert.equal(urls.length,1);assert.ok(urls[0].searchParams.get('updatedMin'),'later syncs ask only for changes');
 }));
