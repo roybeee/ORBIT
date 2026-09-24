@@ -696,6 +696,15 @@ export function applyAction(
       if (!data.events.some((e) => e.id === action.id)) fail('첨부할 일정을 찾을 수 없습니다.');
       break;
     }
+    case 'calendar.adopt': {
+      const old = data.events.find((x) => x.id === action.event.id);
+      if (!old || old.id.startsWith('google:')) fail('반영할 Orbit 일정을 찾을 수 없습니다.');
+      const e = action.event;
+      // A block tied to a task keeps the task's title; only its time follows Google.
+      data.events = replace(data.events, {...old!, date: e.date, start: e.start, end: e.end,
+        ...(old!.taskId ? {} : {title: e.title, description: e.description})});
+      break;
+    }
     case 'event.delete': {
       if (action.id.startsWith('google:')) fail('Google 일정은 원본 캘린더에서 삭제해 주세요.');
       if (action.id.startsWith('approved:')) fail('집중 시간은 제안 화면에서 승인을 취소해 주세요.');

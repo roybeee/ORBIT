@@ -2,6 +2,7 @@ import {prepareWorkspace} from '../../../db/workspace-storage.ts';
 import {storedEventScope} from '../event-details.ts';
 import {flushCalendarOutbox,calendarDeliveryStatus} from './calendar-outbox.ts';
 import {calendarSelection} from './calendar-settings.ts';
+import {reconcileOrbitEvents} from './calendar-reconcile.ts';
 import {recordSource} from '../source-status.ts';
 import {readWorkspace,RevisionConflict,queueTaskCalendarBackfill,queueGoogleColorBackfill,type Database} from '../../../db/repository.ts';
 import {addDays,todayInZone,validDate} from '../dates.ts';
@@ -72,6 +73,8 @@ export async function createGoogleEvent(db:Database,owner:string,env:Runtime,id:
 
 export async function syncCalendar(db:Database,owner:string,env:Runtime,date?:string){
  try{const initial=await readWorkspace(db,owner);await queueTaskCalendarBackfill(db,owner,date??todayInZone(initial.data.preferences.timeZone));await flushCalendarOutbox(db,owner,env);const result=await syncCalendarInternal(db,owner,env,date);
+ // Best effort: the read itself succeeded, so a reconcile failure must not fail the sync.
+ if(result.connected&&result.from&&result.to)await reconcileOrbitEvents(db,owner,env,{from:result.from,to:result.to,targets:result.targets??[]}).catch(()=>undefined);
  if(result.connected&&(await calendarSelection(db,owner)).version!==result.selectionVersion)throw new RevisionConflict('캘린더 선택이 변경되어 최신 확인이 필요합니다.');
  await recordSource(db,owner,'google_calendar',{state:result.connected?'ok':'partial',detail:result.connected?'선택한 캘린더 조회 완료':'Google Calendar 연결 필요',count:result.count,from:result.from,to:result.to,targets:result.targets},result.selectionVersion);if(result.connected)await queueGoogleColorBackfill(db,owner);return {...result,delivery:await calendarDeliveryStatus(db,owner)};}
  catch(error){await recordSource(db,owner,'google_calendar',{state:'error',detail:error instanceof Error?error.message:'일정 동기화 실패'});throw error;}
