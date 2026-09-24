@@ -3,7 +3,7 @@ import type {Preferences, View} from './model.ts';
 export const illustrationIds = ['orbit','seoul','tokyo','los-angeles','new-york','singapore','hong-kong','shanghai','beijing','paris','london','orbital-garden','lunar-library','aurora-observatory','tidal-lab','red-dune','dawn-harbor'] as const;
 export type IllustrationId = typeof illustrationIds[number];
 export type IllustrationCollection = 'worlds' | 'cities';
-export const illustrationScreens = ['data','experiments','contacts','monthly','voice','portfolio','signals','meetings','followup','learning','backup','automation','aside','sound','agent','dashboard','goals','understanding','today','calendar','tasks','projects','wiki','knowledge','review','proposal'] as const satisfies readonly View[];
+export const illustrationScreens = ['inbox','data','experiments','contacts','monthly','voice','portfolio','signals','meetings','followup','learning','backup','automation','aside','sound','agent','dashboard','goals','understanding','today','calendar','tasks','projects','wiki','knowledge','review','proposal'] as const satisfies readonly View[];
 export interface IllustrationPreferences {
   defaultTheme: IllustrationId;
   screens: Partial<Record<View, IllustrationId>>;

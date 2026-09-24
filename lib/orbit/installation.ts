@@ -17,7 +17,7 @@ export function guideBrowser(platform:SupportedPlatform,browser:InstallBrowser):
  if(browser==='chrome'||browser==='edge')return browser;
  return platform==='mac'?'safari':'edge';
 }
-export const installRootUrl=(platform:SupportedPlatform,browser:InstallBrowser)=>'/?install='+platform+'&browser='+guideBrowser(platform,browser)+'#agent';
+export const installRootUrl=(platform:SupportedPlatform,browser:InstallBrowser)=>'/?install='+platform+'&browser='+guideBrowser(platform,browser)+'#today';
 export function installGuide(platform:SupportedPlatform,requested:InstallBrowser){
  const browser=guideBrowser(platform,requested),desktop=platform==='mac'||platform==='windows';
  const launcher=platform==='mac'?'Dock 또는 Spotlight':platform==='windows'?'시작 메뉴 또는 작업표시줄':'홈 화면';

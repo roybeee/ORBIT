@@ -23,11 +23,14 @@ after(()=>db.close());
 const identity=(id='owner-a')=>({'oai-authenticated-user-id':id,'oai-authenticated-user-email':id+'@example.test','oai-authenticated-user-full-name':'Test%20Owner','oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'});
 const request=(path,init={})=>worker.fetch(new Request('https://orbit.test'+path,init),{DB:db,ASSETS:{fetch:async()=>new Response('Not found',{status:404})}},{waitUntil(){},passThroughOnException(){}});
 function assertWorkspaceNavigation(html){
- assert.match(html,/class="all-menu-trigger"[^>]*aria-haspopup="dialog"/);
- const nav=html.match(/<nav class="mobile-nav" aria-label="주요 화면">([\s\S]*?)<\/nav>/)?.[1];
+ assert.match(html,/class="search-trigger"[^>]*aria-haspopup="dialog"/);
+ assert.match(html,/class="me-trigger"[^>]*aria-haspopup="dialog"/);
+ assert.doesNotMatch(html,/all-menu-trigger/,'the hidden 전체 메뉴 is replaced by 찾기');
+ const nav=html.match(/<nav class="mobile-nav orbit-tabbar" aria-label="주요 화면">([\s\S]*?)<\/nav>/)?.[1];
  assert.ok(nav,'the workspace must expose primary navigation');
  const buttons=[...nav.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)];
- assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','일정','대화','프로젝트','기록']);
+ assert.deepEqual(buttons.map(([,attrs,body])=>body.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<[^>]+>/g,'').replace(/<!--.*?-->/g,'').trim()),['오늘','결재함','Orbit','프로젝트','기록']);
+ assert.match(html,/<nav class="area-sections" aria-label="오늘 화면">/,'screens of the current area are visible, not in a dropdown');
  assert.equal(buttons.filter(([,attrs])=>attrs.includes('aria-current="page"')).length,1);
  assert.match(buttons[0][1],/aria-current="page"/);
 }
@@ -106,7 +109,7 @@ test('desktop and phone installation guide is authenticated, launches the agent 
  const denied=await request('/install');assert.ok([302,303,307,308].includes(denied.status));assert.match(denied.headers.get('location')??'',/signin-with-chatgpt/);
  const before=await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first();const page=await request('/install',{headers:identity()});assert.equal(page.status,200);const html=await page.text();
  for(const platform of ['Mac','Windows','갤럭시','iPhone'])assert.ok(html.includes(platform));
- assert.match(html,/Safari/);assert.match(html,/Dock에 추가/);assert.match(html,/href="\/\?install=mac&amp;browser=safari#agent"/);assert.match(html,/같은 ChatGPT 계정/);assert.match(html,/인터넷 연결/);
+ assert.match(html,/Safari/);assert.match(html,/Dock에 추가/);assert.match(html,/href="\/\?install=mac&amp;browser=safari#today"/);assert.match(html,/같은 ChatGPT 계정/);assert.match(html,/인터넷 연결/);
  assert.deepEqual(await db.prepare('SELECT COUNT(*) as n FROM orbit_workspaces').first(),before);
 });
 

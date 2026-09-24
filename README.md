@@ -2,11 +2,13 @@
 
 일정, 프로젝트, 개인 위키, 지식창고, 저녁 회고와 다음 날 제안을 연결하는 개인 매니지먼트 앱.
 
-**현재: v0.8 나의 페이스메이커.** 첫 대화 화면의 ‘나의 궤도’가 실제 목표 수치, 완료·미완료 작업, 일정, 컨디션과 막힌 이유를 판단해 지금 필요한 한 가지를 제안합니다. 일·건강·마음·학습·삶의 목표를 함께 관리하고, 과부하에는 회복과 범위 조정을 먼저 제안합니다. 돌봄·학습 루틴 시간은 실행 제안에서 보호됩니다. 집중 시작, 완료 기록, 보류와 재확인이 연결되며, Hermes 대화와 원페이지 제안도 같은 판단 기준을 사용합니다.
+**현재: v0.8 나의 페이스메이커.** ‘나의 궤도’가 실제 목표 수치, 완료·미완료 작업, 일정, 컨디션과 막힌 이유를 판단해 지금 필요한 한 가지를 제안합니다. 일·건강·마음·학습·삶의 목표를 함께 관리하고, 과부하에는 회복과 범위 조정을 먼저 제안합니다. 돌봄·학습 루틴 시간은 실행 제안에서 보호됩니다. 집중 시작, 완료 기록, 보류와 재확인이 연결되며, Hermes 대화와 원페이지 제안도 같은 판단 기준을 사용합니다.
 
 **실행실:** AI 대화의 실행실 또는 업무 지시에서 승인한 범위의 업무를 실제 Hermes 실행으로 전달합니다. 독립 지시를 병렬로 처리하고, 실행 중 추가 지시·중지·승인 응답·결과 검토를 제공합니다. 대화의 `agent.dispatch` 카드를 승인해도 같은 실행 경로를 사용합니다. 연결된 Hermes의 실제 도구와 권한을 사용하며, 다른 프로필이나 `dev-lead`라는 이름의 존재를 가정하지 않습니다. [업무 지시 안내](docs/Execution_Room.ko.md).
 
-**Dashboard:** WORKSPACE 메뉴의 첫 항목과 모바일 하단에서 전체 현황을 연다. 목표의 실제 수치, 오늘의 집중·완료 업무, 막힌 일, 저장된 일정, 돌봄·학습과 프로젝트 진행을 한 화면에서 확인한다. 각 항목은 기존 상세 화면으로 연결되고, 집중 시작과 루틴 완료는 기존 저장 절차를 사용한다. 첫 진입 화면은 AI 대화다.
+**화면 구성(정보 구조 v2):** 탭은 오늘 · 결재함 · 프로젝트 · 기록 네 개이고, 가운데 Orbit 버튼이 AI 대화를 연다. 설정·연결·백업·서버 자동화는 오른쪽 위 ‘나’에 있다. ‘찾기’(⌘K)는 예전 메뉴 이름으로도 화면을 찾는다. 승인·보류·확인이 필요한 것은 결재함에 모인다. [정보 구조 v2](docs/Orbit_IA_v2.ko.md).
+
+**Dashboard:** 오늘 탭의 ‘전체 현황’에서 연다. 목표의 실제 수치, 오늘의 집중·완료 업무, 막힌 일, 저장된 일정, 돌봄·학습과 프로젝트 진행을 한 화면에서 확인한다. 각 항목은 기존 상세 화면으로 연결되고, 집중 시작과 루틴 완료는 기존 저장 절차를 사용한다. 첫 진입 화면은 오늘이다.
 
 **목표와 이해:** `나의 목표`에서 일·건강·마음·학습 목표를 프로젝트와 퀘스트로 연결하고, 선후 관계와 시작 가능한 일을 봅니다. 실제 목표 수치와 퀘스트 완료율은 별도입니다. `나를 이해하는 기록`에서 확인한 기억을 수정·삭제하고, 실행 시간과 미완료 이유를 근거와 함께 확인합니다. 기억은 다음 Hermes 대화와 원페이지 제안에 반영됩니다. 답변의 출처를 누르면 당시 발췌와 문서 원본 버전을 열 수 있습니다. [페이스메이커 사용 안내](docs/Pacemaker.ko.md).
 
@@ -20,11 +22,11 @@
 - **Windows:** Edge 또는 Chrome으로 설치하고 시작 메뉴·작업표시줄에서 실행합니다.
 - **휴대폰:** Android는 Chrome, iPhone·iPad는 Safari의 홈 화면에 추가를 사용합니다.
 
-설치 안내의 **Orbit 열고 설치**로 대화 화면을 연 뒤 설치하면 Orbit 아이콘에서 에이전트 대화로 시작합니다. 설치형 웹 앱(PWA)이며 업무 저장과 Hermes 대화에는 인터넷 연결이 필요합니다. [컴퓨터 안내](docs/Orbit_Desktop.ko.md) · [휴대폰 안내](docs/Orbit_Mobile.ko.md).
+설치 안내의 **Orbit 열고 설치**로 오늘 화면을 연 뒤 설치하면 Orbit 아이콘에서 오늘 화면으로 시작합니다. 설치형 웹 앱(PWA)이며 업무 저장과 Hermes 대화에는 인터넷 연결이 필요합니다. [컴퓨터 안내](docs/Orbit_Desktop.ko.md) · [휴대폰 안내](docs/Orbit_Mobile.ko.md).
 
 ## Use
 
-1. `/` 대화 화면의 **연결**에서 AI와 필요한 계정을 설정합니다. 첫 프로젝트의 목표를 이야기하거나 직접 추가합니다.
+1. 오른쪽 위 **나 → 계정·연결**에서 AI와 필요한 계정을 설정합니다. 첫 프로젝트의 목표를 이야기하거나 직접 추가합니다.
 2. 회의록·지식을 프로젝트에 연결하고, 명시한 할 일을 검토해 등록합니다.
 3. 프로젝트 화면의 **목표·도미노**에서 목표 계층(꿈 → 중장기 → 단기)과 이것만 되면 나머지가 풀리는 **도미노 프로젝트**, 지킬 습관 1개·버릴 습관 2개, 상시 리스크를 둡니다.
 4. 할 일을 적을 때 **코치 체크**가 완료 조건(누구에게 무엇이 넘어가야 끝인지), 사분면 A/B/C/D, 인지 등급, 보정된 예상 시간을 함께 확인합니다. 제목의 키워드가 가리키는 프로젝트가 자동으로 선택되고(프로젝트 편집의 **키워드**로 보강), 할 일 화면의 **프로젝트 자동 안분**으로 이미 등록한 할 일도 한 번에 옮길 수 있습니다. 프로젝트 화면의 **그래프**에서 프로젝트 ↔ 키워드 ↔ 할 일의 연결을 봅니다. 경고는 저장을 막지 않습니다.
@@ -73,7 +75,7 @@ The authenticated app deliberately does not fall back to a public dev identity o
 
 D1 stores atomic workspace metadata and request receipts, with immutable document versions and evening review details in separate owner-scoped rows. Bodies load on demand, current-body search returns 24 records per page, and revision history returns 10. Legacy notes migrate atomically on the next acknowledged write. Workspace content now uses bounded Unicode-safe chunks in `orbit_workspace_chunks`, with a small manifest in `orbit_workspaces` and an owner-scoped project reference index. The former 950,000-byte aggregate cap is removed. Legacy aggregates are read unchanged and converted on the next successful write; header, chunks, project index, outbox and mutation receipt share a revision-checked transaction. Reads and ZIP backups capture all storage rows in one batch. A failed migration rolls back without removing records. Each document is still limited to 100,000 characters, subject to the 400,000-byte request limit; platform/database and request limits still apply. Do not roll back to a pre-chunk application version after data conversion without first exporting/reconstructing its aggregate storage format. JSON export streams current document versions and review details; it excludes historical revisions, agent conversations/decisions, connection secrets and unsaved forms.
 
-The app includes an authenticated guide for Mac, Windows, Android and iOS, browser-specific menu instructions, a supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Manual installation opens the agent route first so Safari does not pin the help page as the launch URL. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual OS installation, login hand-off and touch interaction still require verification on the user’s device.
+The app includes an authenticated guide for Mac, Windows, Android and iOS, browser-specific menu instructions, a supported-browser install prompt, standalone detection, credentialed manifest, regular/maskable/Apple icons and scoped shortcuts. Manual installation opens the today route first so Safari does not pin the help page as the launch URL. Mobile forms account for the keyboard and safe areas. Reconnecting or returning to the foreground refreshes saved records when no edit or unresolved mutation is pending. A static offline fallback never caches private records or authenticated HTML. Offline data editing is not supported. The source, Worker routes and service worker policies are automatically checked; actual OS installation, login hand-off and touch interaction still require verification on the user’s device.
 
 ## GitHub source and workflow
 

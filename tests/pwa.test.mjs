@@ -48,7 +48,7 @@ test('recognizes iPad desktop mode and avoids mistaking alternate browsers for C
 test('manual install opens the actual agent route with a supported browser for every selected device',()=>{
  for(const platform of ['mac','windows','android','ios'])for(const browser of ['safari','chrome','edge','other']){
   const url=new URL(installRootUrl(platform,browser),'https://orbit.test');
-  assert.equal(url.pathname,'/');assert.equal(url.hash,'#agent');assert.equal(url.searchParams.get('install'),platform);
+  assert.equal(url.pathname,'/');assert.equal(url.hash,'#today');assert.equal(url.searchParams.get('install'),platform);
   assert.ok(['safari','chrome','edge'].includes(url.searchParams.get('browser')));
   if(platform==='ios')assert.equal(url.searchParams.get('browser'),'safari');
   if(platform==='windows')assert.notEqual(url.searchParams.get('browser'),'safari');
