@@ -15,7 +15,7 @@ import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
 // An approval may rename the registration, recolor it or move it to another project.
 // Only these three fields, and only on the proposals that actually carry them.
-export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().uuid().nullable().optional()}).strict();
+export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().min(1).max(100).nullable().optional()}).strict();
 export const editableActions=['task.upsert','event.upsert','project.upsert'] as const;
 export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional(),overrides:overrideSchema.optional()}).strict();
 type ParsedAction=ReturnType<typeof parseAction>;

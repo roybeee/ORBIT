@@ -4,7 +4,7 @@ import {createDatabase} from './sqlite-d1.mjs';
 import {readWorkspace,readNote,writeCommand} from '../db/repository.ts';
 import {advanceMeetingReviews,meetingReviewDetail,requestMeetingReview} from '../lib/orbit/meetings/review-runtime.ts';
 import {advanceAgent} from '../lib/orbit/agent/runner.ts';
-import {decide} from '../lib/orbit/agent/decisions.ts';
+import {decide,decisionSchema} from '../lib/orbit/agent/decisions.ts';
 import {meetingProposals} from '../lib/orbit/meetings/review.ts';
 import {mergeMeetingProposals,mergedNotePrefix} from '../lib/orbit/meetings/merge.ts';
 import {importRecording} from '../lib/orbit/meetings/store.ts';
@@ -176,3 +176,13 @@ test('a meeting repair after two unreadable answers still sends the meeting sour
   assert.equal(d.status,'completed',d.error);assert.ok(d.actions.length>0);
  }finally{globalThis.fetch=real}
 }finally{db.close()}});
+
+test('the approval request accepts a non-UUID project id chosen in 수정 후 등록 (the route parses decisionSchema first)',()=>{
+ // Project ids are any 1..100 char id (e.g. imported "classified-1ck5h0s"), not only UUIDs.
+ const request={id:crypto.randomUUID(),decision:'approve',overrides:{title:'올드페리도넛-제주점 오픈비용 추정',color:'#5484ed',projectId:'classified-1ck5h0s'}};
+ const parsed=decisionSchema.safeParse(request);
+ assert.ok(parsed.success,JSON.stringify(parsed.error?.issues));
+ assert.equal(parsed.data.overrides.projectId,'classified-1ck5h0s');
+ assert.equal(decisionSchema.safeParse({...request,overrides:{projectId:''}}).success,false);
+ assert.equal(decisionSchema.safeParse({...request,overrides:{projectId:'x'.repeat(101)}}).success,false);
+});
