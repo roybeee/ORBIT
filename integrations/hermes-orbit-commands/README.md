@@ -14,4 +14,4 @@ Backend: `POST/GET /api/integrations/slack/commands` (`lib/orbit/slack/commands.
 
 Settings on the Hermes host (already present for GoTEM): `ORBIT_SLACK_DIRECTIVE_URL`, `ORBIT_SLACK_INGEST_KEY`, `ORBIT_SLACK_SITES_BEARER`; Google token at `$HERMES_HOME/google_token.json` (or `ORBIT_SLACK_GOOGLE_TOKEN_FILE`) with the `tasks` scope.
 
-Deploy after the backend is published: `integrations/hermes-orbit-commands/deploy.sh` (owner-run; backs up, tests on the server, restarts `hermes-gateway.service`). This supersedes `integrations/hermes-orbit-slack/`, which was never installed.
+Deploy after the backend is published: `integrations/hermes-orbit-commands/deploy.sh` (owner-run; backs up to `~/.hermes/plugin-backups` — never inside `~/.hermes/plugins`, where a same-named backup replaces the live plugin — tests on the server, restarts `hermes-gateway.service`, and fails unless the gateway registers `orbit_slack_task`). This supersedes `integrations/hermes-orbit-slack/`, which was never installed.
