@@ -1,6 +1,6 @@
 import {eventScopes} from './event-details.ts';
 import {calendarCategories,calendarPalette} from './calendar-categories.ts';
-import {phase4Actions} from './phase4-schema.ts';
+import {phase4Actions,meetingBufferSchema} from './phase4-schema.ts';
 import { z } from 'zod';
 import {illustrationIds, illustrationScreens} from './city-themes.ts';
 import {phase3Actions} from './phase3-schema.ts';
@@ -106,6 +106,8 @@ export const improvementSchema = z
     createdOn: dateSchema,
     active: z.boolean(),
     source: z.string().max(60).optional(),
+    experimentId: z.string().min(1).max(80).optional(),
+    effect: meetingBufferSchema.optional(),
   })
   .strict();
 export const habitSchema = z
