@@ -39,6 +39,7 @@ import {prepareSeriesDeletion,inspectCalendarSeries} from './calendar-delete.ts'
 import {beginTurn,failTurn,finishTurn,listAgent,pendingActions} from './repository.ts';
 import {getConversation,planningConversation} from './conversations.ts';
 import {AgentError} from './errors.ts';
+import {activeHold,clearHold,gateProvider,holdMessage,recordLimit,releaseProbe} from './provider-hold.ts';
 import {contract,parseAction} from './protocol.ts';
 import type {AgentAction} from './types.ts';
 export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
@@ -52,7 +53,7 @@ interface Job {
  batch?:BatchState; analysisGeneration?:string; posts?:number; analysis?:RunMetrics;
  orderRepair?:{original:FinalReply}; orderRepairAttempted?:boolean;
  evidence?:EvidenceRegistry;
- retryAt?:number; capacityWaits?:number; planning?:PlanningRequest; planningContext?:PlanningContext; plaudAttempted?:boolean; budget?:number; attempts?:string[]; failures?:number;
+ retryAt?:number; capacityWaits?:number; submittedAt?:number; holdWarning?:boolean; holdSeen?:boolean; planning?:PlanningRequest; planningContext?:PlanningContext; plaudAttempted?:boolean; budget?:number; attempts?:string[]; failures?:number;
  attachmentIds?:string[]; phase:'prepare'|'submit'|'poll'|'read'; connectionId:string; sessionId:string; sessionKey:string;
  started:number; round:number; revision:number; request?:{outputTokens?:number;input:string;instructions:string;conversation_history:Message[];session_id:string};
  history:Message[]; runId?:string; attempted?:boolean; cancel?:boolean; invalid:number;
@@ -107,7 +108,7 @@ function retryBatch(job:Job){
 }
 const batchProgress=(job:Job)=>{if(!job.batch)return '';const b=job.batch,n=b.pending?.length??b.count,reused=(b.reused??0)+(b.mergeReused??0);return `전체 자료 분석 · ${b.stage===0?'원문 검토':'결과 통합'} ${n?b.cursor+1:b.count}/${n||b.count} · ${b.completed}개 처리 완료${reused?` · 이전 분석 ${reused}개 재사용`:''}. `};
 async function scope(owner:string,conversationId:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['orbit-personal-os',owner,conversationId])));return 'orbit:'+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')}
-async function discard(db:Database,owner:string,id:string,lease:string,message:string){await failTurn(db,owner,id,lease,message);await clearBatches(db,owner,id);await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=? AND turn_lease=?').bind(owner,id,lease).run()}
+async function discard(db:Database,owner:string,id:string,lease:string,message:string){await failTurn(db,owner,id,lease,message);await releaseProbe(db,owner,id);await clearBatches(db,owner,id);await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=? AND turn_lease=?').bind(owner,id,lease).run()}
 // Names what changed between the analysed snapshot and the workspace at publish time, by record count.
 function changedSinceSnapshot(coverage:BriefCoverage,data:WorkspaceData){
  const deltas:[string,number][]=[['프로젝트',data.projects.length-coverage.projects],['할 일',data.tasks.length-coverage.tasks],['노트',data.notes.length-coverage.notes],['일정',data.events.length-coverage.events],['회고',data.reviews.length-coverage.reviews]];
@@ -124,6 +125,7 @@ const AUTH_FAILURE=/authentication failed|api key|unauthori[sz]ed|invalid.{0,20}
 // retry ladder like an auth failure does, and it earns its own hint: no API key is wrong.
 const QUOTA_FAILURE=/quota|usage limit|rate.?limit|\b429\b/i;
 const MAX_PLANNING_ATTEMPTS=3;
+const HOLD_WARNING='AI 사용량 한도 소진으로 자동 분석이 대기 중이라 이 요청도 실패할 수 있습니다 · ';
 // A planning run that cannot finish still owes the owner a day: fall back to the deterministic BRAINY
 // planner, the same one used when no Hermes is connected, before the turn is recorded as failed. An
 // existing plan for that date is never replaced — only a missing one is filled in.
@@ -163,7 +165,7 @@ export async function runAgent(db:Database,owner:string,input:{id:string;message
  const provider=existing&&old?.status!=='failed'?(JSON.parse(existing.job_json).provider??'hermes'):!input.planning&&!attachmentIds.length&&directChatConfigured(env)?'openai':'hermes';
  const config=provider==='hermes'?await hermesConfig(db,owner,env):null;
  if(old?.status==='failed'||!await getJob(db,owner,input.id)){
-  const job:Job={meeting:input.meeting,provider,model:provider==='openai'?chatModel(env):undefined,refreshActionId:input.refreshActionId,planning:input.planning,attachmentIds,phase:'prepare',connectionId:config?.connectionId??'openai-server',sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner,conversationId),started:Date.now(),round:0,revision:0,history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
+  const job:Job={holdWarning:!input.meeting&&!input.planning&&!!await activeHold(db,owner,provider),meeting:input.meeting,provider,model:provider==='openai'?chatModel(env):undefined,refreshActionId:input.refreshActionId,planning:input.planning,attachmentIds,phase:'prepare',connectionId:config?.connectionId??'openai-server',sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner,conversationId),started:Date.now(),round:0,revision:0,history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
   let lease=old?.status==='running'?old.updated_at:'';
   if(!lease){try{lease=(await beginTurn(db,owner,input.id,input.message,conversationId,attachmentIds,input.retryFailed?old?.updated_at:undefined,packed(job))).lease;if(!lease)return 'completed' as const}catch(error){
    const accepted=await db.prepare('SELECT input,conversation_id,attachment_ids,status FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,input.id).first<{input:string;conversation_id:string;attachment_ids:string;status:'running'|'completed'|'failed'}>();
@@ -197,7 +199,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   const serialized=packed(job);
   try{await db.batch([
    db.prepare('UPDATE orbit_hermes_jobs SET job_json=? WHERE owner_id=? AND turn_id=? AND lease_until=?').bind(serialized,owner,id,lock),
-   db.prepare("UPDATE orbit_agent_turns SET response_json=? WHERE owner_id=? AND id=? AND status='running' AND updated_at=?").bind(JSON.stringify({text:'',sources:[],progress:batchProgress(job)+(job.provider==='openai'?progress.replaceAll('헤르메스','Orbit'):progress),progressAt:new Date().toISOString()}),owner,id,row.turn_lease),
+   db.prepare("UPDATE orbit_agent_turns SET response_json=? WHERE owner_id=? AND id=? AND status='running' AND updated_at=?").bind(JSON.stringify({text:'',sources:[],progress:(job.holdWarning?HOLD_WARNING:'')+batchProgress(job)+(job.provider==='openai'?progress.replaceAll('헤르메스','Orbit'):progress),progressAt:new Date().toISOString()}),owner,id,row.turn_lease),
   ]);}catch{throw new AgentError('실행 상태를 저장소와 다시 확인하고 있습니다.','STORAGE',503)}
  };
  const revalidate=async()=>{
@@ -282,19 +284,27 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   if(job.phase==='submit'){
    if(job.batch&&!job.request){await continueBatches();return}
    if(!job.cancel&&job.retryAt&&Date.now()<job.retryAt)return;
+   // Automatic analysis does not call a provider whose limit is spent; it fails into a waiting state that
+   // the meeting queue and the daily runtime resume. A manual request is sent and only counted.
+   const automatic=!!(job.meeting||job.planning);
+   if(!job.attempted&&!job.cancel&&(automatic||!job.holdSeen)){
+    const gate=await gateProvider(db,owner,job.provider??'hermes',{id,automatic});job.holdSeen=true;
+    if(gate.state==='wait'){await failPlanning(db,owner,id,row.turn_lease,job,holdMessage(gate.hold!));return}
+   }
    if(job.planning&&!job.attempted)job.started=Date.now();
    if(!job.attempted&&Date.now()-job.started>1200000)throw new AgentError('요청을 이어갈 시간이 지났습니다. 최신 기록으로 다시 요청해 주세요.','HERMES_EXPIRED',422);
    if(job.provider==='openai'){
     if(job.attempted)throw new AgentError('이전 응답의 수신 여부를 확인하지 못했습니다. 변경사항은 반영되지 않았습니다. 다시 요청해 주세요.','OPENAI_UNCERTAIN',502);
-    job.attempted=true;await save('요청을 이해하고 답변을 준비합니다.');
+    job.attempted=true;job.submittedAt=Date.now();await save('요청을 이해하고 답변을 준비합니다.');
     job.directOutput=await directModelReply(env,job.request!,job.model??chatModel(env),limits.timeoutMs);
+    await clearHold(db,owner,'openai','turn:'+id);
     job.runId='direct-'+job.sessionId+'-'+job.round;job.phase='poll';
     await save('답변과 변경 제안을 확인합니다.');return;
    }
    // Persist the identical body before sending. Lost acknowledgements reuse
    // the native durable idempotency key instead of starting another agent.
    const nativeBody=await hermesAttachmentInput(db,owner,env.BUCKET,job.request!,job.attachmentIds??[]);
-   job.posts=(job.posts??0)+1;job.attempted=true;await save(job.cancel?'헤르메스 실행을 확인한 뒤 중지합니다.':'헤르메스가 요청을 시작하고 있습니다.');
+   job.posts=(job.posts??0)+1;job.attempted=true;job.submittedAt=Date.now();await save(job.cancel?'헤르메스 실행을 확인한 뒤 중지합니다.':'헤르메스가 요청을 시작하고 있습니다.');
    const result=await hermesRequest<{run_id?:unknown}>(config!,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':job.sessionId+':'+job.round,'X-Hermes-Session-Key':job.sessionKey},body:nativeBody});
    await recordSource(db,owner,'hermes',{state:'ok',detail:'실행 요청 접수 확인 · 실제 완료는 실행 결과에서 확인'});
    if(!validRunId(result.run_id))throw new AgentError('헤르메스 실행 번호를 확인하지 못했습니다.','HERMES_FORMAT',502);
@@ -316,6 +326,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    if(result.run_id!==job.runId||result.object!=='hermes.run')throw new AgentError('헤르메스 실행 결과가 일치하지 않습니다.','HERMES_FORMAT',502);
    if(['failed','cancelled'].includes(result.status)){
     const detail=hermesError(result);
+    if(result.status==='failed')await recordLimit(db,owner,'hermes',detail,{id,automatic:!!(job.meeting||job.planning),submittedAt:job.submittedAt});
     if(job.cancel){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.');return}
     if(job.batch&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&!QUOTA_FAILURE.test(detail)&&job.batch.retries<2){retryBatch(job);await save('이 묶음만 다시 분석합니다.'+(detail?' · '+detail:''));return}
     if(!job.batch&&job.planning&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&!QUOTA_FAILURE.test(detail)&&(job.attempts?.length??0)<MAX_PLANNING_ATTEMPTS-1){
@@ -333,6 +344,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
     if(job.cancel){await save('헤르메스 작업 중지를 확인하고 있습니다.');await hermesRequest(config!,'/v1/runs/'+job.runId+'/stop',{method:'POST',body:'{}'});return}
     await save(result.status==='waiting_approval'||result.status==='waiting_for_approval'?'헤르메스가 별도 실행 승인을 기다립니다. Mac에서 실행 상태를 확인하거나 여기서 중지해 주세요.':'헤르메스가 기록을 확인하고 다음 단계를 정리하고 있습니다.');return;
    }
+   if(job.provider!=='openai')await clearHold(db,owner,'hermes','turn:'+id);
    if(job.cancel||(await getJob(db,owner,id))?.cancel_requested){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.');return}
    if(typeof result.output!=='string'||result.output.length>300000)throw new AgentError('헤르메스 응답이 너무 크거나 올바르지 않습니다.','HERMES_FORMAT',422);
    let parsed;try{parsed=replySchema.parse(JSON.parse(result.output.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')))}catch(error){
@@ -536,6 +548,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   }
   // Retain native run IDs across transport loss; publish no partial changes.
   if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_CAPACITY','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
+  if(error instanceof AgentError&&error.code==='OPENAI_LIMIT')await recordLimit(db,owner,'openai',error.message,{id,automatic:!!(job.meeting||job.planning),submittedAt:job.submittedAt});
   if(job.provider!=='openai')await recordSource(db,owner,'hermes',{state:'error',detail:'분석 단계를 완료하지 못했습니다. 실행 기록의 오류를 확인해 주세요.'});
   if(!(error instanceof AgentError))console.error('orbit.agent.failure',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,planning:!!job.planning,name:error instanceof Error?error.name:typeof error,message:error instanceof Error?error.message:String(error),stack:error instanceof Error?error.stack:undefined});
   await failPlanning(db,owner,id,row.turn_lease,job,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'오류: '+thrownDetail(error)) :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 오류: '+thrownDetail(error)+' 입력을 확인하고 다시 요청해 주세요.');throw error;

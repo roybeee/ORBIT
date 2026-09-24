@@ -9,6 +9,7 @@ import {addDays} from '@/lib/orbit/dates';
 import {questReadiness} from '@/lib/orbit/pacemaker';
 import {orderActive,orderStatusLabel,type WorkOrder} from '@/lib/orbit/agent/orders-schema';
 import {TimeBudget} from './time-budget';
+import {AiHoldBanner} from './brief/ai-hold-banner';
 import {Progress} from '@/components/ui/progress';
 import {formatTime,type WorkspaceData,type View} from '@/lib/orbit/model';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
@@ -51,6 +52,7 @@ export function TodayHome({orders=[],onOrder,data,now,busy,demo,pendingAI,perfor
   </section>
 
   </div>
+  <AiHoldBanner demo={demo} timeZone={data.preferences.timeZone} onPlan={()=>onProposal(d.today)} onNote={id=>onOpen({kind:'note',id})}/>
   {(plans.length>0||(pendingAI??0)>0||experiments.length>0)&&<section className="today-review" aria-label="확인할 제안"><h2>확인할 제안</h2>{experiments.length>0&&<button className="today-row" onClick={()=>navigate('experiments')}><span><strong>검토할 실험 {experiments.length}개</strong><small>결과를 기록하고 계속 적용·재시도·중단을 정하세요</small></span><ChevronRight size={19}/></button>}{(pendingAI??0)>0&&<button className="today-row" onClick={onReview}><span><strong>Orbit 제안 {pendingAI}개</strong><small>변경 내용을 확인하고 반영하세요</small></span><ChevronRight size={19}/></button>}{plans.slice(0,2).map(p=><button key={p.id} className="today-row" onClick={()=>onProposal(p.date)}><span><strong>{p.date===d.today?'오늘':p.date} 일정 제안</strong><small>{p.items.filter(i=>i.state==='pending').length}개 확인 필요</small></span><ChevronRight size={19}/></button>)}</section>}
   <div className="today-columns">
    <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small></span><ChevronRight size={19}/></button>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>
