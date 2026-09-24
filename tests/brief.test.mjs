@@ -311,3 +311,31 @@ test('planning automatically refreshes changed records and still requires priori
  await advanceAgent(db,'owner',id,env);let job=JSON.parse((await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE turn_id=?').bind(id).first()).job_json);assert.equal(job.phase,'prepare');assert.equal(job.revalidations,1);assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);
  await advanceAgent(db,'owner',id,env);await complete(db,id);const data=(await readWorkspace(db,'owner')).data;assert.equal(data.proposals.length,1);assert.equal(data.events.length,0);assert.equal(data.tasks.find(t=>t.id==='t').status,'doing');
 }));
+
+test('a brief that cites an id which does not resolve gets a repair turn instead of ending the run',()=>fixture(async db=>{
+ await seed(db);await hermes(db);let posts=0;const inputs=[];
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST'){posts++;inputs.push(JSON.parse(options.body).input);return j({run_id:'run_'+posts,status:'started'},202)}
+  const bad=content();bad.priorities[0].evidence=['note:plaud:of_typo'];
+  return j({object:'hermes.run',run_id:'run_'+posts,status:'completed',output:JSON.stringify({kind:'brief',brief:posts===1?bad:content()})});
+ };
+ const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);
+ for(let i=0;i<4;i++)await advanceAgent(db,'owner',id,env);
+ assert.equal(posts,2);assert.match(inputs[1],/SERVER VALIDATION/);assert.match(inputs[1],/note:plaud:of_typo/);
+ const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
+ assert.equal(turn.status,'completed',turn.response_json);
+ assert.equal((await readWorkspace(db,'owner')).data.proposals[0].brief.headline,content().headline);
+}));
+
+test('a brief that keeps citing an unresolved id fails after two repair turns, naming the id',()=>fixture(async db=>{
+ await seed(db);await hermes(db);let posts=0;
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST'){posts++;return j({run_id:'run_'+posts,status:'started'},202)}
+  const bad=content();bad.priorities[0].evidence=['note:plaud:of_typo'];return j({object:'hermes.run',run_id:'run_'+posts,status:'completed',output:JSON.stringify({kind:'brief',brief:bad})});
+ };
+ const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);
+ await assert.rejects(async()=>{for(let i=0;i<8;i++)await advanceAgent(db,'owner',id,env)},e=>e.code==='BRIEF_EVIDENCE');
+ assert.equal(posts,3);
+ const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
+ assert.equal(turn.status,'failed');assert.match(JSON.parse(turn.response_json).error,/note:plaud:of_typo/);
+}));

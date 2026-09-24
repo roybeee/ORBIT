@@ -48,7 +48,7 @@ function mock({onPart,final}={}){
    (part.stage==='source-analysis'?m.sources:m.merges).push({unit:part.unit,part:part.part,input:current.input});
    return result({status:'completed',output:JSON.stringify({kind:'analysis',summary:'요약 '+part.unit+' · '+JSON.stringify(part.data).slice(0,120)+filler,evidence:refs(part).slice(0,16)})});
   }
-  m.finals++;assert.ok(current.input.startsWith('Planning synthesis'),'batch runs end in a synthesis request');
+  m.finals++;assert.ok(current.input.startsWith('Planning synthesis')||current.input.startsWith('SERVER VALIDATION'),'batch runs end in a synthesis request or its repair');
   assert.ok(current.input.length<32000,'synthesis input stays under 32,000 chars');
   return result({status:'completed',output:JSON.stringify({kind:'brief',brief:final?final():content()})});
  };
