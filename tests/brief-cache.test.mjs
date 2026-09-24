@@ -139,7 +139,7 @@ test('a deleted note never survives in any input, summary or evidence',()=>fixtu
  const before=JSON.stringify((await readWorkspace(db,'owner')).data.proposals.filter(p=>p.brief));
  mock({final:()=>{const c=content();c.priorities[0].evidence=['note:bulk-7'];return c}});
  const three=await run(db,addDays(date,2));
- assert.equal(three.turn.status,'failed');assert.match(JSON.parse(three.turn.response_json).error,/근거를 실제 기록에서 확인하지 못했습니다/);
+ assert.equal(three.turn.status,'failed');const rejected=JSON.parse(three.turn.response_json).error;assert.match(rejected,/근거를 실제 기록에서 확인하지 못했습니다/);assert.match(rejected,/확인되지 않은 근거 1건: note:bulk-7/,'the rejection names what did not resolve');
  const after=(await readWorkspace(db,'owner')).data.proposals;
  assert.equal(JSON.stringify(after.filter(p=>p.brief)),before,'nothing published from a brief citing the deleted note');
  const fallback=after.find(p=>p.date===addDays(date,2));
