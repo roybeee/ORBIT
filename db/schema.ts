@@ -213,6 +213,8 @@ export const meetingReviews=sqliteTable('orbit_meeting_reviews',{
  summary:text('summary').notNull().default(''),engineVersion:integer('engine_version').notNull().default(1),attempts:integer('attempts').notNull().default(0),
  ownerId:text('owner_id').notNull(),noteId:text('note_id').notNull(),revision:integer('revision').notNull(),turnId:text('turn_id').notNull(),conversationId:text('conversation_id').notNull(),status:text('status').notNull(),error:text('error').notNull().default(''),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
  holdId:text('hold_id').notNull().default(''),
+ // 1 when the owner asked for this review; automatic reviews only cover recently recorded meetings.
+ manual:integer('manual').notNull().default(0),
 },t=>[primaryKey({columns:[t.ownerId,t.noteId,t.revision]}),index('idx_orbit_meeting_review_queue').on(t.ownerId,t.status,t.createdAt),uniqueIndex('idx_orbit_meeting_review_turn').on(t.ownerId,t.turnId)]);
 
 // One row per episode of a spent AI provider limit. While an episode is open (cleared_at NULL) automatic
