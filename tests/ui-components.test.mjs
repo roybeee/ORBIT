@@ -122,13 +122,14 @@ test('project management opens on active projects and home never displays comple
  }
 });
 
-test('the home strip renders deterministically in demo/SSR',async()=>{
+test('the home renders deterministically in demo/SSR and no longer carries the plan-status card',async()=>{
  const {emptyWorkspace}=await vite.ssrLoadModule('/lib/orbit/model.ts');
  const {TodayHome}=await vite.ssrLoadModule('/components/orbit/today-home.tsx');
  const data=emptyWorkspace(),noop=()=>{},now=new Date('2026-09-19T01:00:00Z');
  const props={data,today:'2026-09-19',now,busy:false,demo:true,pendingAI:0,onOpen:noop,navigate:noop,perform:async()=>true,onOpenTask:noop,onCreateTask:noop,onCreateProject:noop,onManage:noop,onTrash:noop};
  const html=renderToStaticMarkup(React.createElement(TodayHome,props));
- assert.match(html,/자료 수집/);assert.match(html,/계획 분석/);assert.match(html,/계획 준비 완료/);assert.match(html,/role="status"/);assert.match(html,/반영 기준 시각/);assert.match(html,/체험 화면/);
+ // The owner removed 계획 준비 상태 from the main screen (2026-09-24); /api/brief/status still serves it.
+ assert.doesNotMatch(html,/계획 준비 상태/);assert.doesNotMatch(html,/반영 기준 시각/);assert.doesNotMatch(html,/자료 수집/);
  assert.doesNotMatch(html,/undefined/);assert.doesNotMatch(html,/상태 확인 중/);
  assert.equal(html,renderToStaticMarkup(React.createElement(TodayHome,props)));
 });
