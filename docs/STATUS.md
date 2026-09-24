@@ -7,7 +7,7 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 `aab5c62`이다(2026-09-24T15:01Z 확인, [기록](releases/2026-09-24-aab5c62.md), 소유자 브라우저 `/api/version` tree `bd2fbfc0…`). PR #91(AI 한도 공동 대기, `f98cbb9`)이 이 릴리스에 포함됐다. 이전 확인분 `d73694d`는 이것으로 대체됐다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `6d1e394`이다(2026-09-25 KST, [기록](releases/2026-09-25-6d1e394.md), 소유자 브라우저 `/api/version` tree `bbb92fef…`). PR #99(Slack 지시 → Google+ORBIT 동시 등록, 캘린더·할 일 양방향 동기화)가 이 릴리스에 포함된다. 남은 소유자 단계: ORBIT에서 Google Calendar 재연결(Tasks 권한), Hermes 플러그인 `integrations/hermes-orbit-commands/deploy.sh` 실행.
 - 이 PR(`docs/status-d73694d`)은 d73694d 게시 기록을 반영한다. 열린 후속은 `fix/plan-stale-basis`(별도 작업)만 남았다.
 
 ## 검증된 결과
