@@ -196,8 +196,14 @@ export const calendarEdits=sqliteTable('orbit_calendar_edits',{
 export const meetingReviews=sqliteTable('orbit_meeting_reviews',{
  summary:text('summary').notNull().default(''),engineVersion:integer('engine_version').notNull().default(1),attempts:integer('attempts').notNull().default(0),
  ownerId:text('owner_id').notNull(),noteId:text('note_id').notNull(),revision:integer('revision').notNull(),turnId:text('turn_id').notNull(),conversationId:text('conversation_id').notNull(),status:text('status').notNull(),error:text('error').notNull().default(''),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+ holdId:text('hold_id').notNull().default(''),
 },t=>[primaryKey({columns:[t.ownerId,t.noteId,t.revision]}),index('idx_orbit_meeting_review_queue').on(t.ownerId,t.status,t.createdAt),uniqueIndex('idx_orbit_meeting_review_turn').on(t.ownerId,t.turnId)]);
 
+// One row per episode of a spent AI provider limit. While an episode is open (cleared_at NULL) automatic
+// analysis waits instead of failing one record after another; one probe at a time checks recovery.
+export const providerHolds=sqliteTable('orbit_provider_holds',{
+ ownerId:text('owner_id').notNull(),id:text('id').notNull(),provider:text('provider').notNull(),kind:text('kind').notNull(),reason:text('reason').notNull(),openedAt:text('opened_at').notNull(),nextCheckAt:integer('next_check_at').notNull(),retryKnown:integer('retry_known').notNull().default(0),failures:integer('failures').notNull().default(0),probeTurnId:text('probe_turn_id').notNull().default(''),probeUntil:integer('probe_until').notNull().default(0),probes:integer('probes').notNull().default(0),leaked:integer('leaked').notNull().default(0),manual:integer('manual').notNull().default(0),clearedAt:text('cleared_at'),clearedBy:text('cleared_by').notNull().default(''),
+},t=>[primaryKey({columns:[t.ownerId,t.id]}),index('idx_orbit_provider_holds_active').on(t.ownerId,t.provider,t.clearedAt)]);
 export const notifications=sqliteTable('orbit_notifications',{
  ownerId:text('owner_id').notNull(),id:text('id').notNull(),kind:text('kind').notNull(),title:text('title').notNull(),body:text('body').notNull(),href:text('href').notNull(),createdAt:text('created_at').notNull(),readAt:text('read_at'),dismissedAt:text('dismissed_at'),
 },t=>[primaryKey({columns:[t.ownerId,t.id]}),index('idx_orbit_notifications_recent').on(t.ownerId,t.createdAt),index('idx_orbit_notifications_unread').on(t.ownerId,t.readAt)]);

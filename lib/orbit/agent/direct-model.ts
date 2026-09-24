@@ -17,7 +17,10 @@ export async function directModelReply(env:Runtime,request:ModelRequest,model:st
    headers:{Authorization:'Bearer '+env.OPENAI_API_KEY.trim(),'Content-Type':'application/json'},
    body:JSON.stringify({model,store:false,instructions:request.instructions+'\nReturn only the JSON envelope. For routine requests be concise. Never execute a change or claim a proposal has already been saved.',input:[...request.conversation_history,{role:'user',content:request.input}],text:{format:{type:'json_object'}},max_output_tokens:request.outputTokens??6000,...(/^gpt-(5|6)/.test(model)?{reasoning:{effort:'low'}}:{})}),
   });
-  if(!response.ok)throw new AgentError(response.status===401||response.status===403?'OpenAI 연결 권한을 확인해 주세요.':response.status===429?'빠른 대화의 사용량 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.':'빠른 대화 응답을 받지 못했습니다. 다시 시도해 주세요.','OPENAI_UPSTREAM',502);
+  // A 429 is a provider limit shared by every job, so it gets its own code with the facts that tell a
+  // short rate limit (retry-after) from a spent allowance (insufficient_quota).
+  if(response.status===429){const body=await response.text().catch(()=>''),after=response.headers.get('retry-after');throw new AgentError(`빠른 대화의 사용량 한도에 도달했습니다(429${/insufficient_quota/.test(body)?' insufficient_quota':''}${after&&/^\d+$/.test(after)?'; retry after '+after+'s':''}). 잠시 후 다시 시도해 주세요.`,'OPENAI_LIMIT',502)}
+  if(!response.ok)throw new AgentError(response.status===401||response.status===403?'OpenAI 연결 권한을 확인해 주세요.':'빠른 대화 응답을 받지 못했습니다. 다시 시도해 주세요.','OPENAI_UPSTREAM',502);
   const raw=await response.text();if(raw.length>1000000)throw new AgentError('응답이 너무 큽니다. 요청을 나눠 주세요.','OPENAI_FORMAT',422);
   const data=JSON.parse(raw);
   if(data.status!=='completed')throw new AgentError('응답을 끝까지 받지 못했습니다. 변경사항은 반영되지 않았습니다.','OPENAI_INCOMPLETE',502);

@@ -232,6 +232,13 @@
       "when": 1790079716893,
       "tag": "0032_notification_dismissal",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1790257485694,
+      "tag": "0033_provider_holds",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import type {Database} from '../../../db/repository.ts';
+import {holdMessage,listHolds,waitsForLimit} from '../agent/provider-hold.ts';
 export type OrbitNotification={id:string;kind:'approval'|'completed'|'failed'|'info';title:string;body:string;href:string;createdAt:string;readAt:string|null};
 export async function notificationState(db:Database,owner:string){
  await db.prepare("INSERT OR IGNORE INTO orbit_notification_state(owner_id,started_at) VALUES(?,?)").bind(owner,new Date().toISOString()).run();
@@ -13,17 +14,24 @@ export async function notify(db:Database,owner:string,n:Omit<OrbitNotification,'
 export async function collectNotifications(db:Database,owner:string){
  const state=await notificationState(db,owner),now=new Date().toISOString();
  const turns=await db.prepare(`SELECT t.id,t.input,t.status,t.response_json,t.conversation_id,t.updated_at,r.note_id,r.summary,
+ EXISTS(SELECT 1 FROM orbit_daily_runs d WHERE d.owner_id=t.owner_id AND json_extract(d.state_json,'$.id')=t.id) AS planning,
  (SELECT count(*) FROM orbit_agent_actions a WHERE a.owner_id=t.owner_id AND a.turn_id=t.id AND a.state='pending') AS pending
  FROM orbit_agent_turns t LEFT JOIN orbit_meeting_reviews r ON r.owner_id=t.owner_id AND r.turn_id=t.id
  WHERE t.owner_id=? AND (t.updated_at>=? OR EXISTS(SELECT 1 FROM orbit_agent_actions a WHERE a.owner_id=t.owner_id AND a.turn_id=t.id AND a.state='pending'))
- AND t.status IN ('completed','failed') ORDER BY t.updated_at DESC LIMIT 250`).bind(owner,state.started_at).all<{id:string;input:string;status:string;response_json:string;conversation_id:string;updated_at:string;note_id:string|null;summary:string|null;pending:number}>();
+ AND t.status IN ('completed','failed') ORDER BY t.updated_at DESC LIMIT 250`).bind(owner,state.started_at).all<{id:string;input:string;status:string;response_json:string;conversation_id:string;updated_at:string;note_id:string|null;summary:string|null;planning:number;pending:number}>();
  const writes=[];
  for(const t of turns.results){const response=JSON.parse(t.response_json),meeting=!!t.note_id,kind=t.status==='failed'?'failed':t.pending?'approval':'completed';
+  // Automatic work stopped by a provider limit is waiting, not failed: the single hold notice below speaks for it.
+  if(t.status==='failed'&&(meeting||t.planning)&&waitsForLimit(String(response.error??'')))continue;
   const title=meeting?(kind==='failed'?'회의 분석 실패':t.pending?`회의 요약 완료 · ${t.pending}건 결재 대기`:'회의 요약 완료'):(kind==='failed'?'업무 처리 실패':t.pending?`${t.pending}건 승인 요청`:'업무 처리 완료');
   writes.push(notificationStatement(db,owner,{id:'turn:'+t.id+':'+(t.status==='failed'?'failed':t.pending?'approval':'completed'),kind,title,body:String(response.error||response.text||t.input).slice(0,1200),href:meeting?'/?note='+encodeURIComponent(t.note_id!):'/?conversation='+encodeURIComponent(t.conversation_id),createdAt:t.updated_at}));
  }
  const reviews=await db.prepare("SELECT r.*,n.title FROM orbit_meeting_reviews r LEFT JOIN orbit_note_revisions n ON n.owner_id=r.owner_id AND n.note_id=r.note_id AND n.revision=r.revision WHERE r.owner_id=? AND r.status IN ('waiting_source','failed') ORDER BY r.created_at DESC LIMIT 100").bind(owner).all<{note_id:string;revision:number;turn_id:string;status:string;error:string;updated_at:string;title:string|null}>();
  for(const r of reviews.results.filter(r=>r.status!=='failed'||!turns.results.some(t=>t.id===r.turn_id)))writes.push(notificationStatement(db,owner,{id:'meeting:'+r.note_id+':'+r.revision+':'+r.status,kind:r.status!=='queued'?'failed':'info',title:r.status==='waiting_source'?'회의 원문 수집 대기':r.status==='failed'?'회의 분석 실패':'회의록 접수 · 자동 분석 중',body:(r.title||'회의록')+(r.error?' · '+r.error:''),href:'/?note='+encodeURIComponent(r.note_id),createdAt:r.updated_at}));
+ for(const hold of await listHolds(db,owner,state.started_at)){
+  writes.push(notificationStatement(db,owner,{id:'hold:'+hold.id,kind:'info',title:'AI 분석 대기 중',body:'기존 계획과 결과 기록은 사용 가능합니다. '+holdMessage(hold),href:'/',createdAt:hold.openedAt}));
+  if(hold.clearedAt)writes.push(notificationStatement(db,owner,{id:'hold:'+hold.id+':recovered',kind:'completed',title:'AI 분석 재개',body:'AI 사용량 한도가 회복되어 대기하던 분석을 순서대로 이어서 진행합니다.',href:'/',createdAt:hold.clearedAt}));
+ }
  const orders=await db.prepare('SELECT id,state_json FROM orbit_agent_orders WHERE owner_id=?').bind(owner).all<{id:string;state_json:string}>();
  for(const row of orders.results){const o=JSON.parse(row.state_json);if(!['waiting_for_approval','completed','failed'].includes(o.status)||o.status!=='waiting_for_approval'&&o.updatedAt<state.started_at)continue;
   const kind=o.status==='waiting_for_approval'?'approval':o.status==='failed'?'failed':'completed';
