@@ -195,4 +195,28 @@
 @media(prefers-reduced-motion:no-preference){.orbit-dock.is-dock{animation:orbit-dock-in .22s cubic-bezier(.2,.8,.2,1)}}
 @keyframes orbit-dock-in{from{opacity:.4;transform:translateY(18px)}to{opacity:1;transform:none}}
 
+/* 프로젝트: goal ladder and detail */
+.goal-ladder{display:grid;gap:10px;margin-bottom:22px;padding:14px 16px;border-radius:18px;border:1px solid var(--border);background:var(--card)}
+.goal-ladder ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;counter-reset:rung}
+.goal-ladder li{position:relative;display:grid;gap:3px;align-content:start;padding:10px 12px;border-radius:12px;background:var(--muted)}
+.goal-ladder li:not(:last-child)::after{content:"";position:absolute;top:50%;right:-7px;width:6px;height:6px;border-top:2px solid var(--muted-foreground);border-right:2px solid var(--muted-foreground);transform:translateY(-50%) rotate(45deg);opacity:.5}
+.goal-ladder li:last-child{background:color-mix(in srgb,var(--galaxy-violet) 13%,var(--muted))}
+.goal-rung-label{font-size:.72rem;font-weight:700;letter-spacing:.06em;color:var(--muted-foreground)}
+.goal-ladder li strong{font-size:.9rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.goal-ladder li small{font-size:.75rem;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+.goal-ladder li.is-empty strong{font-weight:500;color:var(--muted-foreground)}
+.goal-ladder-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.goal-ladder-foot .text-button{margin-left:auto}
+.goal-domino{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--galaxy-amber) 50%,var(--border));background:color-mix(in srgb,var(--galaxy-amber) 12%,transparent);color:var(--foreground);font-size:.82rem;font-weight:650;cursor:pointer}
+.goal-ladder-note{font-size:.8rem;color:var(--muted-foreground)}
+.goal-ladder.is-empty{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.goal-ladder.is-empty p{margin:0;flex:1;min-width:220px;font-size:.88rem;color:var(--muted-foreground)}
+.goal-ladder.is-empty p strong{color:var(--foreground)}
+@media(max-width:600px){.goal-ladder ol{grid-template-columns:1fr}.goal-ladder li:not(:last-child)::after{top:auto;bottom:-7px;right:50%;transform:translateX(50%) rotate(135deg)}}
+.project-quickbar-actions{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
+.project-chat-button,.project-flow-detail .project-detail-quickbar .project-chat-button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--galaxy-violet) 45%,var(--border));background:color-mix(in srgb,var(--galaxy-violet) 10%,transparent);color:var(--foreground);font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap}
+/* Four detail tabs (할 일 · 회의·결정 · 기록 · 개요·관리) stay on one row. */
+.project-detail-tabs>[data-slot=tabs-list],.project-flow-detail .project-detail-tabs>[data-slot=tabs-list]{grid-template-columns:repeat(4,minmax(0,1fr))}
+.project-detail-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{white-space:nowrap;min-width:0;font-size:.82rem}
+
 @media(prefers-reduced-motion:reduce){.area-sections-track{scroll-behavior:auto}}
