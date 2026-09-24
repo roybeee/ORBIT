@@ -400,6 +400,10 @@ export async function writeCommand(
           ...gateValues,
         ),
     );
+  // Task.startedAt is cleared when the session ends; keep each new start for the GoTEM start metric.
+  for(const task of next.tasks)if(task.startedAt&&working.tasks.find(t=>t.id===task.id)?.startedAt!==task.startedAt)
+    statements.push(db.prepare(`INSERT INTO orbit_task_starts(owner_id,task_id,started_at,date) SELECT ?,?,?,? WHERE ${gate} ON CONFLICT DO NOTHING`)
+      .bind(ownerId,task.id,task.startedAt,todayInZone(next.preferences.timeZone,new Date(task.startedAt)),...gateValues));
   for(const task of next.tasks)if(task.status==='done'&&working.tasks.some(t=>t.id===task.id&&t.status!=='done'))statements.push(notificationStatement(db,ownerId,{id:'task:'+task.id+':'+command.operationId,kind:'completed',title:'할 일 완료',body:task.title,href:'/?task='+encodeURIComponent(task.id),createdAt:timestamp},gate,gateValues));
   for(const note of changedNotes)if(note.kind==='meeting'&&note.body.trim()&&(!note.source||note.source.provider!=='plaud'))statements.push(enqueueMeetingStatement(db,ownerId,note,gate,gateValues));
   if (action.type === 'note.delete')
