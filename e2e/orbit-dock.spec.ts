@@ -37,6 +37,26 @@ test.describe("Orbit dock", () => {
     await expect(page.getByRole("heading", { name: "프로젝트", level: 1 })).toBeVisible();
   });
 
+  test("a project's Orbit button opens that project's conversations in the dock", async ({ page }) => {
+    const title = `도크 프로젝트 ${Date.now().toString(36)}`;
+    await page.goto("/#today");
+    await expect(page.locator(".orbit-dock")).toHaveCount(1);
+    await page.getByRole("button", { name: "프로젝트 추가" }).click();
+    const dialog = page.getByRole("dialog", { name: "새 프로젝트" });
+    await dialog.getByRole("textbox", { name: "제목" }).fill(title);
+    await dialog.getByRole("button", { name: "추가하기" }).click();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page).toHaveURL(/#projects$/);
+    await page.getByRole("tab", { name: "회의·결정" }).click();
+    await expect(page.getByRole("heading", { name: "결정·위임·회신" })).toBeVisible();
+    await page.getByRole("button", { name: "Orbit과 대화" }).click();
+    await expect(page.locator(".orbit-dock.is-dock")).toBeVisible();
+    await expect(page.locator(".orbit-dock-context")).toContainText(title);
+    await expect(page.locator("#orbit-message")).toBeFocused();
+    await expect(page).toHaveURL(/#projects$/);
+    expect(new URL(page.url()).searchParams.has("chatProject")).toBe(false);
+  });
+
   test("Back closes the dock and keeps the screen", async ({ page }) => {
     await page.goto("/#projects");
     await openDock(page);

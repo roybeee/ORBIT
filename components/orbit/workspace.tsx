@@ -12,6 +12,7 @@ import {OrbitSearch,useSearchShortcut,type SearchAction} from './shell/orbit-sea
 import {MeSheet} from './shell/me-sheet';
 import {IaIntro} from './shell/ia-intro';
 import {OrbitDock} from './shell/orbit-dock';
+import {GoalLadderStrip} from './projects/goal-ladder-strip';
 import {InboxPanel} from './inbox/inbox-panel';
 import {useEveningHour} from './today/use-evening-hour';
 import {areaOf,inboxCounts,viewLabels} from '@/lib/orbit/navigation';
@@ -323,6 +324,9 @@ function WorkspaceContent({
   const [news,setNews]=useState<NewsSummary|null>(null);
   const [newsOpen,setNewsOpen]=useState(false);
   const [dockOpen,setDockOpen]=useState(false);
+  // A project chat opened from its detail keeps that project as the dock's context.
+  const [dockProject,setDockProject]=useState<string|null>(null);
+  const keepDockFocus=useRef(false);
   const eveningHour=useEveningHour(demo);
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
@@ -447,6 +451,7 @@ function WorkspaceContent({
     setSearchOpen(false);
     setMeOpen(false);
     setDockOpen(false);
+    setDockProject(null);
     setView(v);
     setDetail(null);
     setSearch('');
@@ -547,14 +552,12 @@ function WorkspaceContent({
   };
   const openProject = (id:string,intent:ProjectIntent='overview')=>setDetail({kind:'project',id,projectIntent:intent});
   const openProjectTrash = ()=>{setDetail(null);setDataInitialTab('trash');navigate('data')};
+  // The project's conversations open in the Orbit dock beside the project list. The detail
+  // sheet closes first so the dock is not under its modal overlay.
   const openProjectChat = (id:string) => {
+    keepDockFocus.current=true;
     setDetail(null);
-    const url=new URL(location.href);
-    url.searchParams.set('chatProject',id);
-    url.searchParams.delete('conversation');
-    replacePopupRoute(null,url.pathname+url.search+url.hash);
-    navigate('agent');
-    window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{projectId:id}}));
+    afterPopupClose(()=>{openOrbit();setDockProject(id);window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{projectId:id}}));});
   };
   const saveReview = async (
     review: { date: string; win: string; block: string; energy: Proposal['energy'] },
@@ -990,9 +993,9 @@ function WorkspaceContent({
   const inbox = inboxCounts({today:TODAY,proposals:data.proposals,aiPending:aiActions?aiActions.filter(a=>a.state==='pending'||a.state==='applying').length:null,orders:homeOrders,decisions:data.decisions,delegations:data.delegations});
   const openSearch = () => setSearchOpen(true);
   // Orbit opens beside the current screen (dock); the 대화 page itself stays a full view.
-  const openOrbit = () => { if (view !== 'agent') setDockOpen(true); };
+  const openOrbit = () => { if (view !== 'agent') { setDockProject(null); setDockOpen(true); } };
   const askOrbit = (text?: string) => { openOrbit(); if (text) window.dispatchEvent(new CustomEvent('orbit:compose', { detail: { text } })); };
-  const detailProject = detail?.kind === 'project' ? projects.find(p => p.id === detail.id) : undefined;
+  const detailProject = projects.find(p => p.id === (detail ? (detail.kind === 'project' ? detail.id : null) : dockOpen ? dockProject : null));
   const dockContext = detailProject ? `프로젝트 · ${detailProject.name}`
     : detail?.kind === 'task' ? `할 일 · ${tasks.find(t => t.id === detail.id)?.title ?? '선택한 할 일'}`
     : detail?.kind === 'note' ? `기록 · ${notes.find(n => n.id === detail.id)?.title ?? '선택한 기록'}`
@@ -1020,7 +1023,7 @@ function WorkspaceContent({
         inboxCount={inbox.total}
         newsUnread={news?.unread??0}
         dockOpen={dockOpen}
-        onOrbit={()=>view==='agent'?undefined:setDockOpen(open=>!open)}
+        onOrbit={()=>{if(view==='agent')return;setDockProject(null);setDockOpen(open=>!open)}}
         displayName={displayName}
         onMe={()=>setMeOpen(true)}
         onSearch={openSearch}
@@ -1148,7 +1151,7 @@ function WorkspaceContent({
             </section>
           )}
           {loaded && (
-            <OrbitDock mode={view==='agent'?'page':dockOpen?'dock':'hidden'} context={dockContext} onClose={()=>setDockOpen(false)} onExpand={()=>navigate('agent')}
+            <OrbitDock mode={view==='agent'?'page':dockOpen?'dock':'hidden'} context={dockContext} onClose={()=>{setDockOpen(false);setDockProject(null)}} onExpand={()=>navigate('agent')}
               onAttachContext={()=>window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text:`[보고 있던 화면] ${dockContext}`,append:true}}))}>
               <AgentWorkspace
                 visible={view==='agent'||dockOpen}
@@ -1253,6 +1256,7 @@ function WorkspaceContent({
               </section>
             </>
           )}
+          {loaded && view === 'projects' && <GoalLadderStrip data={data} today={TODAY} onGoals={()=>navigate('goals')} onManage={()=>setBrainyOpen(true)} onProject={id=>openProject(id,'overview')}/>}
           {view === 'projects' && projectsMode === 'graph' && (
             <>
             {assignable > 0 && <div className="info-banner">
@@ -1447,7 +1451,7 @@ function WorkspaceContent({
           if (!open) {if(projectDetail&&dataEditing){if(!busy&&!hasPending)setDiscardProjectConfirm(true);return;}setDetail(null);}
         }}
       >
-        <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right" showCloseButton={!projectDetail}>
+        <SheetContent className={`w-full sm:max-w-[520px] p-0 flex flex-col ${projectDetail ? 'project-detail-sheet' : ''}`} side="right" showCloseButton={!projectDetail} onCloseAutoFocus={event=>{if(keepDockFocus.current){keepDockFocus.current=false;event.preventDefault();document.getElementById('orbit-message')?.focus({preventScroll:true});}}}>
           <SheetHeader className={`px-7 pt-9 pb-5 border-b ${projectDetail?'project-flow-sheet-header':taskDetail?'task-detail-header':''}`}>
             {projectDetail&&<SheetClose className="project-detail-back" disabled={busy||hasPending} aria-label="프로젝트 목록으로 돌아가기"><ChevronLeft size={22}/></SheetClose>}
             <SheetTitle className="text-xl leading-relaxed">
