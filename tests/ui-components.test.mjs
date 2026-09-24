@@ -94,6 +94,25 @@ test('new workbench screens render stored records and honest empty states',async
  data.contacts=[{id:'c',name:'검토 담당자',organization:'사업',role:'책임자',aliases:[],projectIds:[],noteIds:[],decisionIds:[],delegationIds:[],eventIds:[],memo:'확인할 맥락',updatedAt:'2026-09-17T00:00:00Z'}];assert.match(renderToStaticMarkup(React.createElement(ContactsPanel,props)),/확인할 맥락/);
 });
 
+test('experiment screen suggests a verdict with its comparison and the plan shows the rule it applied with its origin',async()=>{
+ const {emptyWorkspace}=await vite.ssrLoadModule('/lib/orbit/model.ts');
+ const {ExperimentsPanel}=await vite.ssrLoadModule('/components/orbit/phase4/workbench.tsx');
+ const {AppliedRules}=await vite.ssrLoadModule('/components/orbit/brief/applied-rules.tsx');
+ const base={title:'회의 뒤 여유',projectId:'p',noteId:'n',noteRevision:1,hypothesis:'가설',action:'회의 뒤 30분 비우기',metric:'시작 지연',unit:'회',target:2,direction:'down',from:'2026-09-10',through:'2026-09-17',minutes:30,createdAt:'2026-09-10T00:00:00Z'};
+ const data={...emptyWorkspace(),projects:[{id:'p',name:'사업',color:'#5558e8',symbol:'P',goal:'g',due:'2026-09-30',priority:3}],experiments:[
+  {...base,id:'x',taskId:'experiment:x',status:'completed',baseline:4,result:{value:2,evidence:'기록',conclusion:'관찰',at:'2026-09-17T00:00:00Z',met:true}},
+  {...base,id:'y',title:'측정 전 실험',taskId:'experiment:y',status:'active',baseline:null}],
+  improvements:[{id:'r1',rule:'회의 뒤 30분은 비워 둔다',kind:'buffer',createdOn:'2026-09-17',active:true,experimentId:'x',effect:{type:'meetingBuffer',minutes:30}}]};
+ const props={data,today:'2026-09-17',busy:false,perform:async()=>true,onOpen:()=>{},onAsk:()=>{}};
+ const html=renderToStaticMarkup(React.createElement(ExperimentsPanel,props));
+ assert.match(html,/제안: 계속 적용/);assert.match(html,/기준 4회 → 측정 2회/);assert.match(html,/인과|원인과 효과/);
+ assert.match(html,/기준값 미측정/);assert.match(html,/기준값 측정 필요/);assert.doesNotMatch(html,/0 → 2 회/);
+ const plan={id:'plan:2026-09-18',date:'2026-09-18',items:[],unscheduled:[],budget:0,energy:'normal',rules:[{id:'r1',rule:'회의 뒤 30분은 비워 둔다',experimentId:'x',minutes:30,meetings:2}]};
+ const rules=renderToStaticMarkup(React.createElement(AppliedRules,{data,plan,busy:false,perform:async()=>true,onExperiments:()=>{}}));
+ assert.match(rules,/회의 2개 뒤에 30분씩/);assert.match(rules,/실험 ‘회의 뒤 여유’/);assert.match(rules,/이 규칙 해제/);
+ assert.equal(renderToStaticMarkup(React.createElement(AppliedRules,{data,plan:{...plan,rules:undefined},busy:false,perform:async()=>true,onExperiments:()=>{}})),'');
+});
+
 test('historical note view never flashes the latest body while loading its recorded revision',async()=>{
  const {NoteDetail}=await vite.ssrLoadModule('/components/orbit/note-detail.tsx');
  const html=renderToStaticMarkup(React.createElement(NoteDetail,{requestedRevision:1,meta:{id:'n',revision:2,bodyStored:false,title:'최신',body:'LATEST_BODY_MUST_NOT_APPEAR',kind:'wiki',updated:'2026-09-17',tags:[]},notes:[],tasks:[],demo:false,busy:false,defaultDue:'2026-09-17'}));

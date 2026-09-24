@@ -105,6 +105,10 @@ export interface Improvement {
   createdOn: string;
   active: boolean;
   source?: string;
+  // The experiment whose result the owner adopted this rule from.
+  experimentId?: string;
+  // Rules the deterministic planner applies itself; every other rule is guidance for the brief.
+  effect?: { type: 'meetingBuffer'; minutes: number };
 }
 export interface Habit {
   id: string;
@@ -191,6 +195,8 @@ export interface Proposal {
   energy: 'low' | 'normal' | 'high';
   laser?: { taskId?: string; status: 'placed' | 'failed' | 'none'; minutes: number; note: string };
   delegate?: string[];
+  // Engine-applied rules for this plan, so the owner can see which experience changed it and retire the rule.
+  rules?: { id: string; rule: string; experimentId?: string; minutes: number; meetings: number }[];
 }
 export interface Rhythm {
   peakStart: number;

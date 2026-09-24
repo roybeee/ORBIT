@@ -1,7 +1,7 @@
 import {executionSamples} from './execution-history.ts';
 import type {ExecutionRecord} from './phase4-schema.ts';
 import {workEligibility,type WorkContext} from './work-policy.ts';
-import {planningEvents} from './allocation-policy.ts';
+import {planningEvents,meetingBufferRule} from './allocation-policy.ts';
 import {
   withDefaults,
   DEFAULT_PREFERENCES,
@@ -12,6 +12,7 @@ import {
   type Preferences,
   type Quadrant,
   type Cognition,
+  type Improvement,
 } from './model.ts';
 import { addDays } from './dates.ts';
 export function overlaps(a: { start: number; end: number }, b: { start: number; end: number }) {
@@ -74,6 +75,8 @@ export interface PlannerOptions {
   ordered?: string[];
   // Explicit Goal Laser choice (the brief's first priority); otherwise the domino heuristic decides.
   laserTaskId?: string;
+  // The owner's rules; only engine-applicable ones (a meeting buffer) change the calendar.
+  rules?: Improvement[];
 }
 const quadrantWord: Record<Quadrant, string> = {
   A: '중요하고 급한 A',
@@ -118,7 +121,8 @@ export function generateProposal(
   const reservations: CalendarEvent[] = events
     .filter((e) => !reserved.some((r) => (e.id==='approved:'+r.id||e.google?.orbitEventId==='approved:'+r.id) && e.date === date))
     .concat(reserved);
-  const calendar=planningEvents(reservations,date,prefs);
+  const calendar=planningEvents(reservations,date,prefs,options.rules);
+  const buffer=meetingBufferRule(options.rules);
   const workday = new Date(date + 'T12:00:00Z').getUTCDay();
   const windows: Window[] =
     preferences && !preferences.workDays.includes(workday)
@@ -358,6 +362,19 @@ export function generateProposal(
     energy,
     laser,
     delegate,
+    ...(buffer
+      ? {
+          rules: [
+            {
+              id: buffer.id,
+              rule: buffer.rule,
+              ...(buffer.experimentId ? { experimentId: buffer.experimentId } : {}),
+              minutes: buffer.effect.minutes,
+              meetings: calendar.filter((e) => e.id.startsWith('rule-buffer:') && e.end > workStart && e.start < workEnd).length,
+            },
+          ],
+        }
+      : {}),
   };
 }
 export function approveProposalItem(
