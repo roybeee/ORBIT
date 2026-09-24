@@ -10,6 +10,10 @@ export const slackDirectives=sqliteTable('orbit_slack_directives',{
 export const gotemSends=sqliteTable('orbit_gotem_sends',{
  ownerId:text('owner_id').notNull(),date:text('date').notNull(),slot:text('slot').notNull(),status:text('status').notNull(),reason:text('reason').notNull(),payloadJson:text('payload_json').notNull(),createdAt:text('created_at').notNull(),
 },t=>[primaryKey({columns:[t.ownerId,t.date,t.slot]})]);
+// One row per focus start, written with the workspace commit that set Task.startedAt (which is cleared when the session ends).
+export const taskStarts=sqliteTable('orbit_task_starts',{
+ ownerId:text('owner_id').notNull(),taskId:text('task_id').notNull(),startedAt:text('started_at').notNull(),date:text('date').notNull(),
+},t=>[primaryKey({columns:[t.ownerId,t.taskId,t.startedAt]}),index('idx_orbit_task_starts_date').on(t.ownerId,t.date)]);
 export const plaudSync=sqliteTable('orbit_plaud_sync',{
  ownerId:text('owner_id').primaryKey(),stateJson:text('state_json').notNull(),leaseUntil:integer('lease_until').notNull().default(0),
 });
