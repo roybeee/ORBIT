@@ -45,7 +45,7 @@ export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 type Message={role:'user'|'assistant';content:string};
 type ReadRequest={tool:string;arguments:Record<string,unknown>};
 interface Job {
- meeting?:MeetingAnalysis; meetingRepairs?:number; meetingInput?:string;
+ meeting?:MeetingAnalysis; meetingRepairs?:number; briefRepairs?:number; meetingInput?:string;
  provider?:'hermes'|'openai'; model?:string; directOutput?:string;
  basis?:WorkspaceBasis; revalidations?:number; refreshActionId?:string;
  batch?:BatchState; analysisGeneration?:string; posts?:number; analysis?:RunMetrics;
@@ -375,7 +375,18 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
      }
      if(job.planningContext!.plaudAvailable&&!job.plaudAttempted){job.planningContext!.coverage.warnings.push('Plaud 추가 조회를 완료하지 못했습니다.');}
      if(job.analysisGeneration){const ids=[...parsed.brief.progress,...parsed.brief.priorities,...parsed.brief.tradeoffs,...parsed.brief.risks].flatMap(p=>p.evidence);job.planningContext!.evidence.push(...await restoreEvidence(db,owner,id,job.analysisGeneration,ids));}
-     const brief=completeBrief(parsed.brief,job.planningContext!,job.planning,job.revision,id);
+     let brief;
+     try{brief=completeBrief(parsed.brief,job.planningContext!,job.planning,job.revision,id);}catch(error){
+      // A citation off by one character (2026-09-24: `…a16f0f7f8f` for the real `…a16c0f7f8f`) used to end a
+      // run that had already analysed every record. Ask for the exact ids once or twice, the way a meeting
+      // reply is repaired; a citation that still does not resolve fails with the ids named.
+      if(error instanceof AgentError&&error.code==='BRIEF_EVIDENCE'&&(job.briefRepairs??0)<2){
+       job.briefRepairs=(job.briefRepairs??0)+1;remember(job,job.request!.input,result.output);job.round++;
+       setRequest(job,'SERVER VALIDATION: '+error.message+'\nEach listed evidence id does not exist. Replace it with the exact id as written in the supplied analyses or catalog (copy ids character by character, never retype them) or remove that citation. Return the complete {"kind":"brief",...} object again. No changes were applied.');
+       await save('제안이 인용한 근거 ID 일부를 기록에서 찾지 못해 정확한 ID로 다시 받습니다.'+(error.message?' · '+error.message:''));return;
+      }
+      throw error;
+     }
      await publishBrief(db,owner,id,row.turn_lease,brief,job.planning);await finishBriefRun(db,owner,id,new Date().toISOString(),{...(job.analysis??{version:'',inline:true,leaves:0,reused:0,analyzed:0,merges:0,mergeReused:0,changes:{added:0,modified:0,deleted:0,keys:[]}}),posts:job.posts??0}).catch(()=>{});await clearBatches(db,owner,id);return;
     }
     await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,id).run();return;
