@@ -7,8 +7,8 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 `9e57e1b`이다(2026-09-24T02:47Z, [기록](releases/2026-09-24-9e57e1b.md), 소유자 브라우저 `/api/version` tree `12402f1a…` 확인). 같은 날 오전의 `a4fdd50` → … → `80fff22`는 이것으로 대체됐다.
-- 이 PR(`fix/frame-citations`)은 이전 계획·chief 맥락 인용을 근거 검증 전에 제외해 보정 턴을 절약한다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `d73694d`이다(2026-09-24T03:47Z, [기록](releases/2026-09-24-d73694d.md), 소유자 브라우저 `/api/version` tree `7854ebd4…` 확인). 같은 날의 `a4fdd50` → … → `9e57e1b`는 이것으로 대체됐다. 오늘 Codex 게시는 총 7회(이 세션 4회)로 Hermes 주간 쿼터를 함께 썼으니 추가 게시는 묶어서 할 것.
+- 이 PR(`docs/status-d73694d`)은 d73694d 게시 기록을 반영한다. 열린 후속은 `fix/plan-stale-basis`(별도 작업)만 남았다.
 
 ## 검증된 결과
 
@@ -46,7 +46,7 @@
 
 ## 마지막 갱신(UTC)
 
-- 수동 구역: 2026-09-24T03:38Z (Claude, 프레임 인용 제외 반영)
+- 수동 구역: 2026-09-24T03:49Z (Claude, d73694d 게시 반영)
 
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
