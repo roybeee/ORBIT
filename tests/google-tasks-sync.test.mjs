@@ -18,13 +18,13 @@ async function act(db,action){const s=await readWorkspace(db,'a');return writeCo
 const mine=async db=>(await readWorkspace(db,'a')).data.tasks.find(t=>t.id==='slack-1');
 const sync=db=>syncGoogleTasks(db,'a',env,{force:true});
 
-function tasksApi({forbidden=false,onGet,broken=[]}={}){
+function tasksApi({forbidden=false,forbiddenBody,onGet,broken=[]}={}){
  const items=new Map([['gt-1',{id:'gt-1',title:'계약서 검토',due:'2026-10-02T00:00:00.000Z',status:'needsAction',etag:'"1"',updated:'2026-09-25T00:00:00.000Z'}]]);
  let version=1;const calls=[];
  const touch=v=>({...v,etag:`"${++version}"`,updated:new Date(Date.now()+version*1000).toISOString()});
  globalThis.fetch=async(url,init={})=>{
   const method=init.method??'GET',u=new URL(url);calls.push(method+' '+u.pathname);
-  if(forbidden)return Response.json({error:{code:403}},{status:403});
+  if(forbidden)return Response.json(forbiddenBody??{error:{code:403}},{status:403});
   const m=/^\/tasks\/v1\/lists\/([^/]+)\/tasks(?:\/([^/]+))?$/.exec(u.pathname);if(!m)throw new Error('Unexpected '+url);
   const id=m[2]&&decodeURIComponent(m[2]),current=id&&items.get(id);
   if(!id)return Response.json({items:[...items.values()].filter(v=>!u.searchParams.get('updatedMin')||v.updated>=u.searchParams.get('updatedMin'))});
@@ -164,4 +164,16 @@ test('a Slack task whose Google Task this account cannot see is kept, not delete
  const g=tasksApi();g.items.clear();
  await sync(db);
  assert.ok(await mine(db),'a base link never confirmed in Google is not proof of deletion');
+}));
+
+test('the status names the real cause Google gives for a 403',()=>fixture(async db=>{
+ const disabled={error:{code:403,message:'Google Tasks API has not been used in project 123456789 before or it is disabled.',status:'PERMISSION_DENIED',
+  details:[{'@type':'type.googleapis.com/google.rpc.ErrorInfo',reason:'SERVICE_DISABLED',metadata:{consumer:'projects/123456789',service:'tasks.googleapis.com'}}]}};
+ await linked(db,{forbidden:true,forbiddenBody:disabled});
+ let status=(await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks');
+ assert.equal(status.state,'partial');assert.match(status.detail,/Google Tasks API가 꺼져/);assert.match(status.detail,/123456789/);
+ tasksApi({forbidden:true,forbiddenBody:{error:{code:403,status:'PERMISSION_DENIED',details:[{'@type':'type.googleapis.com/google.rpc.ErrorInfo',reason:'ACCESS_TOKEN_SCOPE_INSUFFICIENT'}]}}});
+ await sync(db);
+ status=(await sourceStatuses(db,'a')).find(s=>s.provider==='google_tasks');
+ assert.match(status.detail,/다시 연결/);assert.match(status.detail,/Tasks 권한/);
 }));

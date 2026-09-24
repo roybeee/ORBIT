@@ -16,6 +16,7 @@ from urllib import error, parse, request
 
 GUIDANCE = (
     "Slack에서 할 일 등록을 지시받으면 orbit_slack_task 하나로 Google Tasks와 ORBIT에 동시에 등록하세요. Google Tasks API를 따로 호출하지 마세요. "
+    "title에는 사용자가 말한 할 일 문구만 그대로 넣으세요. '추가', '등록', '해줘', '할 일로' 같은 지시어나 날짜 표현은 붙이지 마세요(예: '내일 할 일로 A 추가해줘' → title 'A'). "
     "메모·기록 지시는 orbit_slack_note로 ORBIT에 저장하세요. 시간이 정해진 일정은 기존처럼 Google Calendar에 만드세요. ORBIT은 Google Calendar를 직접 읽으므로 따로 반영할 필요가 없습니다. "
     "사용자가 프로젝트를 말했으면 project에 그 말을 그대로 넣고, 말하지 않았으면 비워 두세요. "
     "결과 state가 needs_confirmation이면 question을 그대로 보여 주세요. 요청자가 번호로 답하면 orbit_slack_choose(request_id, choice)를 호출하세요. 번호를 추측하지 마세요. "
@@ -261,7 +262,8 @@ text = lambda n: {'type': 'string', 'minLength': 1, 'maxLength': n}
 TOOLS = [
     ('orbit_slack_task', add_task, 'Register one Slack-instructed to-do in Google Tasks and ORBIT together. Use once per to-do.',
      {'type': 'object', 'additionalProperties': False, 'required': ['title', 'due'], 'properties': {
-         'title': text(160), 'due': {'type': 'string', 'pattern': r'^\d{4}-\d{2}-\d{2}$', 'description': 'Due date YYYY-MM-DD (Asia/Seoul).'},
+         'title': {**text(160), 'description': "Only the to-do itself, verbatim; never add instruction words like 추가/등록/해줘 or the date (e.g. '내일 할 일로 A 추가해줘' -> 'A')."},
+         'due': {'type': 'string', 'pattern': r'^\d{4}-\d{2}-\d{2}$', 'description': 'Due date YYYY-MM-DD (Asia/Seoul).'},
          'time': {'type': 'string', 'maxLength': 40, 'description': 'Optional time of day as said, e.g. 16:00.'},
          'notes': {'type': 'string', 'maxLength': 3000}, 'project': {'type': 'string', 'maxLength': 160, 'description': 'Project exactly as the user said it; omit if not said.'},
          'duration': {'type': 'integer', 'minimum': 5, 'maximum': 480}}}),
