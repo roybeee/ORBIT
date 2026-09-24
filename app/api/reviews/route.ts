@@ -1,5 +1,7 @@
 import { getDatabase } from '@/db/storage';
-import { readReview, listReviews } from '@/db/repository';
+import { readReview, listReviews, readWorkspace, readNoteBodies } from '@/db/repository';
+import { evidenceNotes, reviewCandidates } from '@/lib/orbit/review-evidence';
+import { todayInZone } from '@/lib/orbit/dates';
 import { owner, json, failure, AgentError } from '@/lib/orbit/agent/http';
 import { addDays, validDate } from '@/lib/orbit/dates';
 export const dynamic = 'force-dynamic';
@@ -11,6 +13,15 @@ export async function GET(request: Request) {
     const date = params.get('date');
     if (date) {
       if (!validDate(date)) throw new AgentError('회고 날짜를 확인해 주세요.');
+      if (params.get('evidence') === '1') {
+        // Result candidates with their source lines; note bodies live outside the workspace aggregate.
+        const db = getDatabase(), snapshot = await readWorkspace(db, user.id), now = new Date();
+        const today = todayInZone(snapshot.data.preferences.timeZone, now);
+        if (date > today) throw new AgentError('미래 날짜의 회고는 아직 기록할 수 없습니다.');
+        const metas = evidenceNotes(snapshot.data.notes, date).map((r) => r.note);
+        const notes = await readNoteBodies(db, user.id, metas);
+        return json({ candidates: reviewCandidates(snapshot.data, date, today, now, notes), revision: snapshot.revision });
+      }
       return json({ detail: await readReview(getDatabase(), user.id, date) });
     }
     const to = params.get('to') ?? '',

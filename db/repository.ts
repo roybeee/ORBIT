@@ -68,6 +68,26 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
   data.events=data.events.map(event=>linkEventProject(event,data));
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };
 }
+// Current bodies for a bounded set of note metadata, read in one batch. A version missing from storage is
+// skipped rather than failing the caller, which only uses the text as optional review evidence.
+export async function readNoteBodies(db: Database, ownerId: string, metas: Note[]): Promise<Note[]> {
+  const stored = metas.filter((n) => n.bodyStored).slice(0, 24);
+  const rows = stored.length
+    ? await db.batch(
+        stored.map((n) =>
+          db
+            .prepare('SELECT note_json FROM orbit_note_revisions WHERE owner_id = ? AND note_id = ? AND revision = ?')
+            .bind(ownerId, n.id, n.revision ?? 1),
+        ),
+      )
+    : [];
+  const bodies = new Map<string, Note>();
+  stored.forEach((n, i) => {
+    const row = (rows[i]?.results?.[0] as { note_json?: string } | undefined)?.note_json;
+    if (row) bodies.set(n.id, JSON.parse(row) as Note);
+  });
+  return metas.flatMap((n) => (!n.bodyStored ? [n] : bodies.has(n.id) ? [bodies.get(n.id)!] : []));
+}
 async function readVersion(db: Database, ownerId: string, id: string, revision: number): Promise<Note> {
   const row = await db
     .prepare('SELECT note_json FROM orbit_note_revisions WHERE owner_id = ? AND note_id = ? AND revision = ?')
