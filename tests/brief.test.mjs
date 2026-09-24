@@ -304,12 +304,16 @@ test('batch intermediate evidence is owner-scoped and cancellation never publish
  assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);assert.equal(await db.prepare('SELECT * FROM orbit_brief_parts WHERE turn_id=?').bind(run).first(),null);
 }));
 
-test('planning automatically refreshes changed records and still requires priority approval',()=>fixture(async db=>{
- const snapshot=await seed(db);await hermes(db);const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);
- globalThis.fetch=async(_url,options={})=>options.method==='POST'?j({run_id:'run_1',status:'started'},202):response({kind:'brief',brief:content()});
+test('a record changed while the plan is analysed does not restart the analysis; the plan notes it and still requires approval',()=>fixture(async db=>{
+ const snapshot=await seed(db);await hermes(db);const id=randomUUID();await runAgent(db,'owner',{id,message:briefMessage(planning),planning},env);let posts=0;
+ globalThis.fetch=async(_url,options={})=>{if(options.method==='POST'){posts++;return j({run_id:'run_1',status:'started'},202)}return response({kind:'brief',brief:content()})};
  await advanceAgent(db,'owner',id,env);await writeCommand(db,'owner',{operationId:randomUUID(),expectedRevision:snapshot.revision,action:{type:'task.status',id:'t',status:'doing'}});
- await advanceAgent(db,'owner',id,env);let job=JSON.parse((await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE turn_id=?').bind(id).first()).job_json);assert.equal(job.phase,'prepare');assert.equal(job.revalidations,1);assert.equal((await readWorkspace(db,'owner')).data.proposals.length,0);
- await advanceAgent(db,'owner',id,env);await complete(db,id);const data=(await readWorkspace(db,'owner')).data;assert.equal(data.proposals.length,1);assert.equal(data.events.length,0);assert.equal(data.tasks.find(t=>t.id==='t').status,'doing');
+ await advanceAgent(db,'owner',id,env);
+ assert.equal(posts,1,'no second analysis');assert.equal(await db.prepare('SELECT job_json FROM orbit_hermes_jobs WHERE turn_id=?').bind(id).first(),null);
+ const state=await readWorkspace(db,'owner'),plan=state.data.proposals[0];
+ assert.ok(plan?.brief,'the plan was published in the same pass');assert.equal(plan.brief.sourceRevision,state.revision-1);
+ assert.ok(plan.brief.coverage.warnings.some(w=>/분석 시작 후 기록이 변경/.test(w)),JSON.stringify(plan.brief.coverage.warnings));
+ assert.equal(state.data.events.length,0);assert.equal(state.data.tasks.find(t=>t.id==='t').status,'doing');
 }));
 
 test('a brief that cites an id which does not resolve gets a repair turn instead of ending the run',()=>fixture(async db=>{

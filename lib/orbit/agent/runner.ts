@@ -18,7 +18,8 @@ import {searchPersonalConversations} from './personal-records.ts';
 import {chiefOfStaff} from '../chief.ts';
 import { automaticProject, projectDraft, suggestProject, normalize } from '../classify.ts';
 import {z} from 'zod';
-import {briefContentSchema,type PlanningRequest} from '../brief/schema.ts';
+import {briefContentSchema,type PlanningRequest,type BriefCoverage} from '../brief/schema.ts';
+import type {WorkspaceData} from '../model.ts';
 import {publishBrief} from '../brief/publish.ts';
 import {localPlanning} from '../brief/local-plan.ts';
 import {collectPlanningContext,completeBrief,planningInstructions,planningBudget,PLANNING_BUDGETS,type PlanningContext} from '../brief/context.ts';
@@ -107,6 +108,12 @@ function retryBatch(job:Job){
 const batchProgress=(job:Job)=>{if(!job.batch)return '';const b=job.batch,n=b.pending?.length??b.count,reused=(b.reused??0)+(b.mergeReused??0);return `전체 자료 분석 · ${b.stage===0?'원문 검토':'결과 통합'} ${n?b.cursor+1:b.count}/${n||b.count} · ${b.completed}개 처리 완료${reused?` · 이전 분석 ${reused}개 재사용`:''}. `};
 async function scope(owner:string,conversationId:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['orbit-personal-os',owner,conversationId])));return 'orbit:'+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')}
 async function discard(db:Database,owner:string,id:string,lease:string,message:string){await failTurn(db,owner,id,lease,message);await clearBatches(db,owner,id);await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=? AND turn_lease=?').bind(owner,id,lease).run()}
+// Names what changed between the analysed snapshot and the workspace at publish time, by record count.
+function changedSinceSnapshot(coverage:BriefCoverage,data:WorkspaceData){
+ const deltas:[string,number][]=[['프로젝트',data.projects.length-coverage.projects],['할 일',data.tasks.length-coverage.tasks],['노트',data.notes.length-coverage.notes],['일정',data.events.length-coverage.events],['회고',data.reviews.length-coverage.reviews]];
+ const moved=deltas.filter(([,d])=>d!==0).map(([label,d])=>`${label} ${d>0?'+':''}${d}`);
+ return `분석 시작 후 기록이 변경되었습니다${moved.length?'('+moved.join(', ')+')':'(내용 수정)'}. 이번 계획은 분석 시작 시점의 기록을 기준으로 하며, 변경분은 다음 실행에서 반영됩니다.`;
+}
 // Hermes reports why a run failed (provider errors are redacted upstream). Show it instead of a generic line.
 const hermesError=(result:Record<string,unknown>)=>{const raw=result.error;const text=typeof raw==='string'?raw:raw&&typeof raw==='object'?String((raw as {message?:unknown}).message??JSON.stringify(raw)):'';return text.replace(/\s+/g,' ').trim().slice(0,300)};
 // A failure that is not an AgentError (storage, a schema, a bug) used to be replaced by a generic
@@ -369,9 +376,12 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
       setRequest(job,'Before finalizing, attempt plaud_read with an actual tool schema from the initial catalog. Gather relevant recordings through cutoff and cite the returned evidence IDs.');await save('Plaud의 최근 회의 기록을 추가로 확인합니다.');return;
      }
      if(current.revision!==job.revision){
-      if(job.basis?.workspace===(await captureWorkspaceBasis(current.data)).workspace)job.revision=current.revision;
-      else if((job.revalidations??0)<2){await revalidate();return;}
-      else throw new AgentError('분석 중 관련 기록이 계속 변경되고 있습니다. 기존 제안은 유지되며 변경이 끝난 뒤 다시 분석할 수 있습니다.','CONFLICT',409);
+      // The plan is a draft against the snapshot it analysed. Plaud imports and Hermes ingest add records every few
+      // minutes, so a 30-minute analysis restarted on every change never finished (2026-09-24: two runs revalidated
+      // twice each and ended in CONFLICT). Finish on the snapshot, say what moved, and let the next run pick the
+      // changes up through the incremental cache; approving a priority re-checks its target records anyway.
+      if(job.basis?.workspace!==(await captureWorkspaceBasis(current.data)).workspace)job.planningContext!.coverage.warnings.push(changedSinceSnapshot(job.planningContext!.coverage,current.data));
+      job.revision=current.revision;
      }
      if(job.planningContext!.plaudAvailable&&!job.plaudAttempted){job.planningContext!.coverage.warnings.push('Plaud 추가 조회를 완료하지 못했습니다.');}
      if(job.analysisGeneration){const ids=[...parsed.brief.progress,...parsed.brief.priorities,...parsed.brief.tradeoffs,...parsed.brief.risks].flatMap(p=>p.evidence);job.planningContext!.evidence.push(...await restoreEvidence(db,owner,id,job.analysisGeneration,ids));}
