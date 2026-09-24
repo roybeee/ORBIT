@@ -7,7 +7,7 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 `6d1e394`이다(2026-09-25 KST, [기록](releases/2026-09-25-6d1e394.md), 소유자 브라우저 `/api/version` tree `bbb92fef…`). PR #99(Slack 지시 → Google+ORBIT 동시 등록, 캘린더·할 일 양방향 동기화)가 이 릴리스에 포함된다. 남은 소유자 단계: ORBIT에서 Google Calendar 재연결(Tasks 권한), Hermes 플러그인 `integrations/hermes-orbit-commands/deploy.sh` 실행.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `d41061e`이다(2026-09-25 KST, [기록](releases/2026-09-25-d41061e.md), 소유자 브라우저 `/api/version` tree `443f269e…`). PR #99·#101·#102·#103(Slack 지시 → Google+ORBIT 동시 등록, 캘린더·할 일 양방향 동기화, 목록 1회 조회)이 포함된다. Hermes 플러그인(`integrations/hermes-orbit-commands`)은 서버에 배포됨(해시 `de92e9e2…`, 도구 4개 등록 확인), Google Calendar는 Tasks 권한 포함 재연결됨.
 - 이 PR(`docs/status-d73694d`)은 d73694d 게시 기록을 반영한다. 열린 후속은 `fix/plan-stale-basis`(별도 작업)만 남았다.
 
 ## 검증된 결과
