@@ -15,28 +15,70 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import {readDraft,saveDraft,clearDraft} from '@/lib/orbit/device-drafts';
 import { agentRequest } from '@/components/orbit/agent/connections';
 import { needsFeedback } from '@/lib/orbit/coach';
+import { reviewCandidates, reviewReflection, type ReviewCandidate, type ReviewEvidence, type CandidateState, type ReviewReflection } from '@/lib/orbit/review-evidence';
 import { habitStreak } from '@/lib/orbit/derived';
 import {
   outcomeLabel,
   reasonLabel,
   improvementKindLabel,
   type WorkspaceData,
-  type Task,
   type Outcome,
   type OutcomeReason,
   type ImprovementKind,
   type ReviewDetail,
   type Proposal,
 } from '@/lib/orbit/model';
-interface ItemDraft {
-  taskId: string;
-  title: string;
-  estimate: number;
+type Decision = 'confirmed' | 'pending' | 'accepted' | 'edited' | 'unknown';
+interface ItemBase {
   outcome?: Outcome;
   actual: string;
   reason: OutcomeReason;
-  source: string;
+  decision?: Decision;
+  actualSource?: 'timer' | 'record' | 'input';
+  actualUnknown?: boolean;
 }
+interface ItemDraft extends ItemBase {
+  taskId: string;
+  title: string;
+  estimate: number;
+  source: string;
+  // Evidence-first review: what the records say, kept apart from what the user decided.
+  state?: CandidateState;
+  suggested?: Outcome;
+  suggestedReason?: OutcomeReason;
+  basis?: string;
+  evidence?: ReviewEvidence[];
+  timer?: ReviewCandidate['timer'];
+  calendarMinutes?: number;
+  editing?: boolean;
+  initial?: ItemBase;
+}
+const baseOf = (i: ItemBase): ItemBase => ({ outcome: i.outcome, actual: i.actual, reason: i.reason, decision: i.decision, actualSource: i.actualSource, actualUnknown: i.actualUnknown });
+const changed = (i: ItemDraft) => !!i.initial && JSON.stringify(baseOf(i)) !== JSON.stringify(baseOf(i.initial));
+export function fromCandidate(c: ReviewCandidate): ItemDraft {
+  const timer = c.timer && c.timer.since > 0 ? String(c.timer.total) : '';
+  const base: ItemBase =
+    c.state === 'confirmed'
+      ? { outcome: c.outcome, reason: c.reason ?? 'other', decision: 'confirmed', actual: c.actual !== undefined ? String(c.actual) : timer, actualSource: c.actual !== undefined ? 'record' : timer ? 'timer' : undefined }
+      : { reason: c.reason ?? 'other', decision: 'pending', actual: timer, actualSource: timer ? 'timer' : undefined };
+  return {
+    ...base,
+    taskId: c.taskId,
+    title: c.title,
+    estimate: c.estimate,
+    source: c.source,
+    state: c.state,
+    ...(c.state === 'suggested' ? { suggested: c.outcome, suggestedReason: c.reason } : {}),
+    basis: c.basis,
+    evidence: c.evidence,
+    timer: c.timer,
+    calendarMinutes: c.calendarMinutes,
+    initial: base,
+  };
+}
+const untouched = (i: ItemDraft) => !!i.initial && !changed(i);
+// Saved-review rows are confirmed results; drafts from before this screen carry no decision yet.
+const normalize = (i: ItemDraft): ItemDraft => (i.decision ? i : { ...i, decision: i.outcome ? 'edited' : 'pending' });
 interface FeedbackDraft {
   cause: string;
   alternative: string;
@@ -63,28 +105,115 @@ interface ReviewDraft {
   quick?: boolean;
   step?: number;
   savedSleep?: number;
+  openedAt?: number;
 }
 const STEPS = ['오늘 항목 결과', '원인 · 대안 · 규칙', '에너지 · 습관', '내가 해냄 · 감사'] as const;
 const toMinutes = (value: string) => {
   const [h, m] = value.split(':').map(Number);
   return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
 };
-export function plannedItems(data: WorkspaceData, date: string): { task: Task; source: string }[] {
-  const approved = new Set(
-    data.events
-      .filter((e) => e.date === date && e.taskId && e.id.startsWith('approved:'))
-      .map((e) => e.taskId!),
+export { plannedItems } from '@/lib/orbit/review-evidence';
+const badgeOf = (i: ItemDraft): [string, string] =>
+  i.decision === 'unknown' ? ['아직 모름', 'unknown']
+  : i.decision === 'accepted' ? ['추정 → 맞음', 'accepted']
+  : i.decision === 'edited' ? ['직접 확인', 'edited']
+  : i.decision === 'confirmed' ? ['확정', 'confirmed']
+  : i.suggested ? ['추정 · 확인 필요', 'suggested']
+  : ['확인 필요', 'open'];
+// One result row: record-based basis and source lines, the user's decision, and the measured time.
+function CandidateRow({ i, laser, choose, accept, unknown, undo, update, open }: {
+  i: ItemDraft; laser: boolean;
+  choose: (i: ItemDraft, o: Outcome) => void; accept: (i: ItemDraft) => void; unknown: (i: ItemDraft) => void; undo: (i: ItemDraft) => void;
+  update: (taskId: string, patch: Partial<ItemDraft>) => void; open?: (kind: 'task' | 'note', id: string) => void;
+}) {
+  const [badge, tone] = badgeOf(i);
+  const picking = i.editing || (!i.outcome && !(i.decision === 'pending' && i.suggested) && i.decision !== 'unknown');
+  const timerTotal = i.timer && i.timer.total > 0 ? i.timer.total : undefined;
+  return (
+    <div className={`wizard-item review-candidate ${laser ? 'is-laser' : ''}`}>
+      <div className="wizard-item-head">
+        <div>
+          <small>{i.source} · <span className={`candidate-badge badge-${tone}`}>{badge}</span></small>
+          <strong>{i.title}</strong>
+        </div>
+        {changed(i) && <button type="button" className="text-button" onClick={() => undo(i)}>되돌리기</button>}
+      </div>
+      {i.basis && <p className="candidate-basis">{i.basis}</p>}
+      {!!i.evidence?.length && (
+        <details className="candidate-evidence">
+          <summary>원문 근거 {i.evidence.length}개</summary>
+          <ul>
+            {i.evidence.map((e, n) => (
+              <li key={n}>
+                <span>{e.label}</span>
+                <q>{e.quote}</q>
+                {open && e.ref && (e.ref.type === 'note' || e.ref.type === 'task') && (
+                  <button type="button" className="text-button" onClick={() => open(e.ref!.type as 'note' | 'task', e.ref!.id)}>열기</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <div className="candidate-decision">
+        {i.decision === 'pending' && i.suggested && !i.editing ? (
+          <>
+            <span className="candidate-guess">추정: {outcomeLabel[i.suggested]}</span>
+            <button type="button" className="primary-button compact" onClick={() => accept(i)}>맞음</button>
+            <button type="button" className="secondary-button compact" onClick={() => update(i.taskId, { editing: true })}>수정</button>
+            <button type="button" className="secondary-button compact" onClick={() => unknown(i)}>아직 모름</button>
+          </>
+        ) : picking ? (
+          <>
+            <div className="outcome-buttons" role="group" aria-label={`${i.title} 결과`}>
+              {(Object.keys(outcomeLabel) as Outcome[]).map((o) => (
+                <button type="button" key={o} className={i.outcome === o ? `active outcome-${o}` : ''} onClick={() => choose(i, o)}>{outcomeLabel[o]}</button>
+              ))}
+            </div>
+            <button type="button" className="secondary-button compact" onClick={() => unknown(i)}>아직 모름</button>
+          </>
+        ) : (
+          <>
+            <span className={`candidate-guess ${i.outcome ? 'outcome-' + i.outcome : ''}`}>{i.outcome ? `결과: ${outcomeLabel[i.outcome]}` : '저장하지 않고 상태를 그대로 둡니다'}</span>
+            <button type="button" className="secondary-button compact" onClick={() => update(i.taskId, { editing: true })}>수정</button>
+          </>
+        )}
+      </div>
+      {i.decision !== 'unknown' && i.outcome !== 'skipped' && (
+        <div className="candidate-time">
+          <label>
+            예상 {i.estimate}분 → 실제
+            <input type="number" min={0} max={1440} step={5} className="form-field" value={i.actualUnknown ? '' : i.actual} disabled={i.actualUnknown} placeholder="분"
+              onChange={(e) => update(i.taskId, { actual: e.target.value, actualSource: 'input', actualUnknown: false })} />
+          </label>
+          {timerTotal !== undefined && String(timerTotal) !== i.actual && (
+            <button type="button" className="text-button" onClick={() => update(i.taskId, { actual: String(timerTotal), actualSource: 'timer', actualUnknown: false })}>
+              타이머 {timerTotal}분 불러오기
+            </button>
+          )}
+          <button type="button" className={`text-button ${i.actualUnknown ? 'is-on' : ''}`} aria-pressed={!!i.actualUnknown}
+            onClick={() => update(i.taskId, { actualUnknown: !i.actualUnknown, ...(!i.actualUnknown ? { actual: '' } : {}) })}>
+            {i.actualUnknown ? '실제 시간 미확인 ✓' : '미확인으로 두기'}
+          </button>
+          <small className="candidate-time-note">
+            {i.actualSource === 'timer' && !i.actualUnknown ? `집중 타이머 누적값${i.timer?.running ? ' (진행 중인 세션 포함)' : ''}. ` : ''}
+            {i.actualSource === 'record' && !i.actualUnknown ? '이미 기록된 값. ' : ''}
+            {i.calendarMinutes ? `캘린더 배정 ${i.calendarMinutes}분은 실제 수행시간으로 쓰지 않습니다.` : ''}
+          </small>
+        </div>
+      )}
+      {i.outcome && i.outcome !== 'done' && i.decision !== 'unknown' && (
+        <Select value={i.reason} onValueChange={(v) => update(i.taskId, { reason: v as OutcomeReason })}>
+          <SelectTrigger className="form-select" aria-label="끝내지 못한 이유"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {(Object.keys(reasonLabel) as OutcomeReason[]).map((r) => (
+              <SelectItem key={r} value={r}>{reasonLabel[r]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
   );
-  const rows: { task: Task; source: string; order: number }[] = [];
-  for (const t of data.tasks) {
-    if (t.laserDate === date) rows.push({ task: t, source: 'Goal Laser', order: 0 });
-    else if ((t.focus && t.focusDate === date) || approved.has(t.id))
-      rows.push({ task: t, source: '핵심 결과물', order: 1 });
-    else if (t.completedOn === date) rows.push({ task: t, source: '오늘 완료', order: 2 });
-    else if (t.unplanned && t.due === date) rows.push({ task: t, source: '계획에 없던 일 +', order: 3 });
-    else if (t.due === date && t.status !== 'done') rows.push({ task: t, source: '오늘 마감', order: 4 });
-  }
-  return rows.sort((a, b) => a.order - b.order);
 }
 // Evening PAFI companion: walks through outcomes → feedback → energy/habits → small wins,
 // then saves one review (detail rows included) and generates tomorrow's proposal.
@@ -96,6 +225,7 @@ export function ReviewWizard({
   busy,
   demo,
   onSave,
+  open,
 }: {
   data: WorkspaceData;
   ownerId: string;
@@ -106,24 +236,23 @@ export function ReviewWizard({
   onSave: (
     review: { date: string; win: string; block: string; energy: Proposal['energy'] },
     detail: ReviewDetail,
+    reflection: ReviewReflection,
   ) => Promise<boolean>;
+  open?: (kind: 'task' | 'note', id: string) => void;
 }) {
   const existing = data.reviews.find((r) => r.date === reviewDate);
-  const planned = useMemo(() => plannedItems(data, reviewDate), [data, reviewDate]);
+  // Local records first; the server adds note bodies that live outside the workspace aggregate.
+  const planned = useMemo(() => reviewCandidates(data, reviewDate, today, new Date()), [data, reviewDate, today]);
   const habits = data.habits ?? [];
   // The parent remounts this wizard (key = date + saved version), so drafts initialise from props once.
   const [step, setStep] = useState(0);
-  const [items, setItems] = useState<ItemDraft[]>(() =>
-    planned.map(({ task, source }) => ({
-      taskId: task.id,
-      title: task.title,
-      estimate: task.outcomeEstimateMinutes ?? task.duration,
-      outcome: task.outcomeOn === reviewDate ? task.outcome : task.completedOn === reviewDate ? 'done' : undefined,
-      actual: task.outcomeOn === reviewDate && task.actualMinutes !== undefined ? String(task.actualMinutes) : '',
-      reason: task.outcomeOn===reviewDate?task.outcomeReason??'other':'other',
-      source,
-    })),
-  );
+  const [items, setItems] = useState<ItemDraft[]>(() => planned.map(fromCandidate));
+  const [evidenceState, setEvidenceState] = useState<'local' | 'loading' | 'server' | 'failed'>(demo ? 'local' : 'loading');
+  // Set on mount (or restored from the device draft) so the effect check measures open → save.
+  const openedAt = useRef(0);
+  useEffect(() => {
+    if (!openedAt.current) openedAt.current = Date.now();
+  }, []);
   const [feedback, setFeedback] = useState<Record<string, FeedbackDraft>>({});
   const [dayRule, setDayRule] = useState<FeedbackDraft>({
     cause: '',
@@ -150,7 +279,7 @@ export function ReviewWizard({
   const [conflict,setConflict]=useState<ReviewDraft|null>(null);
   // Sleep minutes from the saved review drive rendering (sleepMinutes fallback), so they live in state rather than a ref.
   const [savedSleep,setSavedSleep]=useState<number|undefined>(undefined);
-  const hydrate=(d:ReviewDraft)=>{setItems(current=>[...d.items,...current.filter(i=>!d.items.some(v=>v.taskId===i.taskId))]);setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);setSavedSleep(d.savedSleep);};
+  const hydrate=(d:ReviewDraft)=>{if(d.openedAt)openedAt.current=d.openedAt;setItems(current=>[...d.items.map(normalize),...current.filter(i=>!d.items.some(v=>v.taskId===i.taskId))]);setFeedback(d.feedback);setDayRule(d.dayRule);setBed(d.bed);setWake(d.wake);setExercise(d.exercise);setMeals(d.meals);setMood(d.mood);setHabitChecks(d.habitChecks);setEnergy(d.energy);setSmallWins(d.smallWins);setGratitude(d.gratitude);setWin(d.win);setBlock(d.block);setQuick(d.quick??true);setStep(d.step??0);setSavedSleep(d.savedSleep);};
   // Saved detail rows are fetched once; every setState below happens after the network round trip.
   useEffect(() => {
     const draft=!demo&&readDraft<ReviewDraft>(ownerId,'review',reviewDate);
@@ -164,7 +293,7 @@ export function ReviewWizard({
         if(!active)return;if(!r.detail){setDraftError('저장된 회고 상세를 확인하지 못했습니다. 다시 열어 주세요.');return;}
         const d = r.detail; setSavedSleep(d.energy.sleepMinutes);
         setItems(current => [
-          ...d.items.map(saved => ({taskId:saved.taskId,title:saved.title,estimate:saved.estimateMinutes,outcome:saved.outcome,actual:saved.actualMinutes === undefined ? '' : String(saved.actualMinutes),reason:saved.reason ?? 'other' as const,source:'저장된 회고'})),
+          ...d.items.map((saved): ItemDraft => {const known=current.find(i=>i.taskId===saved.taskId);const base:ItemBase={outcome:saved.outcome,actual:saved.actualMinutes === undefined ? '' : String(saved.actualMinutes),reason:saved.reason ?? 'other',decision:'confirmed',actualSource:saved.actualMinutes === undefined ? undefined : 'record'};return {...base,taskId:saved.taskId,title:saved.title,estimate:saved.estimateMinutes,source:'저장된 회고',state:'confirmed',basis:'저장한 회고의 결과입니다. 다르면 수정하세요.',evidence:[{kind:'record' as const,label:'저장된 회고',quote:`${reviewDate} 회고에 저장한 결과입니다.`,ref:{type:'task' as const,id:saved.taskId}},...(known?.evidence??[]).filter(e=>e.kind!=='record')].slice(0,4),timer:known?.timer,calendarMinutes:known?.calendarMinutes,initial:base};}),
           ...current.filter(i=>!d.items.some(saved=>saved.taskId===i.taskId)),
         ]);
         const fb: Record<string, FeedbackDraft> = {};
@@ -200,14 +329,41 @@ export function ReviewWizard({
     };
   }, [reviewDate, demo, existing?.hasDetail]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- persists the draft to localStorage after every change; the error state only reports a failed write of that external store
-  useEffect(()=>{if(!ready||demo||!dirty.current||conflict)return;try{saveDraft(ownerId,'review',reviewDate,{baseVersion:existing?.updatedAt??'',items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep});setDraftError('');}catch{setDraftError('기기 임시 저장에 실패했습니다. 입력을 복사해 보관해 주세요.');}},[ready,demo,ownerId,reviewDate,items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep]);
+  useEffect(()=>{if(!ready||demo||!dirty.current||conflict)return;try{saveDraft(ownerId,'review',reviewDate,{baseVersion:existing?.updatedAt??'',items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep,openedAt:openedAt.current});setDraftError('');}catch{setDraftError('기기 임시 저장에 실패했습니다. 입력을 복사해 보관해 주세요.');}},[ready,demo,ownerId,reviewDate,items,feedback,dayRule,bed,wake,exercise,meals,mood,habitChecks,energy,smallWins,gratitude,win,block,quick,step,savedSleep]);
+  // Source lines from note bodies (meetings, Slack-filed records, mail) are read on the server. Only rows the
+  // user has not touched yet are refreshed; decisions already made on this device are never replaced.
+  useEffect(() => {
+    if (demo) return;
+    let active = true;
+    void agentRequest('/api/reviews?evidence=1&date=' + reviewDate)
+      .then((r: { candidates?: ReviewCandidate[] }) => {
+        if (!active || !Array.isArray(r.candidates)) return;
+        const server = r.candidates;
+        setItems((current) => [
+          ...current.map((i) => {
+            const c = server.find((x) => x.taskId === i.taskId);
+            if (!c) return i;
+            if (untouched(i) && i.source !== '저장된 회고') return { ...fromCandidate(c), source: i.source };
+            return i.evidence && i.initial ? { ...i, evidence: i.source === '저장된 회고' ? [...i.evidence.filter((e) => e.kind === 'record'), ...c.evidence.filter((e) => e.kind !== 'record')].slice(0, 4) : c.evidence } : { ...i, evidence: c.evidence, basis: c.basis, state: i.state ?? c.state, timer: c.timer, calendarMinutes: c.calendarMinutes, ...(c.state === 'suggested' && !i.outcome ? { suggested: c.outcome, suggestedReason: c.reason } : {}) };
+          }),
+          ...server.filter((c) => !current.some((i) => i.taskId === c.taskId)).map(fromCandidate),
+        ]);
+        setEvidenceState('server');
+      })
+      .catch(() => {
+        if (active) setEvidenceState('failed');
+      });
+    return () => {
+      active = false;
+    };
+  }, [reviewDate, demo]);
   const sleepMinutes = (() => {
     const b = toMinutes(bed),
       w = toMinutes(wake);
     if (b === null || w === null) return savedSleep;
     return (w - b + 1440) % 1440 || undefined;
   })();
-  const undecided = items.filter((i) => !i.outcome).length;
+  const undecided = items.filter((i) => !i.outcome && i.decision !== 'unknown').length;
   const needing = items.filter(
     (i) => i.outcome && needsFeedback(i.outcome, i.estimate, i.actual ? Number(i.actual) : undefined),
   );
@@ -217,22 +373,33 @@ export function ReviewWizard({
     : null;
   const update = (taskId: string, patch: Partial<ItemDraft>) =>
     {dirty.current=true;setItems((list) => list.map((i) => (i.taskId === taskId ? { ...i, ...patch } : i)));}
+  const choose = (i: ItemDraft, o: Outcome) =>
+    update(i.taskId, {
+      outcome: o,
+      editing: false,
+      decision: i.state === 'confirmed' && o === i.initial?.outcome ? 'confirmed' : i.suggested === o ? 'accepted' : 'edited',
+      ...(o !== 'done' && i.suggested === o && i.suggestedReason ? { reason: i.suggestedReason } : {}),
+    });
+  const accept = (i: ItemDraft) => i.suggested && choose(i, i.suggested);
+  const unknown = (i: ItemDraft) => update(i.taskId, { outcome: undefined, decision: 'unknown', editing: false });
+  const undo = (i: ItemDraft) => i.initial && update(i.taskId, { ...i.initial, editing: false });
   const fb = (taskId: string) =>
     feedback[taskId] ?? { cause: '', alternative: '', rule: '', kind: 'other' as ImprovementKind };
   const setFb = (taskId: string, patch: Partial<FeedbackDraft>) =>
     setFeedback((f) => ({ ...f, [taskId]: { ...fb(taskId), ...patch } }));
   const save = async () => {
-    if(!ready||loading||conflict)return false;if(items.filter(i=>i.outcome).length>100){setDraftError('한 번에 최대 100개 결과를 저장할 수 있습니다. 일부 결과 선택을 해제해 주세요.');return false;}
+    const decided = items.filter((i, n) => i.outcome && i.decision !== 'unknown' && items.findIndex((x) => x.taskId === i.taskId) === n);
+    if(!ready||loading||conflict)return false;if(decided.length>100){setDraftError('한 번에 최대 100개 결과를 저장할 수 있습니다. 일부 결과 선택을 해제해 주세요.');return false;}
     const detail: ReviewDetail = {
       date: reviewDate,
-      items: items
-        .filter((i) => i.outcome)
+      // Only answered rows are saved: a pending suggestion or '아직 모름' never becomes 완료 or 못함.
+      items: decided
         .map((i) => ({
           taskId: i.taskId,
           title: i.title.slice(0, 160),
           outcome: i.outcome!,
           estimateMinutes: i.estimate,
-          ...(i.actual ? { actualMinutes: Math.max(0, Math.min(1440, Number(i.actual) || 0)) } : {}),
+          ...(i.actual && !i.actualUnknown ? { actualMinutes: Math.max(0, Math.min(1440, Number(i.actual) || 0)) } : {}),
           ...(i.outcome !== 'done' ? { reason: i.reason } : {}),
         })),
       feedback: [
@@ -271,14 +438,25 @@ export function ReviewWizard({
         .filter(Boolean)
         .slice(0, 3),
       habitChecks: habitChecks.filter((id) => habits.some((h) => h.id === id)).slice(0, 3),
+      confirmation: {
+        shown: Math.min(100, items.length),
+        confirmed: Math.min(100, decided.length),
+        unknown: Math.min(100, items.filter((i) => i.decision === 'unknown').length),
+        accepted: Math.min(100, decided.filter((i) => i.decision === 'accepted').length),
+        edited: Math.min(100, decided.filter((i) => i.decision === 'edited').length),
+        seconds: Math.max(0, Math.min(86400, Math.round((Date.now() - openedAt.current) / 1000))),
+      },
     };
-    const ok=await onSave({date:reviewDate,win,block,energy},detail);if(ok&&!demo)clearDraft(ownerId,'review',reviewDate);return ok;
+    const reflection = reviewReflection(data, detail, today, new Date(), items.filter((i) => i.decision === 'unknown').map((i) => i.title));
+    const ok=await onSave({date:reviewDate,win,block,energy},detail,reflection);if(ok&&!demo)clearDraft(ownerId,'review',reviewDate);return ok;
   };
   const stepIcon = [ClipboardCheck, MessageCircleQuestion, Moon, HeartHandshake][step];
   const Icon = stepIcon;
+  const pendingCount = items.filter((i) => !i.outcome && i.decision !== 'unknown').length;
+  const evidenceNote = <p className="muted candidate-status" role="status">{evidenceState==='loading'?'회의록·Slack 기록 원문에서 근거를 찾는 중… 앱에 있는 기록으로 먼저 보여줍니다.':evidenceState==='failed'?'원문 근거를 불러오지 못해 앱에 있는 기록만 보여줍니다.':''}{pendingCount?` 확인 전 ${pendingCount}개는 저장되지 않습니다.`:''}</p>;
   if(conflict)return <div className="review-wizard"><p>다른 기기에서 저장된 회고와 이 기기의 초안이 다릅니다.</p><p>기기 초안: {conflict.win||'(성과 미입력)'} / {conflict.block||'(막힌 점 미입력)'}</p><button className="primary-button" disabled={!ready} onClick={()=>{hydrate(conflict);dirty.current=true;setConflict(null);setReady(true);}}>기기 초안을 이어서 검토</button><button className="secondary-button" onClick={()=>{clearDraft(ownerId,'review',reviewDate);setConflict(null);dirty.current=false;}}>서버의 최신 회고 사용</button></div>;
   if(!ready)return <div className="review-wizard" role="status">{draftError||'저장된 회고를 확인하고 있습니다…'}</div>;
-  if(quick)return <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><h3>1분 회고</h3><p className="muted">확인한 결과와 한 줄만 남겨도 내일 제안을 준비합니다. 선택하지 않은 결과는 그대로 유지합니다.</p>{draftError&&<p role="alert">{draftError}</p>}<div className="wizard-body">{items.map(i=><div className="wizard-item" key={i.taskId}><strong>{i.title}</strong><div className="outcome-buttons" role="group" aria-label={i.title+' 결과'}>{(Object.keys(outcomeLabel) as Outcome[]).map(o=><button type="button" key={o} className={i.outcome===o?'active outcome-'+o:''} onClick={()=>update(i.taskId,{outcome:i.outcome===o?undefined:o})}>{outcomeLabel[o]}</button>)}</div></div>)}<label>오늘의 성과<input className="form-field" maxLength={500} value={win} onChange={e=>setWin(e.target.value)} placeholder="작은 진전도 좋아요"/></label><label>막힌 점 · 내일 이어갈 일<input className="form-field" maxLength={500} value={block} onChange={e=>setBlock(e.target.value)}/></label><label>지금 에너지<select className="form-field" value={energy} onChange={e=>setEnergy(e.target.value as Proposal['energy'])}><option value="low">낮음 · 회복 우선</option><option value="normal">보통</option><option value="high">높음</option></select></label><p className="muted">기기 임시 보관 중 · 서버 저장은 아래 버튼으로 확인합니다.</p><div className="order-actions"><button className="primary-button" disabled={busy||loading} onClick={()=>void save()}>확인한 결과 저장 · 내일 제안</button><button className="secondary-button" onClick={()=>setQuick(false)}>자세히 회고하기</button></div></div></div>;
+  if(quick)return <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><h3>1분 회고 · 근거 보고 확인</h3><p className="muted">기록에서 찾은 결과 후보입니다. 맞음 · 수정 · 아직 모름으로 답하면 됩니다. 답하지 않았거나 ‘아직 모름’인 결과는 완료·실패로 저장하지 않습니다.</p>{evidenceNote}{draftError&&<p role="alert">{draftError}</p>}<div className="wizard-body">{items.length===0&&<p className="wizard-empty">이 날짜에 확인할 결과 후보가 없습니다.</p>}{items.map(i=><CandidateRow key={i.taskId} i={i} laser={i.taskId===laser?.id} choose={choose} accept={accept} unknown={unknown} undo={undo} update={update} open={open}/>)}<label>오늘의 성과<input className="form-field" maxLength={500} value={win} onChange={e=>setWin(e.target.value)} placeholder="작은 진전도 좋아요"/></label><label>막힌 점 · 내일 이어갈 일<input className="form-field" maxLength={500} value={block} onChange={e=>setBlock(e.target.value)}/></label><label>지금 에너지<select className="form-field" value={energy} onChange={e=>setEnergy(e.target.value as Proposal['energy'])}><option value="low">낮음 · 회복 우선</option><option value="normal">보통</option><option value="high">높음</option></select></label><p className="muted">기기 임시 보관 중 · 서버 저장은 아래 버튼으로 확인합니다.</p><div className="order-actions"><button className="primary-button" disabled={busy||loading} onClick={()=>void save()}>확인한 결과 저장 · 내일 제안</button><button className="secondary-button" onClick={()=>setQuick(false)}>자세히 회고하기</button></div></div></div>;
   return (
     <div className="review-wizard" onChangeCapture={()=>{dirty.current=true}}><button className="text-button" onClick={()=>setQuick(true)}>1분 회고로 돌아가기</button>{draftError&&<p role="alert">{draftError}</p>}
       <ol className="wizard-steps" aria-label="회고 단계">
@@ -299,65 +477,14 @@ export function ReviewWizard({
         {step === 0 && (
           <>
             <p className="muted">
-              계획한 항목마다 결과를 고르고, 아는 만큼만 실제 시간을 적으세요.{' '}
+              기록에서 찾은 결과 후보마다 맞음 · 수정 · 아직 모름을 고르고, 아는 만큼만 실제 시간을 적으세요.{' '}
               {executed !== null && `실행률 ${executed}%`}
             </p>
             {items.length === 0 && (
               <p className="wizard-empty">이 날짜에 계획된 항목이 없습니다. 다음 단계로 넘어가도 됩니다.</p>
             )}
             {items.map((i) => (
-              <div key={i.taskId} className={`wizard-item ${i.taskId === laser?.id ? 'is-laser' : ''}`}>
-                <div className="wizard-item-head">
-                  <div>
-                    <small>{i.source}</small>
-                    <strong>{i.title}</strong>
-                  </div>
-                  <div className="outcome-buttons" role="group" aria-label={`${i.title} 결과`}>
-                    {(Object.keys(outcomeLabel) as Outcome[]).map((o) => (
-                      <button
-                        type="button"
-                        key={o}
-                        className={i.outcome === o ? `active outcome-${o}` : ''}
-                        onClick={() => update(i.taskId, { outcome: o })}
-                      >
-                        {outcomeLabel[o]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="wizard-item-fields">
-                  <label>
-                    예상 {i.estimate}분 → 실제
-                    <input
-                      type="number"
-                      min={0}
-                      max={1440}
-                      step={5}
-                      className="form-field"
-                      value={i.actual}
-                      placeholder="분"
-                      onChange={(e) => update(i.taskId, { actual: e.target.value })}
-                    />
-                  </label>
-                  {i.outcome && i.outcome !== 'done' && (
-                    <Select
-                      value={i.reason}
-                      onValueChange={(v) => update(i.taskId, { reason: v as OutcomeReason })}
-                    >
-                      <SelectTrigger className="form-select" aria-label="끝내지 못한 이유">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(reasonLabel) as OutcomeReason[]).map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {reasonLabel[r]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </div>
+              <CandidateRow key={i.taskId} i={i} laser={i.taskId === laser?.id} choose={choose} accept={accept} unknown={unknown} undo={undo} update={update} open={open} />
             ))}
           </>
         )}
@@ -627,7 +754,7 @@ export function ReviewWizard({
             disabled={step === 0 && undecided > 0}
             onClick={() => setStep((s) => s + 1)}
           >
-            {step === 0 && undecided > 0 ? `결과 ${undecided}개 남음` : '다음'} <ArrowRight size={15} />
+            {step === 0 && undecided > 0 ? `확인할 결과 ${undecided}개 남음` : '다음'} <ArrowRight size={15} />
           </button>
         ) : (
           <button

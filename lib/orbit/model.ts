@@ -239,6 +239,15 @@ export interface ReviewFeedback {
   rule: string;
   kind?: ImprovementKind;
 }
+// How the evidence-first review was answered, for the before/after effect check. Counts only; no content.
+export interface ReviewConfirmation {
+  shown: number;
+  confirmed: number;
+  unknown: number;
+  accepted: number;
+  edited: number;
+  seconds: number;
+}
 export interface ReviewDetail {
   date: string;
   items: ReviewItem[];
@@ -247,6 +256,7 @@ export interface ReviewDetail {
   smallWins: string[];
   gratitude: string[];
   habitChecks: string[];
+  confirmation?: ReviewConfirmation;
 }
 export interface DailyReview {
   id: string;

@@ -132,6 +132,8 @@ import { ReviewWizard } from '@/components/orbit/coach/review-wizard';
 import { TodayLaser } from '@/components/orbit/coach/today-laser';
 import { GoalsPanel } from '@/components/orbit/coach/goals-panel';
 import { WeeklyStats } from '@/components/orbit/coach/weekly-stats';
+import { ReflectionCard, ConfirmationTrend } from '@/components/orbit/coach/review-reflection';
+import type { ReviewReflection } from '@/lib/orbit/review-evidence';
 import { coachTask } from '@/lib/orbit/coach';
 import { suggestProject, automaticProject, projectDraft, assignmentPlan } from '@/lib/orbit/classify';
 import { WikiLibrary, WikiRelated } from '@/components/orbit/wiki/wiki-library';
@@ -333,6 +335,7 @@ function WorkspaceContent({
   const [attachmentDraft, setAttachmentDraft] = useState('event-draft:initial');
   const eventUploads = useAttachments(attachmentDraft);
   const [briefLaunch, setBriefLaunch] = useState<{ date: string; id: string }>();
+  const [reflection, setReflection] = useState<ReviewReflection | null>(null);
   const proposal: Proposal = data.proposals.find((p) => p.date === proposalDate) ?? {
     id: `plan:${proposalDate}`,
     date: proposalDate,
@@ -576,6 +579,7 @@ function WorkspaceContent({
   const saveReview = async (
     review: { date: string; win: string; block: string; energy: Proposal['energy'] },
     reviewDetail: ReviewDetail,
+    reviewReflection?: ReviewReflection,
   ) => {
     const ok = await perform(
       { type: 'review.save', review, detail: reviewDetail },
@@ -583,6 +587,7 @@ function WorkspaceContent({
     );
     if (ok) {
       const date = addDays(review.date, 1);
+      setReflection(reviewReflection ?? null);
       setEnergy(review.energy);
       setProposalDate(date);
       setBriefLaunch({ date, id: crypto.randomUUID() });
@@ -1378,6 +1383,7 @@ function WorkspaceContent({
                   busy={busy}
                   demo={demo}
                   onSave={saveReview}
+                  open={(kind, id) => setDetail({ kind, id })}
                 />
               </section>
               <aside className="review-summary">
@@ -1408,8 +1414,12 @@ function WorkspaceContent({
                 <p className="quote">계획과 실제의 차이는 실패가 아니라, 다음 계획을 위한 정보입니다.</p>
                 <div className="divider" />
                 <WeeklyStats data={data} endDate={reviewDate} />
+                <ConfirmationTrend today={TODAY} demo={demo} />
               </aside>
             </div>
+          )}
+          {view === 'proposal' && reflection && reflection.next === proposalDate && (
+            <ReflectionCard reflection={reflection} onClose={() => setReflection(null)} />
           )}
           {view === 'proposal' && (
             <DailyBriefPanel

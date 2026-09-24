@@ -706,6 +706,7 @@ export function applyAction(
       if (action.review.date > today) fail('미래 날짜의 회고는 아직 기록할 수 없습니다.');
       const detail = action.detail;
       if (detail && detail.date !== action.review.date) fail('회고 상세의 날짜가 다릅니다.');
+      if (detail && new Set(detail.items.map((i) => i.taskId)).size !== detail.items.length) fail('같은 결과가 두 번 들어 있습니다. 회고를 다시 열어 주세요.');
       let stats: NonNullable<WorkspaceData['reviews'][number]['stats']> | undefined;
       if (detail) {
         for (const item of detail.items) {
@@ -713,6 +714,8 @@ export function applyAction(
           if (!t) continue;
           if (action.review.date < today) {
             const prior = [...data.executionHistory ?? []].reverse().find(r => r.taskId === t.id && r.date === action.review.date);
+            // Re-saving the same past review must not stack identical records for that date.
+            if (prior && prior.outcome === item.outcome && prior.reason === (item.reason ?? '') && prior.actual === (item.actualMinutes ?? null)) continue;
             data.executionHistory = [...data.executionHistory ?? [], {id:`execution:${crypto.randomUUID()}`,taskId:t.id,title:item.title,projectId:prior?.projectId ?? t.projectId,date:action.review.date,at:now.toISOString(),due:prior?.due ?? t.due,outcome:item.outcome,reason:item.reason ?? '',estimate:prior?.estimate ?? item.estimateMinutes,actual:item.actualMinutes ?? null,impact:prior?.impact ?? t.impact,buffer:prior?.buffer ?? null}].slice(-1200);
             continue;
           }
@@ -731,6 +734,8 @@ export function applyAction(
             t.outcomeReason = item.reason ?? 'other';
             delete t.completedOn;
             if (t.status === 'done' || (item.outcome === 'partial' && t.status === 'todo')) t.status = item.outcome === 'partial' ? 'doing' : 'todo';
+            // Work stopped by an outside reply gets a next-day check, without leaving tomorrow's candidates.
+            if (item.reason === 'waiting' && !t.checkDate) t.checkDate = addDays(action.review.date, 1);
           }
         }
         for (const fb of detail.feedback)
