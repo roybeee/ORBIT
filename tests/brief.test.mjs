@@ -343,3 +343,13 @@ test('a brief that keeps citing an unresolved id fails after two repair turns, n
  const turn=await db.prepare('SELECT status,response_json FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind('owner',id).first();
  assert.equal(turn.status,'failed');assert.match(JSON.parse(turn.response_json).error,/note:plaud:of_typo/);
 }));
+
+test('a citation of the previous plan or chief frame is dropped when the item has real evidence, and named when it is the only one',()=>fixture(async db=>{
+ const snapshot=await seed(db),ctx=await collectPlanningContext(db,'owner',snapshot,planning,[],env);
+ const c=content();c.priorities[0].evidence=['plan:'+date,'chief:'+date,...c.priorities[0].evidence];
+ const brief=completeBrief(c,ctx,planning,snapshot.revision,randomUUID());
+ assert.ok(!brief.priorities[0].evidence.some(e=>/^(plan|chief):/.test(e)),JSON.stringify(brief.priorities[0].evidence));
+ assert.ok(brief.evidence.length>0);assert.ok(brief.coverage.warnings.some(w=>/plan:/.test(w)&&/근거가 아니/.test(w)),JSON.stringify(brief.coverage.warnings));
+ const only=content();only.priorities[0].evidence=['plan:'+date];
+ assert.throws(()=>completeBrief(only,ctx,planning,snapshot.revision,randomUUID()),e=>e.code==='BRIEF_EVIDENCE'&&/plan:/.test(e.message));
+}));
