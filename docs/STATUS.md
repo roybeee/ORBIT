@@ -7,7 +7,7 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 `f108f10`이다(2026-09-24T01:51Z, [기록](releases/2026-09-24-f108f10.md)). 같은 날 오전의 `a4fdd50` → `34ec890` → `69f17dc` → `ac3e955` → `14d8348` → `e40bfc9`는 이것으로 대체됐다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `80fff22`이다(2026-09-24T02:19Z, [기록](releases/2026-09-24-80fff22.md), 소유자 브라우저 `/api/version` tree `5beef34b…` 확인). 같은 날 오전의 `a4fdd50` → `34ec890` → `69f17dc` → `ac3e955` → `14d8348` → `e40bfc9` → `f108f10`은 이것으로 대체됐다. `f108f10`의 근거 보정 턴은 `80fff22`에 포함되어 운영에 있다.
 - 이 PR(`docs/status-f108f10`)은 f108f10 게시 기록과 9/24 계획 재실행 2회의 진단 결과를 반영한다.
 
 ## 검증된 결과
