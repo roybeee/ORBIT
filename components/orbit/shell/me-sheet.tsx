@@ -1,5 +1,5 @@
 'use client';
-import {ChevronRight,Clock3,Link2,Settings2,Smartphone} from 'lucide-react';
+import {Bell,ChevronRight,Clock3,Link2,Settings2,Smartphone} from 'lucide-react';
 import type {ReactNode} from 'react';
 import {Sheet,SheetContent,SheetDescription,SheetHeader,SheetTitle} from '@/components/ui/sheet';
 import type {View} from '@/lib/orbit/model';
@@ -13,7 +13,7 @@ function Row({icon,label,hint,onClick,current,disabled}:{icon:ReactNode;label:st
 }
 
 // 나: rarely used settings and management, kept out of the daily tabs.
-export function MeSheet({open,onOpenChange,displayName,view,demo,loaded,navigate,onSettings,onConnections,onRuntime}:{open:boolean;onOpenChange:(open:boolean)=>void;displayName:string;view:View;demo:boolean;loaded:boolean;navigate:(v:View)=>void;onSettings:()=>void;onConnections:()=>void;onRuntime:()=>void}){
+export function MeSheet({open,onOpenChange,displayName,view,demo,loaded,navigate,onSettings,onConnections,onRuntime,onNews}:{open:boolean;onOpenChange:(open:boolean)=>void;displayName:string;view:View;demo:boolean;loaded:boolean;navigate:(v:View)=>void;onSettings:()=>void;onConnections:()=>void;onRuntime:()=>void;onNews:()=>void}){
  const views=areas.find(a=>a.id==='me')?.views??[];
  return <Sheet open={open} onOpenChange={onOpenChange}>
   <SheetContent side="right" className="me-sheet">
@@ -23,6 +23,7 @@ export function MeSheet({open,onOpenChange,displayName,view,demo,loaded,navigate
      <Row icon={<Settings2 size={19}/>} label="업무 시간·계획 기준" hint="BRAINY 리듬 · 핵심 결과물 개수 · 여유 시간" onClick={onSettings}/>
      <Row icon={<Clock3 size={19}/>} label="자동 실행" hint="내일 제안 준비 시각 · 저녁 기준" onClick={onRuntime} disabled={demo||!loaded}/>
      <Row icon={<Link2 size={19}/>} label="계정·연결" hint="Google · Plaud · Hermes · Slack · Discord" onClick={onConnections} disabled={demo||!loaded}/>
+     <Row icon={<Bell size={19}/>} label="소식·기기 알림" hint="전체 소식 · 이 기기 알림 켜기·끄기" onClick={onNews} disabled={demo||!loaded}/>
     </section>
     <section><h2>관리</h2>
      {views.map(id=>{const Icon=viewIcons[id];return <Row key={id} icon={<Icon size={19}/>} label={viewLabels[id]} hint={hints[id]??''} current={view===id} onClick={()=>navigate(id)}/>;})}

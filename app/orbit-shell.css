@@ -4,6 +4,9 @@
 .nav-icon{position:relative;display:inline-grid;place-items:center}
 .nav-badge{display:inline-block;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--galaxy-rose,#ae304b);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;font-variant-numeric:tabular-nums}
 .mobile-nav .nav-badge{position:absolute;top:-7px;left:calc(100% - 6px);box-shadow:0 0 0 2px var(--card)}
+.nav-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--galaxy-violet)}
+.mobile-nav .nav-dot{position:absolute;top:-2px;left:calc(100% - 3px);box-shadow:0 0 0 2px var(--card)}
+.app-sidebar .nav-item .nav-dot{margin-left:auto}
 .app-sidebar .nav-item .nav-badge{margin-left:auto}
 .area-sections .nav-badge{margin-left:2px}
 
@@ -110,5 +113,29 @@
 .inbox-empty{display:grid;justify-items:center;gap:8px;padding:40px 16px;text-align:center;color:var(--muted-foreground)}
 .inbox-empty h3{margin:0;color:var(--foreground);font-size:1.05rem}
 .inbox-empty p{margin:0;max-width:46ch;font-size:.9rem}
+
+/* 결재함 v2: meeting groups, Orbit cards, 소식 */
+.inbox-panel .agent-action{margin:0}
+.inbox-source{justify-self:start;font-size:.8rem}
+.inbox-deferred{justify-self:start;font-size:.85rem}
+.inbox-group{display:grid;gap:10px;padding:12px;border-radius:18px;border:1px dashed color-mix(in srgb,var(--galaxy-cyan) 40%,var(--border))}
+.inbox-group-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.inbox-group-head strong{font-size:.95rem}
+.inbox-group-count{color:var(--muted-foreground);font-size:.8rem;font-variant-numeric:tabular-nums}
+.inbox-group-head .text-button{margin-left:auto}
+.inbox-news{display:grid;gap:8px;margin-top:10px;padding-top:16px;border-top:1px solid var(--border)}
+.inbox-news header{display:flex;align-items:center;gap:10px}
+.inbox-news h2{margin:0;font-size:.95rem}
+.inbox-news-unread{font-size:.75rem;color:var(--galaxy-violet);font-weight:650}
+.inbox-news header .text-button{margin-left:auto}
+.inbox-news ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.inbox-news li button{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:10px;align-items:start;width:100%;padding:10px;border:0;border-radius:12px;background:none;color:var(--foreground);text-align:left;cursor:pointer}
+.inbox-news li button:hover{background:var(--muted)}
+.inbox-news li button>svg{margin-top:2px;color:var(--muted-foreground)}
+.inbox-news li span{display:grid;min-width:0}
+.inbox-news li strong{font-size:.9rem;font-weight:600}
+.inbox-news li small{color:var(--muted-foreground);font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-news li.is-read strong{font-weight:500;color:var(--muted-foreground)}
+.inbox-news li i{width:8px;height:8px;margin-top:7px;border-radius:50%;background:var(--galaxy-violet)}
 
 @media(prefers-reduced-motion:reduce){.area-sections-track{scroll-behavior:auto}}

@@ -85,7 +85,8 @@ import {Choice} from './choice';
 import {WorkspaceSettings} from './workspace-settings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import {NotificationCenter} from './notifications';
+import {NotificationCenter,type NewsSummary} from './notifications';
+import type {AgentAction} from '@/lib/orbit/agent/types';
 import { Toaster, toast } from 'sonner';
 import { focusIds } from '@/lib/orbit/derived';
 import {PlaudPanel} from '@/components/orbit/plaud-panel';
@@ -317,7 +318,9 @@ function WorkspaceContent({
   const [reflection, setReflection] = useState<ReviewReflection | null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
   const [meOpen,setMeOpen]=useState(false);
-  const [decisionAI,setDecisionAI]=useState<number|null>(null);
+  const [aiActions,setAiActions]=useState<AgentAction[]|null>(null);
+  const [news,setNews]=useState<NewsSummary|null>(null);
+  const [newsOpen,setNewsOpen]=useState(false);
   const [search, setSearch] = useState('');
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
@@ -979,7 +982,7 @@ function WorkspaceContent({
     }
     return ok;
   };
-  const inbox = inboxCounts({today:TODAY,proposals:data.proposals,aiPending:decisionAI,orders:homeOrders,decisions:data.decisions,delegations:data.delegations});
+  const inbox = inboxCounts({today:TODAY,proposals:data.proposals,aiPending:aiActions?aiActions.filter(a=>a.state==='pending'||a.state==='applying').length:null,orders:homeOrders,decisions:data.decisions,delegations:data.delegations});
   const openSearch = () => setSearchOpen(true);
   const searchActions: SearchAction[] = [
     {id:'task',label:'새 할 일',hint:'제목만 적어도 됩니다',icon:<Plus/>,keywords:['할 일 추가','투두'],disabled:!loaded||busy,run:()=>openCreate(projects.length?'task':'project')},
@@ -1001,12 +1004,13 @@ function WorkspaceContent({
         view={view}
         navigate={navigate}
         inboxCount={inbox.total}
+        newsUnread={news?.unread??0}
         displayName={displayName}
         onMe={()=>setMeOpen(true)}
         onSearch={openSearch}
       />
       <OrbitSearch open={searchOpen} onOpenChange={setSearchOpen} view={view} navigate={navigate} actions={searchActions}/>
-      <MeSheet open={meOpen} onOpenChange={setMeOpen} displayName={displayName} view={view} demo={demo} loaded={loaded} navigate={navigate} onSettings={()=>{setMeOpen(false);afterPopupClose(openSettings)}} onConnections={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:connections')))}} onRuntime={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:runtime')))}}/>
+      <MeSheet open={meOpen} onOpenChange={setMeOpen} displayName={displayName} view={view} demo={demo} loaded={loaded} navigate={navigate} onSettings={()=>{setMeOpen(false);afterPopupClose(openSettings)}} onConnections={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:connections')))}} onRuntime={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:runtime')))}} onNews={()=>{setMeOpen(false);afterPopupClose(()=>setNewsOpen(true))}}/>
       <div className="app-main">
         <header className="topbar">
           <div className="breadcrumb">
@@ -1015,7 +1019,7 @@ function WorkspaceContent({
             <strong>{areaOf(view).label}</strong>
             {areaOf(view).views[0]!==view&&<><ChevronRight size={13} className="breadcrumb-sub"/><span className="breadcrumb-sub">{viewLabels[view]}</span></>}
           </div>
-          <div className="top-actions"><SearchTrigger onSearch={openSearch} open={searchOpen}/><NotificationCenter key={ownerId} ownerId={ownerId} demo={demo}/><CityThemeButton/><AppearanceShortcut/>
+          <div className="top-actions"><SearchTrigger onSearch={openSearch} open={searchOpen}/><NotificationCenter key={ownerId} ownerId={ownerId} demo={demo} trigger={false} open={newsOpen} onOpenChange={setNewsOpen} onSummary={setNews}/><CityThemeButton/><AppearanceShortcut/>
             <button className="me-trigger" onClick={()=>setMeOpen(true)} aria-haspopup="dialog" aria-expanded={meOpen} aria-label="나 · 설정과 관리 열기">{displayName.slice(0,1)}</button>
 
             {loaded && (
@@ -1097,7 +1101,7 @@ function WorkspaceContent({
               </button>
             ) : null}
           </div>
-          <AreaSections view={view} navigate={navigate} inboxCount={inbox.total}/>
+          <AreaSections view={view} navigate={navigate} inboxCount={inbox.total} newsUnread={news?.unread??0}/>
           {loaded&&!['today','projects','inbox'].includes(view)&&<CityScreenBanner compact={view==='agent'||view==='sound'}/>}
           {!loaded && (
             <section className="load-state" role="status">
@@ -1132,7 +1136,7 @@ function WorkspaceContent({
               <AgentWorkspace
                 visible={view==='agent'}
                 onPendingCount={setPendingAI}
-                onDecisionCount={setDecisionAI}
+                onPendingActions={setAiActions}
                 onOrdersChange={setHomeOrders}
                 ownerId={ownerId}
                 perform={perform}
@@ -1160,7 +1164,7 @@ function WorkspaceContent({
           {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onConnect={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:connections'))}}/>}
-          {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReviewAI={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
+          {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onReviewDeferred={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
           {loaded&&view==='today'&&<TodayHome orders={homeOrders} onOrder={id=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} pendingAI={pendingAI} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{navigate('agent');window.dispatchEvent(new CustomEvent('orbit:compose',{detail:{text}}))}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={()=>{navigate('agent');window.dispatchEvent(new Event('orbit:review'))}}/>}
           {view === 'tasks' && (
             <>
