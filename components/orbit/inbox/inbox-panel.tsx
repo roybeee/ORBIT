@@ -11,7 +11,7 @@ import {InboxBacklog} from './inbox-backlog';
 import type {ProposalSplit} from '@/lib/orbit/inbox-backlog';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 import {orderStatusLabel,type WorkOrder} from '@/lib/orbit/agent/orders-schema';
-import type {InboxCounts} from '@/lib/orbit/navigation';
+import {orderNeedsDecision,type InboxCounts} from '@/lib/orbit/navigation';
 
 type Filter='all'|'plans'|'ai'|'orders'|'followups';
 type Perform=(action:WorkspaceAction,message?:string)=>Promise<boolean>;
@@ -53,7 +53,7 @@ export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiL
  const filter:Filter=picked!=='all'&&counts[picked]===0?'all':picked;
  const show=(f:Filter)=>filter==='all'||filter===f;
  const plans=data.proposals.filter(p=>p.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).flatMap(p=>p.items.filter(i=>i.state==='pending').map(item=>({date:p.date,item})));
- const actionable=orders.filter(o=>o.status==='waiting_for_approval'||(o.status==='completed'&&o.review!=='accepted'));
+ const actionable=orders.filter(orderNeedsDecision);
  const due=[
   ...(data.decisions??[]).filter(d=>d.status!=='closed'&&d.reviewDate<=today).map(d=>({id:'decision:'+d.id,kind:'결정 재검토',title:d.title,date:d.reviewDate,projectId:d.projectId})),
   ...(data.delegations??[]).filter(d=>!['verified','cancelled'].includes(d.status)&&d.checkDate<=today).map(d=>({id:'delegation:'+d.id,kind:`위임 · ${d.assignee}`,title:d.title,date:d.checkDate,projectId:d.projectId})),
@@ -66,7 +66,7 @@ export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiL
   {show('plans')&&plans.map(({date,item})=><PlanCard key={date+item.id} date={date} today={today} late={date===today&&item.start<nowMinute} item={item} title={data.tasks.find(t=>t.id===item.taskId)?.title??item.draftTask?.title??'저장된 실행 항목'} busy={busy} demo={demo} perform={perform} onProposal={onProposal}/>)}
   {aiLoading&&<p className="inbox-loading" role="status">{slow?'Orbit 제안을 아직 불러오지 못했습니다. 연결을 확인하거나 Orbit 대화를 한 번 열어 주세요.':'Orbit 제안을 불러오는 중…'}</p>}
   {show('ai')&&<InboxAiDecisions actions={split.fresh} deferredCount={actions.filter(a=>a.state==='deferred').length} snapshot={snapshot} onOpenNote={onOpenNote} onOpenConversation={onOpenConversation} onAskOrbit={onAskOrbit} onReviewDeferred={onReviewDeferred}/>}
-  {show('orders')&&actionable.map(o=><Card key={o.id} kind="업무 지시" tone="order" source={orderStatusLabel[o.status]} title={o.title} actions={<button className="primary-button" onClick={()=>onOrder(o.id)}><Workflow size={15}/>{o.status==='waiting_for_approval'?'실행 승인하기':'결과 확인하기'}</button>}>{o.approval&&<p className="inbox-card-why">{o.approval.description}</p>}</Card>)}
+  {show('orders')&&actionable.map(o=><Card key={o.id} kind="업무 지시" tone="order" source={orderStatusLabel[o.status]} title={o.title} actions={<button className="primary-button" onClick={()=>onOrder(o.id)}><Workflow size={15}/>실행 승인하기</button>}>{o.approval&&<p className="inbox-card-why">{o.approval.description}</p>}</Card>)}
   {show('followups')&&due.map(d=><Card key={d.id} kind={d.kind} tone="follow" source={`${project(d.projectId)} · 확인일 ${dayLabel(d.date,today)}`} title={d.title} actions={<button className="secondary-button" onClick={onFollowup}><CheckCheck size={15}/>확인하고 기록</button>}/>)}
   {counts.total===0&&!aiLoading&&<div className="inbox-empty"><Inbox size={30} aria-hidden="true"/><h3>정할 일이 모두 처리됐습니다</h3><p>새 실행 제안, 회의 결재, 업무 지시 결과, 확인일이 된 위임이 생기면 여기와 탭 배지에 표시됩니다.</p><button className="text-button" onClick={()=>onProposal(addDays(today,1))}><Sparkles size={15}/>내일 제안 보기</button></div>}
   {(filter==='all'||filter==='ai')&&<InboxBacklog groups={split.backlog} count={split.backlogCount} snapshot={snapshot} today={today} demo={demo} onOpenNote={onOpenNote} onAskOrbit={onAskOrbit}/>}

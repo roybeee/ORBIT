@@ -72,7 +72,7 @@ export interface InboxInput {
  today:string;
  proposals:readonly {date:string;items:readonly {state:string}[]}[];
  aiPending:number|null;
- orders:readonly {status:string;review?:string|null}[];
+ orders:readonly {status:string}[];
  decisions?:readonly {status:string;reviewDate:string}[];
  delegations?:readonly {status:string;checkDate:string}[];
 }
@@ -80,10 +80,13 @@ export interface InboxCounts {plans:number;ai:number;orders:number;followups:num
 
 // Only decisions the owner must make. Notifications are derived from these same
 // records, so they are never added (they would double count).
+// 결재함 holds decisions only. An order waiting for execution approval is one; a finished order is
+// not — its result arrives as a 소식 notice and is reviewed (or reworked) in 업무 진행.
+export const orderNeedsDecision=(o:{status:string})=>o.status==='waiting_for_approval';
 export function inboxCounts(input:InboxInput):InboxCounts{
  const plans=input.proposals.filter(p=>p.date>=input.today).reduce((n,p)=>n+p.items.filter(i=>i.state==='pending').length,0);
  const ai=Math.max(0,input.aiPending??0);
- const orders=input.orders.filter(o=>o.status==='waiting_for_approval'||(o.status==='completed'&&o.review!=='accepted')).length;
+ const orders=input.orders.filter(orderNeedsDecision).length;
  const followups=(input.decisions??[]).filter(d=>d.status!=='closed'&&d.reviewDate<=input.today).length
   +(input.delegations??[]).filter(d=>!['verified','cancelled'].includes(d.status)&&d.checkDate<=input.today).length;
  return {plans,ai,orders,followups,total:plans+ai+orders+followups};
