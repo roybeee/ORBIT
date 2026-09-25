@@ -74,7 +74,11 @@ export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Pr
   }
   const key=JSON.stringify(a);
   if(seen.has(key)||previous.some(x=>x.note!=='새 분석으로 대체'&&['pending','deferred','applying','approved','rejected'].includes(x.state)&&JSON.stringify(x.action)===key))continue;
-  seen.add(key);out.push({...p,reason:(p.reason+'\n원문 '+s.line+'행: '+s.quote).slice(0,2000),action:a});
+  seen.add(key);
+  // Some answers title every card with a placeholder; show what the card registers instead.
+  const named=a.type==='task.upsert'?a.task.title:a.type==='event.upsert'?a.event.title:a.type==='project.upsert'?a.project.name:p.title;
+  const title=!p.title?.trim()||/^(승인할 변경|변경|제안|결재안|업무 제안)$/.test(p.title.trim())?named:p.title;
+  out.push({...p,title,reason:(p.reason+'\n원문 '+s.line+'행: '+s.quote).slice(0,2000),action:a});
   }catch(error){
    if(!(error instanceof AgentError&&['MEETING_SCOPE','MEETING_FORMAT','MEETING_EVIDENCE'].includes(error.code)))throw error;
    dropped.push({title:p.title,reason:error.message});firstError??=error;

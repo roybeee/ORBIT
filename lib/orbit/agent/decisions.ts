@@ -72,7 +72,10 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   if(input.decision==='defer'&&action.state!=='pending'&&action.state!=='deferred')throw new AgentError('이미 닫힌 제안이라 보류할 수 없습니다.','CONFLICT',409);
   if(input.decision==='defer'){const current=await readWorkspace(db,owner);if(!input.reason?.trim()||!input.revisitDate||input.revisitDate<=todayInZone(current.data.preferences.timeZone))throw new AgentError('보류 이유와 이후의 검토일을 입력해 주세요.');}
   const state=input.decision==='defer'?'deferred':input.decision==='reject'?'rejected':'pending';
-  const result=await db.prepare("UPDATE orbit_agent_actions SET state=?,note=?,revisit_date=?,updated_at=? WHERE owner_id=? AND id=? AND state=?").bind(state,input.reason?.trim()??'',input.revisitDate??null,new Date().toISOString(),owner,input.id,action.state).run();if(result.meta?.changes!==1)throw new AgentError('제안 상태가 변경됐습니다.','CONFLICT',409);
+  const result=await db.prepare("UPDATE orbit_agent_actions SET state=?,note=?,revisit_date=?,updated_at=? WHERE owner_id=? AND id=? AND state=?").bind(state,input.reason?.trim()??'',input.revisitDate??null,new Date().toISOString(),owner,input.id,action.state).run();if(result.meta?.changes!==1){
+   // Another request (a second tap, a bulk action) may have made the same decision first: not a failure.
+   if((await findAction(db,owner,input.id)).state===state)return;
+   throw new AgentError('제안 상태가 변경됐습니다.','CONFLICT',409);}
   // Rejecting a proposed project must not strand the same meeting's cards that belong to it.
   if(input.decision==='reject'&&action.action.type==='project.upsert'&&action.guard?.meeting)await rehomeOrphanCards(db,owner,action.guard.meeting.noteId);
   return;

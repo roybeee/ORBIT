@@ -132,3 +132,13 @@ test('a meeting proposal without a due date offers "마감일 지정하고 승�
  const dated=renderToStaticMarkup(React.createElement(ActionCard,{item:action('d'),snapshot:{data},review}));
  assert.match(dated,/승인하고 반영/);assert.doesNotMatch(dated,/마감일 지정하고 승인/);
 });
+
+test('only the first five meeting groups are laid out with cards; the rest open on demand',async()=>{
+ const data=await workspace();
+ data.notes=Array.from({length:7},(_,i)=>({id:'n'+i,title:'회의 '+i,kind:'meeting',projectId:'',summary:'',body:'',tags:[],updated:'2026-09-25'}));
+ const meeting=(id,noteId)=>action(id,{guard:{meeting:{noteId,revision:1},version:1,actionHash:'h',values:{}}});
+ const html=await render({data,actions:data.notes.map((n,i)=>meeting('c'+i,n.id)),counts:counts({ai:7,total:7})});
+ assert.equal((html.match(/meeting-review-focus/g)??[]).length,5,'cards of the first five meetings');
+ assert.equal((html.match(/회의 결재 · 회의/g)??[]).length,7,'every meeting still has its group');
+ assert.match(html,/결재안 펼치기/);
+});
