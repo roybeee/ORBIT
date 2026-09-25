@@ -6,6 +6,7 @@ import {automaticProject,normalize} from '../classify.ts';
 import {todayInZone} from '../dates.ts';
 import type {Project,WorkspaceData} from '../model.ts';
 import {authenticate,digest,Failure} from './directives.ts';
+import {slackToday} from './today.ts';
 
 // Slack instructions (task or note) that become ORBIT records at once when the project is clear.
 // Calendar events are not handled here: ORBIT reads Google Calendar itself.
@@ -159,6 +160,11 @@ export async function handleCommand(db:Database,request:Request):Promise<Respons
    if(url.searchParams.has('preflight')){
     if(url.searchParams.get('workspaceId')!==p.workspace_id||url.searchParams.get('requesterId')!==p.requester_id)throw new Failure(403,'source_scope_mismatch');
     return respond({ok:true});
+   }
+   // Lets the Slack assistant answer "오늘 할 일" from ORBIT (read-only).
+   if(url.searchParams.has('today')){
+    if(url.searchParams.get('workspaceId')!==p.workspace_id||url.searchParams.get('requesterId')!==p.requester_id)throw new Failure(403,'source_scope_mismatch');
+    return respond(slackToday((await readWorkspace(db,p.owner_id)).data,new Date(),url.origin));
    }
    const key=url.searchParams.get('operationKey');
    if(!key||key.length>200)throw new Failure(422,'lookup_required');

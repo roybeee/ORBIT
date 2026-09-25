@@ -1,3 +1,9 @@
+## 2026-09-25 · Slack에서 "오늘 할 일"을 ORBIT에서 바로 답합니다
+
+- Hermes 플러그인에 읽기 전용 도구 `orbit_slack_today`를 추가했습니다(`integrations/hermes-orbit-commands` v2.1.0). "오늘 ORBIT 할 일 몇 개야?" 같은 질문에 브라우저나 Google Tasks로 추측하지 않고 ORBIT을 조회해, 오늘 할 일(지난 마감 포함)·지난 마감·진행 중·오늘 집중·오늘 완료·남은 할 일 수와 먼저 볼 항목 최대 10개, ORBIT 링크를 답합니다.
+- 백엔드: `GET /api/integrations/slack/commands?today=1`(`lib/orbit/slack/today.ts`). 기존 Slack 자격 증명으로 인증하고, 요청한 Slack 워크스페이스·사용자와 자격 증명이 다르면 403입니다. 아무것도 쓰지 않습니다.
+- `deploy.sh`가 게이트웨이에 `orbit_slack_today`까지 등록됐는지 확인하고, 아니면 백업으로 되돌립니다.
+
 ## 2026-09-25 · 마감 미정 회의 결정도 한 번에 승인합니다
 
 - 결재함 회의 목록에서 마감 미정 줄에 날짜만 넣으면 ✓ 한 번으로 마감일 저장과 승인이 함께 끝납니다(날짜만 저장하려면 '저장만').

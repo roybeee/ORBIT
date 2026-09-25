@@ -33,7 +33,9 @@ from tools.registry import registry
 get_plugin_manager().discover_and_load()
 print(\" \".join(sorted(registry.get_tool_names_for_toolset(\"orbit\"))))" 2>/dev/null')
 echo "orbit tools: $tools"
-if [[ " $tools " != *" orbit_slack_task "* ]]; then
-  echo "the gateway does not register orbit_slack_task; restoring the backup"; restore; exit 1
-fi
+for required in orbit_slack_task orbit_slack_today; do
+  if [[ " $tools " != *" $required "* ]]; then
+    echo "the gateway does not register $required; restoring the backup"; restore; exit 1
+  fi
+done
 echo "rollback: copy ~/$BACKUPS/orbit-slack-directive-sync.bak-$TS to ~/$LIVE and restart hermes-gateway.service"

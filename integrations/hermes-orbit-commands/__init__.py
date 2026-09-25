@@ -20,7 +20,8 @@ GUIDANCE = (
     "메모·기록 지시는 orbit_slack_note로 ORBIT에 저장하세요. 시간이 정해진 일정은 기존처럼 Google Calendar에 만드세요. ORBIT은 Google Calendar를 직접 읽으므로 따로 반영할 필요가 없습니다. "
     "사용자가 프로젝트를 말했으면 project에 그 말을 그대로 넣고, 말하지 않았으면 비워 두세요. "
     "결과 state가 needs_confirmation이면 question을 그대로 보여 주세요. 요청자가 번호로 답하면 orbit_slack_choose(request_id, choice)를 호출하세요. 번호를 추측하지 마세요. "
-    "state가 completed가 아니면 성공이라고 말하지 말고, 어느 단계(google_task 또는 orbit)가 실패했는지 알리세요."
+    "state가 completed가 아니면 성공이라고 말하지 말고, 어느 단계(google_task 또는 orbit)가 실패했는지 알리세요. "
+    "ORBIT 할 일·오늘 할 일·남은 일을 물으면 orbit_slack_today로 ORBIT을 조회해 답하고 url을 링크로 주세요. 브라우저나 Google Tasks로 추측하지 말고, 실패하면 실패했다고 알리세요."
 )
 
 INBOX_NOTE = "프로젝트가 정해지지 않아 ORBIT의 Slack 보관함에 넣었습니다."
@@ -240,6 +241,19 @@ def choose(params, **kwargs):
         return reply({'success': False, 'state': 'failed', 'stage': 'orbit', 'error': str(exc), 'retryable': True})
 
 
+def today(params, **kwargs):
+    """Read-only: today's ORBIT work (focus, overdue, due today, in progress) for the Slack requester."""
+    del params, kwargs
+    try:
+        origin = need_origin()
+        status, data = orbit('GET', query={'today': '1', 'workspaceId': origin['workspace'], 'requesterId': origin['user']})
+        if status != 200:
+            return reply({'success': False, 'state': 'failed', 'stage': 'orbit', 'error': data.get('error', f'http_{status}')})
+        return reply({'success': True, **data})
+    except Exception as exc:
+        return reply({'success': False, 'state': 'failed', 'stage': 'orbit', 'error': str(exc)})
+
+
 def is_google_calendar_change(change):
     if not isinstance(change, dict) or not str(change.get('kind') or change.get('type') or '').startswith('calendar'):
         return False
@@ -273,6 +287,8 @@ TOOLS = [
     ('orbit_slack_choose', choose, "Apply the requester's numbered project choice to a request that returned needs_confirmation.",
      {'type': 'object', 'additionalProperties': False, 'required': ['request_id', 'choice'], 'properties': {
          'request_id': text(200), 'choice': {'type': 'integer', 'minimum': 1, 'maximum': 20}}}),
+    ('orbit_slack_today', today, "Read today's ORBIT work for the Slack requester: counts and the first items to act on (focus, overdue, due today, in progress) with an ORBIT link. Read-only.",
+     {'type': 'object', 'additionalProperties': False, 'properties': {}}),
     ('orbit_slack_directive_sync', legacy_sync, 'After creating a Google Calendar event from Slack, confirm that ORBIT needs no separate write.',
      {'type': 'object', 'additionalProperties': True, 'required': ['provider_status', 'change'], 'properties': {
          'provider_status': {'type': 'string', 'enum': ['succeeded', 'failed']}, 'change': {'type': 'object'}}}),
