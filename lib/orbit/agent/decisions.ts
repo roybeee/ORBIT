@@ -1,11 +1,12 @@
 import {notify} from '../notifications/store.ts';
 import {registrationOverlap} from '../overlap-review.ts';
-import {guardMatches,captureWorkspaceBasis,rebaseProjectValues} from './action-guard.ts';
+import {guardMatches,captureWorkspaceBasis,rebaseProjectValues,withoutProject} from './action-guard.ts';
 import {z} from 'zod';
 import {dispatchOrder} from './orders.ts';
 import {startPlanningAction} from '../brief/start.ts';
 import {readWorkspace,writeCommand,RevisionConflict,type Database} from '../../../db/repository.ts';
 import {dateSchema,actionSchema} from '../validation.ts';
+import type {Project} from '../model.ts';
 import {addDays,todayInZone} from '../dates.ts';
 import {AgentError} from './errors.ts';
 import {claimAction,findAction,markApproved,resetAction} from './repository.ts';
@@ -13,26 +14,43 @@ import {createGoogleEvent,syncCalendar} from './calendar.ts';
 import {deleteCalendarSeries} from './calendar-delete.ts';
 import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
-// An approval may rename the registration, recolor it or move it to another project.
-// Only these three fields, and only on the proposals that actually carry them.
-export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().min(1).max(100).nullable().optional()}).strict();
+// An approval may rename the registration, recolor it or move it to another project,
+// either an existing one or one created from a typed name. Only these fields, and only
+// on the proposals that actually carry them.
+export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().min(1).max(100).nullable().optional(),newProject:z.object({name:z.string().trim().min(1).max(160)}).strict().optional()}).strict().refine(o=>!(o.newProject&&o.projectId!==undefined),'기존 프로젝트와 새 프로젝트 중 하나만 선택해 주세요.');
 export const editableActions=['task.upsert','event.upsert','project.upsert'] as const;
 export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional(),overrides:overrideSchema.optional()}).strict();
 type ParsedAction=ReturnType<typeof parseAction>;
-function withOverrides<T extends ParsedAction>(parsed:T,overrides?:z.infer<typeof overrideSchema>):T{
+type Overrides=z.infer<typeof overrideSchema>;
+// The id and due date derive from the card (not the approval day) so a retried or
+// replayed approval writes the same command. The reducer reuses an existing project
+// with the same normalized name.
+function newProjectDraft(actionId:string,name:string,today:string):Project{
+ return {id:'project-'+actionId,name,goal:'',color:'#7f8fd2',symbol:name.slice(0,1),due:addDays(today,90),priority:3,status:'active'};
+}
+function withOverrides<T extends ParsedAction>(parsed:T,overrides:Overrides|undefined,context:{actionId:string;today:string}):T{
  if(!overrides||!Object.keys(overrides).length)return parsed;
- const {title,color,projectId}=overrides;
+ const {title,color,newProject}=overrides;
+ if(newProject&&parsed.type!=='task.upsert'&&parsed.type!=='event.upsert')throw new AgentError('새 프로젝트는 할 일·일정을 등록할 때만 함께 만들 수 있습니다.','ACTION_NOT_EDITABLE',422);
+ const project=newProject?newProjectDraft(context.actionId,newProject.name,context.today):undefined;
+ const projectId=project?project.id:overrides.projectId;
  const edited=parsed.type==='project.upsert'
   ?{...parsed,project:{...parsed.project,...(title?{name:title}:{}),...(color?{color}:{})}} // a project always carries a colour, so "자동" keeps the proposed one
   :parsed.type==='task.upsert'
-  ?{...parsed,task:{...parsed.task,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})}}
+  ?{...parsed,task:{...parsed.task,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})},...(project?{project}:{})}
   :parsed.type==='event.upsert'
-  ?{...parsed,event:{...parsed.event,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})}}
+  ?{...parsed,event:{...parsed.event,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})},...(project?{project}:{})}
   :null;
  if(!edited)throw new AgentError('이 제안은 이름·색을 정해서 등록할 수 없습니다. 그대로 승인해 주세요.','ACTION_NOT_EDITABLE',422);
  const checked=actionSchema.safeParse(edited);
  if(!checked.success)throw new AgentError('등록할 이름과 색을 확인해 주세요.','ACTION_INVALID',422);
  return checked.data as T;
+}
+// Moving a proposal to another project drops its watch on the project it named,
+// which may be a draft from the same meeting that will now never be created.
+function movedFrom(parsed:ParsedAction,overrides?:Overrides){
+ const old=parsed.type==='task.upsert'?parsed.task.projectId:parsed.type==='event.upsert'?parsed.event.projectId:undefined;
+ return old&&(overrides?.newProject||overrides?.projectId!==undefined&&overrides.projectId!==old)?old:undefined;
 }
 async function rebaseSiblingGuards(db:Database,owner:string,turnId:string){
  const rows=await db.prepare("SELECT id,guard_json FROM orbit_agent_actions WHERE owner_id=? AND turn_id=? AND state='pending' AND guard_json IS NOT NULL").bind(owner,turnId).all<{id:string;guard_json:string}>();
@@ -65,15 +83,17 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   else{
    for(let attempt=0;attempt<3;attempt++){
     const current=await readWorkspace(db,owner),receipt=await db.prepare('SELECT operation_id FROM orbit_mutations WHERE owner_id=? AND operation_id=?').bind(owner,action.id).first();
-    if(!receipt&&((action.guard&&!await guardMatches(action.guard,parsed,current.data))||(!action.guard&&current.revision!==action.expectedRevision)))throw new AgentError('이 제안의 대상 또는 근거가 변경되어 최신 내용으로 다시 확인합니다.','ACTION_CHANGED',409);
-    let command=withOverrides(parsed,input.overrides);
+    const moved=movedFrom(parsed,input.overrides),guard=action.guard&&moved?withoutProject(action.guard,moved):action.guard,context={actionId:action.id,today:todayInZone(current.data.preferences.timeZone,new Date(action.createdAt))};
+    if(!receipt&&((guard&&!await guardMatches(guard,parsed,current.data))||(!action.guard&&current.revision!==action.expectedRevision)))throw new AgentError('이 제안의 대상 또는 근거가 변경되어 최신 내용으로 다시 확인합니다.','ACTION_CHANGED',409);
+    let command=withOverrides(parsed,input.overrides,context);
     if(!receipt){
-     const review=registrationOverlap(current.data,parsed);
-     if(review&&(parsed.type==='event.upsert'||parsed.type==='proposal.approve')){
+     // The reducer checks the command it applies, so the confirmation covers the edited registration.
+     const review=registrationOverlap(current.data,command);
+     if(review&&(command.type==='event.upsert'||command.type==='proposal.approve')){
       const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([owner,action.id,review.confirmation])));
       const confirmation=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
       if(input.overlapConfirmation!==confirmation)throw new AgentError('겹치는 일정을 확인하고 등록 여부를 선택해 주세요.','CALENDAR_OVERLAP',409,{overlapConfirmation:confirmation,conflicts:review.conflicts.slice(0,20).map(({title,date,start,end})=>({title,date,start,end})),total:review.conflicts.length});
-      command={...withOverrides(parsed,input.overrides),overlapConfirmation:review.confirmation};
+      command={...command,overlapConfirmation:review.confirmation};
      }
     }
     try{revision=(await writeCommand(db,owner,{operationId:action.id,expectedRevision:current.revision,action:command})).revision;break}catch(error){if(!(error instanceof RevisionConflict)||attempt===2)throw error}

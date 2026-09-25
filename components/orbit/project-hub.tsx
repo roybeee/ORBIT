@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {Search,Plus,ChevronRight,ChevronLeft,CheckCheck,FolderKanban,MoreHorizontal,SlidersHorizontal,ArrowRight,GripVertical,LockKeyhole} from 'lucide-react';
+import {Search,Plus,ChevronRight,ChevronLeft,CheckCheck,FolderKanban,MoreHorizontal,SlidersHorizontal,ArrowRight,GripVertical,LockKeyhole,Merge} from 'lucide-react';
 import type {WorkspaceData} from '@/lib/orbit/model';
 import {projectSummary,projectStatus,projectDisplayStatus,projectStatusLabel,projectBuckets,type ProjectBucket} from '@/lib/orbit/project-management';
 import {Progress} from '@/components/ui/progress';
@@ -10,10 +10,14 @@ import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {projectWorld} from '@/lib/orbit/project-world';
 import {useProjectReorder} from './use-project-reorder';
 import type {ProjectIntent} from './project-actions';
+import {ProjectMergeDialog,type ProjectMergeAction} from './project-merge-dialog';
+import {duplicateProjectGroups} from '@/lib/orbit/project-merge';
 
-type Props={data:WorkspaceData;today:string;busy:boolean;onOpen:(id:string,intent?:ProjectIntent)=>void;onOpenTask:(id:string)=>void;onCreateTask:(id:string)=>void;onCreateProject:()=>void;onManage:(id:string)=>void;onTrash:()=>void;onReorder:(ids:string[])=>Promise<boolean>};
-export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,onManage,onTrash,onReorder}:Props){
+type Props={data:WorkspaceData;today:string;busy:boolean;onOpen:(id:string,intent?:ProjectIntent)=>void;onOpenTask:(id:string)=>void;onCreateTask:(id:string)=>void;onCreateProject:()=>void;onManage:(id:string)=>void;onTrash:()=>void;onReorder:(ids:string[])=>Promise<boolean>;onMerge:(action:ProjectMergeAction)=>Promise<boolean>};
+export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,onManage,onTrash,onReorder,onMerge}:Props){
   const [query,setQuery]=useState(''),[bucket,setBucket]=useState<ProjectBucket>('active');
+  const [merging,setMerging]=useState(false);
+  const duplicates=useMemo(()=>duplicateProjectGroups(data.projects).length,[data.projects]);
   const [filter,setFilter]=useState('all'),[sort,setSort]=useState('manual'),[toolsOpen,setToolsOpen]=useState(false),[index,setIndex]=useState(0);
   const items=useMemo(()=>data.projects.map(project=>({project,summary:projectSummary(data,project,today)})),[data,today]);
   const groups=useMemo(()=>projectBuckets(data.projects,data.tasks),[data.projects,data.tasks]);
@@ -38,7 +42,7 @@ export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,
   }
   return <section className="project-hub project-flow" aria-label="프로젝트 관리">
     <div className="project-universe-banner"><img src={illustrationTheme(screenIllustration(data.preferences,'projects')).image} width="1536" height="864" alt=""/><div><span>MY CITY, MY PROJECTS</span><h2>나의 도시에서<br/>한 걸음씩 앞으로</h2><p>진행 중 <strong>{groups.active.length}</strong> · 완료 <strong>{groups.completed.length}</strong></p></div></div>
-    <div className="project-flow-summary"><p>진행 중 <strong>{groups.active.length}</strong><span>·</span>확인 필요 <strong>{attention}</strong></p><button className="text-button" aria-expanded={toolsOpen} aria-controls="project-search-tools" onClick={()=>setToolsOpen(v=>!v)}><SlidersHorizontal size={17}/><span>검색·정렬</span></button></div>
+    <div className="project-flow-summary"><p>진행 중 <strong>{groups.active.length}</strong><span>·</span>확인 필요 <strong>{attention}</strong></p><button className="text-button" aria-expanded={toolsOpen} aria-controls="project-search-tools" onClick={()=>setToolsOpen(v=>!v)}><SlidersHorizontal size={17}/><span>검색·정렬</span></button><button className="text-button" disabled={busy||reorder.editing||data.projects.length<2} onClick={()=>setMerging(true)}><Merge size={17}/><span>{duplicates?`중복 합치기 ${duplicates}`:'합치기'}</span></button></div>
     <Tabs className="project-status-tabs" value={bucket} onValueChange={value=>{if(reorder.editing)return;setBucket(value as ProjectBucket);setFilter('all');setQuery('')}}>
       <TabsList aria-label="프로젝트 진행 상태">
         <TabsTrigger disabled={reorder.editing} value="active">진행 중 <span>{groups.active.length}</span></TabsTrigger>
@@ -76,6 +80,7 @@ export function ProjectHub({data,today,busy,onOpen,onCreateTask,onCreateProject,
     </Tabs>
     <p className="project-press-hint">길게 눌러 순서 변경 · 코어 프로젝트는 고정 · 수정·삭제는 ⋯</p>
     <p className="sr-only" role="status">{reorder.message}</p>
+    {merging&&<ProjectMergeDialog data={data} busy={busy} onMerge={onMerge} onClose={()=>setMerging(false)}/>}
     {reorder.editing&&createPortal(<div className="project-reorder-bar" role="region" aria-label="프로젝트 순서 편집"><div><strong>프로젝트 순서 편집</strong><span>{reorder.saving?'저장 중…':'끌어서 이동한 뒤 저장하세요'}</span></div><button className="secondary-button" disabled={busy||reorder.saving} onClick={reorder.cancel}>취소</button><button className="primary-button" disabled={busy||reorder.saving} onClick={()=>void reorder.save()}>순서 저장</button></div>,document.body)}
     {reorder.drag&&createPortal(<div className="project-drag-ghost" style={{left:reorder.drag.x,top:reorder.drag.y}} aria-hidden="true"><GripVertical size={20}/><strong>{data.projects.find(p=>p.id===reorder.drag?.id)?.name}</strong></div>,document.body)}
   </section>;

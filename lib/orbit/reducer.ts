@@ -1,6 +1,7 @@
 import {registrationOverlap} from './overlap-review.ts';
 import {workEligibility} from './work-policy.ts';
-import {reconcileProjectWork} from './project-management.ts';
+import {reconcileProjectWork,projectStatus} from './project-management.ts';
+import {mergeProjects,projectMergeProblem} from './project-merge.ts';
 import {reorderProjectSlots} from './project-order.ts';
 import {taskScheduleProblem,taskAfterWaiting} from './task-scheduling.ts';
 import {categoryOf} from './calendar-categories.ts';
@@ -405,6 +406,14 @@ export function applyAction(
         r.projectId === action.id ? { ...r, projectId: undefined } : r,
       );
       break;
+    case 'project.merge': {
+      const problem=projectMergeProblem(data,action);
+      if(problem)fail(problem);
+      Object.assign(data,mergeProjects(data,action));
+      // Work moved into a paused or completed project stops being scheduled, as with project.manage.
+      if(projectStatus(data.projects.find(p=>p.id===action.targetId)!)!=='active')suspendProject(action.targetId);
+      break;
+    }
     case 'project.domino':
       if (action.id === null) delete data.dominoProjectId;
       else {
@@ -689,7 +698,9 @@ export function applyAction(
       const review=registrationOverlap(data,action);
       if(review&&action.overlapConfirmation!==review.confirmation)fail('겹치는 일정이 있습니다. 현재 충돌 내용을 확인하고 등록을 승인해 주세요.');
       const old = data.events.find(x=>x.id===e.id);
-      data.events = replace(data.events, linkEventProject({...e,color:e.color===undefined?old?.color:e.color,description:e.description===undefined?old?.description:e.description,scope:e.scope===undefined?old?.scope:e.scope},data));
+      if (action.project && action.project.id !== e.projectId) fail('새 프로젝트와 일정의 연결을 확인해 주세요.');
+      const projectId = action.project ? createProject(action.project) : e.projectId;
+      data.events = replace(data.events, linkEventProject({...e,projectId,color:e.color===undefined?old?.color:e.color,description:e.description===undefined?old?.description:e.description,scope:e.scope===undefined?old?.scope:e.scope},data));
       break;
     }
     case 'event.attach': {

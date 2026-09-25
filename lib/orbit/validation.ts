@@ -286,6 +286,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('project.next-task'),id,taskId:id.nullable()}).strict(),
   z.object({type:z.literal('project.reorder'),ids:z.array(id).min(2).max(500).refine(ids=>new Set(ids).size===ids.length)}).strict(),
   z.object({ type: z.literal('project.delete'), id }).strict(),
+  z.object({type:z.literal('project.merge'),targetId:id,sourceIds:z.array(id).min(1).max(20).refine(ids=>new Set(ids).size===ids.length),name:title}).strict(),
   z.object({ type: z.literal('project.domino'), id: id.nullable() }).strict(),
   z.object({ type: z.literal('goal.upsert'), goal: goalSchema, clearFields: z.array(z.enum(['deadline','parentId','metric'])).max(3).optional() }).strict(),
   z.object({ type: z.literal('goal.delete'), id }).strict(),
@@ -363,7 +364,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z
-    .object({ type: z.literal('event.upsert'), event: eventSchema, overlapConfirmation:z.string().max(1000000).optional(), attachmentIds: attachmentIds.optional() })
+    .object({ type: z.literal('event.upsert'), event: eventSchema, project: projectSchema.optional(), overlapConfirmation:z.string().max(1000000).optional(), attachmentIds: attachmentIds.optional() })
     .strict(),
   z.object({ type: z.literal('event.delete'), id }).strict(),
   z.object({ type: z.literal('event.attach'), id, attachmentIds }).strict(),

@@ -442,6 +442,30 @@ export async function writeCommand(
         )
         .bind(timestamp, ownerId, action.id, ...gateValues),
     );
+  if (action.type === 'project.merge')
+    for (const [table, bump] of [['orbit_conversations', ',revision=revision+1,updated_at=?'], ['orbit_activity_sessions', ''], ['orbit_answer_feedback', '']] as const)
+      statements.push(
+        db
+          .prepare(
+            `UPDATE ${table} SET project_id=?${bump} WHERE owner_id=? AND project_id IN (SELECT value FROM json_each(?)) AND ${gate}`,
+          )
+          .bind(action.targetId, ...(bump ? [timestamp] : []), ownerId, JSON.stringify(action.sourceIds), ...gateValues),
+      );
+  // Project ids also live inside stored JSON outside the workspace: note revisions (the
+  // body the editor loads), Plaud import state, agent orders, Aside jobs and trashed
+  // records. JSON.stringify writes `"key":"id"` without spaces, so an exact text
+  // replacement re-points them without touching other fields.
+  if (action.type === 'project.merge')
+    for (const source of action.sourceIds)
+      for (const [table, column] of [['orbit_note_revisions', 'note_json'], ['orbit_plaud_imports', 'state_json'], ['orbit_agent_orders', 'request_json'], ['orbit_aside_jobs', 'job_json'], ['orbit_data_trash', 'payload_json']] as const) {
+        const keys = ['projectId', 'manualProject', 'autoPrimary'];
+        const expression = keys.reduce((inner) => `replace(${inner},?,?)`, column as string);
+        statements.push(
+          db
+            .prepare(`UPDATE ${table} SET ${column}=${expression} WHERE owner_id=? AND instr(${column},?)>0 AND ${gate}`)
+            .bind(...keys.flatMap((key) => [`"${key}":${JSON.stringify(source)}`, `"${key}":${JSON.stringify(action.targetId)}`]), ownerId, JSON.stringify(source), ...gateValues),
+        );
+      }
   if ((action.type === 'review.saveGenerate' || action.type === 'review.save') && action.detail)
     statements.push(
       db

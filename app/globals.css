@@ -529,6 +529,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .approve-dialog{width:min(460px,calc(100vw - 24px))}
 .approve-dialog form{display:flex;flex-direction:column;gap:14px;margin-top:4px}
 .approve-dialog label{display:grid;gap:6px;font-size:13px}
+.meeting-edit-mode{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border:1px solid var(--border);border-radius:12px;background:var(--muted)}
+.meeting-edit-mode button{min-height:40px;border-radius:9px;font-size:13px;color:var(--muted-foreground)}
+.meeting-edit-mode button[aria-checked=true]{background:var(--card);color:var(--foreground);font-weight:600;box-shadow:0 0 0 1px var(--border)}
+.meeting-edit-mode button:disabled{opacity:.45}
 @media(hover:none){.notification-dismiss{display:none}}.meeting-date-editor{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:12px 0}.meeting-date-editor label{font-size:12px;display:grid;gap:6px}
 
 .meeting-review-summary h4{font-weight:650;font-size:15px;margin:18px 0 8px;color:var(--foreground)}.meeting-review-summary h4:first-child{margin-top:0}.meeting-review-summary p{margin:0;line-height:1.8;white-space:pre-wrap}

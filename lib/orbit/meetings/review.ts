@@ -54,7 +54,7 @@ export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Pr
    a.task={...a.task,id:await stableMeetingId(note.source?.externalId??note.id,'task',a.task.projectId+':'+a.task.title),focus:false,noteId:note.id,noteCitation:{revision:note.revision??1,line:s.line,quote:s.quote}};a.autoAssign=false;
   }
   if(a.type==='event.upsert'){
-   if(data.events.some(e=>e.id===a.event.id)||a.attachmentIds?.length||a.event.taskId)throw new AgentError('회의록 일정은 별도의 새 일정으로 제안해야 합니다.','MEETING_SCOPE',422);
+   if(data.events.some(e=>e.id===a.event.id)||a.attachmentIds?.length||a.event.taskId||a.project)throw new AgentError('회의록 일정은 별도의 새 일정으로 제안해야 합니다.','MEETING_SCOPE',422);
    if(a.event.projectId)a.event.projectId=projects.get(a.event.projectId)??a.event.projectId;
    if(data.events.some(e=>e.date===a.event.date&&e.start===a.event.start&&normalize(e.title)===normalize(a.event.title)))continue;
    a.event.id=await stableMeetingId(note.source?.externalId??note.id,'event',a.event.title+':'+a.event.date+':'+a.event.start);
