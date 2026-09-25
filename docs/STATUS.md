@@ -7,7 +7,8 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 **`c72838b`**이다(2026-09-25 KST, [기록](releases/2026-09-25-c72838b.md), 소유자 브라우저 `/api/version` tree `5eaa8827…`). PR #113(수정 후 등록에서 기존 프로젝트 연결·새 프로젝트 생성, 프로젝트 합치기)이 포함된다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 **`2c9ae43`**이다(2026-09-25 KST, [기록](releases/2026-09-25-2c9ae43.md), 소유자 브라우저 `/api/version` tree `9dd746c3…`). PR #115(결재함 배지는 최근 7일 결정만 · 쌓인 회의 결재 일괄 보류 · 닫힌 제안 보류 금지)와 #116(로딩 중 표시)이 포함된다. 직전 `f97d082`도 같은 날 게시·검증됐다([기록](releases/2026-09-25-f97d082.md)).
+- 그 이전 `published` + `runtime-verified` 소스는 **`c72838b`**이다(2026-09-25 KST, [기록](releases/2026-09-25-c72838b.md), 소유자 브라우저 `/api/version` tree `5eaa8827…`). PR #113(수정 후 등록에서 기존 프로젝트 연결·새 프로젝트 생성, 프로젝트 합치기)이 포함된다.
 - 그 이전 `published` + `runtime-verified` 소스는 `b5dc876`이다(2026-09-25 KST 09:46, [기록](releases/2026-09-25-b5dc876.md), 소유자 브라우저 `/api/version` tree `f8bf1013…`). 정보 구조 v2(PR #105·#106·#107·#110·#111) 전체가 포함된다.
 - 그 이전 `published` + `runtime-verified` 소스는 `d41061e`이다(2026-09-25 KST, [기록](releases/2026-09-25-d41061e.md), 소유자 브라우저 `/api/version` tree `443f269e…`). PR #99·#101·#102·#103(Slack 지시 → Google+ORBIT 동시 등록, 캘린더·할 일 양방향 동기화, 목록 1회 조회)이 포함된다. Hermes 플러그인(`integrations/hermes-orbit-commands`)은 서버에 배포됨(해시 `de92e9e2…`, 도구 4개 등록 확인), Google Calendar는 Tasks 권한 포함 재연결됨.
 - **정보 구조 v2(한 궤도)** 5단계가 `merged`되었다: PR #105(탭 4개·Orbit 버튼·결재함·찾기·나), #106(결재함에서 바로 처리·알림→소식), #107(오늘 시간 모드), #110(Orbit 도크), 그리고 이 PR(프로젝트 목표 사다리·상세 탭). 설계와 근거는 [docs/Orbit_IA_v2.ko.md](Orbit_IA_v2.ko.md). 2026-09-25 `b5dc876`으로 묶어 게시했다(`published` · `runtime-verified`). 운영에서 결재함 206건(Orbit 제안 200)이 드러났다 — 후속 과제.
@@ -43,7 +44,7 @@
 
 ## 다음 행동
 
-0. 정보 구조 v2 후속: (a) 결재함 배지 노이즈 — 회의 결재 카드 200건 누적, 대화 로드 전후로 6→206 변동. 오래된 회의 결재를 묶음으로 정리하는 방식과 배지 기준을 소유자와 정한다. (b) 휴대폰에서 하단 탭·Orbit 도크(키보드 열림)·결재함 승인 1건 실기기 확인.
+0. 정보 구조 v2 후속: (a) 결재함 배지 노이즈 — 해결(#115·#116, 운영 배지 206→23, 쌓인 회의 결재 183건은 소유자가 일괄 보류 여부 결정). (b) 휴대폰에서 하단 탭·Orbit 도크(키보드 열림)·결재함 승인 1건 실기기 확인.
 1. 게시할 때는 Hermes 계획 분석과 시간대를 나누고, 여러 머지를 한 번에 묶어 게시한다(같은 계정이라 쿼터를 함께 쓴다).
 2. Hermes `openai-codex`의 `relogin_required` 경고(2026-09-21 기록)는 `hermes auth status openai-codex`로 확인한다.
 3. 다음 게시는 `release.sh` → `publish-sites.sh` → 브라우저/`verify-deploy.sh` 순서로 한다.
