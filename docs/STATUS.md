@@ -7,7 +7,7 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 **`8634d55`**이다(2026-09-25 KST, [기록](releases/2026-09-25-8634d55.md), 소유자 브라우저 `/api/version` tree `23b1b839…`). PR #127(결재함에는 결정이 필요한 업무 지시만)과, 다른 세션이 먼저 게시한 `7268443`(PR #123~#126)이 포함된다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 `c3e7f1e`이다(2026-09-26 00:1x KST, [기록](releases/2026-09-25-session-batch.md), 소유자 브라우저 `/api/version` tree `78fe2c50…`). 2026-09-25 하루 게시 15건(#108–#134, 결재함 회의 카드·일괄 처리, 회의 분석 안정화)이 같은 기록에 있다.
 - 그 이전 `published` + `runtime-verified` 소스는 **`4bb5318`**이다(2026-09-25 KST, [기록](releases/2026-09-25-4bb5318.md), 소유자 브라우저 `/api/version` tree `bcf024ca…`). PR #120(Slack "오늘 할 일"을 ORBIT에서 조회하는 `orbit_slack_today`, Hermes 플러그인 v2.1.0 서버 배포 포함)이 포함된다.
 - 그 이전 `published` + `runtime-verified` 소스는 **`2c9ae43`**이다(2026-09-25 KST, [기록](releases/2026-09-25-2c9ae43.md), 소유자 브라우저 `/api/version` tree `9dd746c3…`). PR #115(결재함 배지는 최근 7일 결정만 · 쌓인 회의 결재 일괄 보류 · 닫힌 제안 보류 금지)와 #116(로딩 중 표시)이 포함된다. 직전 `f97d082`도 같은 날 게시·검증됐다([기록](releases/2026-09-25-f97d082.md)).
 - 그 이전 `published` + `runtime-verified` 소스는 **`c72838b`**이다(2026-09-25 KST, [기록](releases/2026-09-25-c72838b.md), 소유자 브라우저 `/api/version` tree `5eaa8827…`). PR #113(수정 후 등록에서 기존 프로젝트 연결·새 프로젝트 생성, 프로젝트 합치기)이 포함된다.
