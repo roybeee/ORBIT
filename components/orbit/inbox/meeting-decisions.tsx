@@ -8,14 +8,16 @@ import {scopedRequest} from '@/lib/orbit/agent/client-request';
 import {sendDecision} from '@/lib/orbit/agent/decision-client';
 import {AgentRequestError} from '@/lib/orbit/agent/approval-feedback';
 import {bulkPlan,decisionRow,summarizeResults} from '@/lib/orbit/meeting-decisions';
-import {ActionCard,type ActionReview} from '../agent/action-review';
+import type {ActionReview} from '../agent/action-review';
+import {MeetingReview} from '../meeting-review';
 import {agentRequest} from '../agent/connections';
 import {agentRefresh} from '../agent/refresh';
 
 interface Props {noteId:string;title:string;items:readonly AgentAction[];snapshot:WorkspaceSnapshot;review:ActionReview;onOpenNote:(id:string)=>void;onAskOther:(item:AgentAction)=>void}
 
 // Every decision of one meeting as a list: each row can be approved or closed at once, or chosen
-// and handled together (선택 승인 / 나머지 반려). A row opens into the full card for edits and 보류.
+// and handled together (선택 승인 / 나머지 반려). A row opens into the same card as the meeting note
+// (마감일 지정, 수정 후 등록, 보류, 다른 일정과 통합, 반려).
 export function MeetingDecisions({noteId,title,items,snapshot,review,onOpenNote,onAskOther}:Props){
  const [selected,setSelected]=useState<Set<string>>(()=>new Set());
  const [open,setOpen]=useState<string|null>(null);
@@ -86,10 +88,10 @@ export function MeetingDecisions({noteId,title,items,snapshot,review,onOpenNote,
        <button className="icon-button" aria-label={item.title+' 반려'} disabled={busy} onClick={()=>void review.decide(item,'reject')}><X size={15}/></button>
       </div>}
      </div>
-     {row.needsDue&&isPending&&<form className="decision-due" onSubmit={e=>{e.preventDefault();void saveDue(item)}}><label>마감일<input type="date" required value={dates[item.id]??''} onChange={e=>setDates(previous=>({...previous,[item.id]:e.target.value}))}/></label><button className="secondary-button" disabled={busy||!dates[item.id]}>저장만</button></form>}
+     {row.needsDue&&isPending&&!expanded&&<form className="decision-due" onSubmit={e=>{e.preventDefault();void saveDue(item)}}><label>마감일<input type="date" required value={dates[item.id]??''} onChange={e=>setDates(previous=>({...previous,[item.id]:e.target.value}))}/></label><button className="secondary-button" disabled={busy||!dates[item.id]}>저장만</button></form>}
      {failures[item.id]&&<p role="alert" className="agent-error">{failures[item.id]}</p>}
      {!expanded&&review.notice(item,onAskOther)}
-     {expanded&&<ActionCard item={item} snapshot={snapshot} review={review} onAskOther={onAskOther}/>}
+     {expanded&&<MeetingReview noteId={noteId} revision={item.guard?.meeting?.revision??1} demo={false} focus={item.id} onChanged={()=>void agentRefresh().catch(()=>{})}/>}
     </li>;})}
   </ul>
   {pending.length>0&&<div className="decision-bulk">

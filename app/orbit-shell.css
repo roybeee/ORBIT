@@ -264,3 +264,4 @@
 .decision-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;position:sticky;bottom:0;z-index:2;margin:0 -12px -12px;padding:10px 12px 12px;border-top:1px solid var(--border);border-radius:0 0 18px 18px;background:var(--background)}
 .decision-bulk-due{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted-foreground)}
 .decision-reject-confirm{border-color:color-mix(in srgb,var(--destructive,#ef4444) 70%,var(--border));color:var(--destructive,#ef4444)}
+.decision-row .meeting-review-focus{margin:0;padding:0;border:0;background:none}
