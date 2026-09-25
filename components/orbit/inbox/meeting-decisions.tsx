@@ -11,11 +11,13 @@ import {MeetingReview} from '../meeting-review';
 import {agentRequest} from '../agent/connections';
 import {agentRefresh} from '../agent/refresh';
 
-interface Props {noteId:string;title:string;items:readonly AgentAction[];onOpenNote:(id:string)=>void}
+interface Props {noteId:string;title:string;items:readonly AgentAction[];onOpenNote:(id:string)=>void;initiallyOpen?:boolean}
 
 // Every decision of one meeting, shown with the meeting note's own cards (마감일 지정, 승인하고 등록,
 // 수정 후 등록, 보류, 다른 일정과 통합, 반려), plus a checkbox per card for 선택 승인 / 나머지 반려.
-export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
+export function MeetingDecisions({noteId,title,items,onOpenNote,initiallyOpen=true}:Props){
+ // Only a few meetings are laid out at once; the others open on demand (hundreds of cards were slow).
+ const [open,setOpen]=useState(initiallyOpen);
  const [selected,setSelected]=useState<Set<string>>(()=>new Set());
  // A bulk notice belongs to the card as it was; once the card changes (merge, date saved) it is dropped.
  const [failures,setFailures]=useState<Record<string,{message:string;version:string}>>({});
@@ -64,6 +66,8 @@ export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
 
  return <section className="inbox-group meeting-decisions" aria-label={`회의 결재 · ${title}`}>
   <header className="inbox-group-head"><span className="inbox-kind tone-ai">회의 결재</span><strong>{title}</strong><span className="inbox-group-count">{pending.length}건</span><button className="text-button" onClick={()=>onOpenNote(noteId)}><FileText size={14}/>회의록 열기</button></header>
+  {!open&&<button className="text-button decision-open" onClick={()=>setOpen(true)}>결재안 펼치기 · {pending.length}건</button>}
+  {open&&<>
   <label className="decision-select-all"><input type="checkbox" checked={all} disabled={busy||!pending.length} onChange={()=>setSelected(all?new Set():new Set(pending.map(i=>i.id)))}/> 전체 선택</label>
   {pending.length>0&&<div className="decision-bulk">
    {pending.some(i=>selected.has(i.id)&&i.guard?.meeting?.needsDue)&&<label className="decision-bulk-due">마감 미정 항목 마감일<input type="date" value={bulkDue} onChange={e=>setBulkDue(e.target.value)}/></label>}
@@ -72,5 +76,6 @@ export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
    {confirmReject&&<button className="text-button" onClick={()=>setConfirmReject(false)}>취소</button>}
   </div>}
   <MeetingReview noteId={noteId} revision={revision} demo={false} focus={items.map(i=>i.id)} lead={lead} onChanged={()=>void agentRefresh().catch(()=>{})}/>
+  </>}
  </section>;
 }

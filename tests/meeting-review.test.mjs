@@ -260,3 +260,18 @@ test('one card with a wrong quote is left out; the rest of the meeting is kept a
  assert.deepEqual(d.actions.map(a=>a.title),['정상 할 일']);
  assert.match(d.summary,/제외한 결재안/);assert.match(d.summary,/근거 없는 할 일/);
 }finally{db.close()}});
+
+test('deciding a card that is already in that state again is not a failure',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const d=await analyze(db,[task('a','중복 반려 확인')]);assert.equal(d.status,'completed',d.error);
+ const [card]=d.actions;
+ await decide(db,owner,{id:card.id,decision:'reject'},env);
+ await decide(db,owner,{id:card.id,decision:'reject'},env);
+ assert.equal((await meetingReviewDetail(db,owner,note.id)).actions[0].state,'rejected');
+}finally{db.close()}});
+
+test('a placeholder card title is replaced by what the card registers',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const d=await analyze(db,[{...task('a','제안서 1장 수정'),title:'승인할 변경'}]);assert.equal(d.status,'completed',d.error);
+ assert.equal(d.actions[0].title,'제안서 1장 수정');
+}finally{db.close()}});

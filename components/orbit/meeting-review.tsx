@@ -20,7 +20,10 @@ export function MeetingReview({noteId,revision,demo,onChanged,focus,lead}:{noteI
  const reviewKey=noteId+':'+revision;
  const [loadedKey,setLoadedKey]=useState(reviewKey);
  if(loadedKey!==reviewKey){setLoadedKey(reviewKey);if(!demo){setData(null);setError('')}}
- useEffect(()=>{if(demo)return;let alive=true;const get=async()=>{try{const d=await agentRequest('/api/meetings/review?noteId='+encodeURIComponent(noteId));if(alive)setData(d)}catch(e){if(alive)setError((e as Error).message)}};void get();const timer=setInterval(()=>void get(),5000);return()=>{alive=false;clearInterval(timer)}},[noteId,revision,demo]);
+ // The meeting note polls while analysis runs; the 결재함 (focus) loads once per change of its cards,
+ // since dozens of groups polling every few seconds made every decision slow.
+ const focusKey=typeof focus==='string'?focus:focus?.join(',');
+ useEffect(()=>{if(demo)return;let alive=true;const get=async()=>{try{const d=await agentRequest('/api/meetings/review?noteId='+encodeURIComponent(noteId));if(alive)setData(d)}catch(e){if(alive)setError((e as Error).message)}};void get();const timer=focusKey===undefined?setInterval(()=>void get(),5000):undefined;return()=>{alive=false;if(timer)clearInterval(timer)}},[noteId,revision,demo,focusKey]);
  async function analyze(){setBusy('analysis');setError('');try{setData(await agentRequest('/api/meetings/review','POST',{noteId,retry:true}));setNotice('요약과 결재안을 준비하고 있습니다.')}catch(e){setError((e as Error).message)}finally{setBusy('')}}
  async function link(item:AgentAction,projectId:string){if(busy)return;setBusy(item.id);setError('');setNotice('');try{setData(await agentRequest('/api/meetings/review/link','POST',{noteId,actionId:item.id,projectId}));setEditing('');setNotice('기존 프로젝트에 연결했습니다. 이 회의의 할 일·일정은 그 프로젝트로 등록됩니다.')}catch(e){setError((e as Error).message);await load().catch(()=>{})}finally{setBusy('')}}
  async function decide(item:AgentAction,decision:'approve'|'defer'|'reject'|'reconsider',confirmation?:string,overrides?:MeetingOverrides){
