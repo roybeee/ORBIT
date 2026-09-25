@@ -7,10 +7,10 @@
 ## 현재 단계
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
-- 마지막으로 `published` + `runtime-verified`된 소스는 **`b5dc876`**이다(2026-09-25 KST 09:46, [기록](releases/2026-09-25-b5dc876.md), 소유자 브라우저 `/api/version` tree `f8bf1013…`). 정보 구조 v2(PR #105·#106·#107·#110·#111) 전체가 포함된다.
+- 마지막으로 `published` + `runtime-verified`된 소스는 **`c72838b`**이다(2026-09-25 KST, [기록](releases/2026-09-25-c72838b.md), 소유자 브라우저 `/api/version` tree `5eaa8827…`). PR #113(수정 후 등록에서 기존 프로젝트 연결·새 프로젝트 생성, 프로젝트 합치기)이 포함된다.
+- 그 이전 `published` + `runtime-verified` 소스는 `b5dc876`이다(2026-09-25 KST 09:46, [기록](releases/2026-09-25-b5dc876.md), 소유자 브라우저 `/api/version` tree `f8bf1013…`). 정보 구조 v2(PR #105·#106·#107·#110·#111) 전체가 포함된다.
 - 그 이전 `published` + `runtime-verified` 소스는 `d41061e`이다(2026-09-25 KST, [기록](releases/2026-09-25-d41061e.md), 소유자 브라우저 `/api/version` tree `443f269e…`). PR #99·#101·#102·#103(Slack 지시 → Google+ORBIT 동시 등록, 캘린더·할 일 양방향 동기화, 목록 1회 조회)이 포함된다. Hermes 플러그인(`integrations/hermes-orbit-commands`)은 서버에 배포됨(해시 `de92e9e2…`, 도구 4개 등록 확인), Google Calendar는 Tasks 권한 포함 재연결됨.
 - **정보 구조 v2(한 궤도)** 5단계가 `merged`되었다: PR #105(탭 4개·Orbit 버튼·결재함·찾기·나), #106(결재함에서 바로 처리·알림→소식), #107(오늘 시간 모드), #110(Orbit 도크), 그리고 이 PR(프로젝트 목표 사다리·상세 탭). 설계와 근거는 [docs/Orbit_IA_v2.ko.md](Orbit_IA_v2.ko.md). 2026-09-25 `b5dc876`으로 묶어 게시했다(`published` · `runtime-verified`). 운영에서 결재함 206건(Orbit 제안 200)이 드러났다 — 후속 과제.
-- 회의록 결재 프로젝트 선택(기존 연결·새 이름 생성)과 프로젝트 합치기(`feat/meeting-project-picker`)가 이 PR로 `merged` 예정이다. 게시는 머지 후 따로 기록한다.
 - 이전 PR(`docs/status-d73694d`)은 d73694d 게시 기록을 반영했다. 열린 후속은 `fix/plan-stale-basis`(별도 작업)만 남았다.
 
 ## 검증된 결과
@@ -51,7 +51,7 @@
 
 ## 마지막 갱신(UTC)
 
-- 수동 구역: 2026-09-25T01:20Z (Claude, 회의록 프로젝트 선택·프로젝트 합치기 반영)
+- 수동 구역: 2026-09-25T01:50Z (Claude, c72838b 게시·운영 검증 기록)
 
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
