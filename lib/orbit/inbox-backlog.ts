@@ -40,3 +40,10 @@ export function splitProposals(actions:readonly AgentAction[],notes:readonly Not
  const backlog=[...groups.values()].sort((a,b)=>b.date.localeCompare(a.date));
  return {fresh,backlog,backlogCount:backlog.reduce((n,g)=>n+g.actions.length,0)};
 }
+
+// Open proposals cap. Only current ones count: the old-meeting backlog is cleared in bulk from the
+// 결재함 and must not stop recent meetings from being analyzed.
+export const PROPOSAL_LIMIT=200;
+export function proposalQueueFull(pending:readonly AgentAction[],notes:readonly Note[],adding:number,today:string,timeZone='Asia/Seoul'){
+ return splitProposals(pending,notes,today,timeZone).fresh.length+adding>PROPOSAL_LIMIT;
+}

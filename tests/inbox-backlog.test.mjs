@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitProposals,FRESH_DAYS} from '../lib/orbit/inbox-backlog.ts';
+import {splitProposals,FRESH_DAYS,proposalQueueFull,PROPOSAL_LIMIT} from '../lib/orbit/inbox-backlog.ts';
 
 const today='2026-09-25';
 const note=(id,date,title=id)=>({id,title,kind:'meeting',projectId:'',summary:'',body:'',tags:[],updated:'2026-09-24',source:{provider:'plaud',externalId:id,date}});
@@ -60,3 +60,14 @@ test('dates are taken in the owner\'s time zone and notes without a source use t
  assert.equal(split.backlogCount,1,'a re-analysed old manual meeting is backlog, not fresh');
 });
 
+
+test('only current proposals count toward the proposal limit; the old-meeting backlog does not block new analysis',()=>{
+ const notes=[note('old','2026-09-04'),note('recent','2026-09-22')];
+ const backlog=Array.from({length:190},(_,i)=>meeting('old'+i,'old'));
+ assert.equal(PROPOSAL_LIMIT,200);
+ assert.equal(proposalQueueFull(backlog,notes,8,today),false,'190 old-meeting cards leave room for a new meeting');
+ const current=Array.from({length:195},(_,i)=>meeting('new'+i,'recent'));
+ assert.equal(proposalQueueFull([...backlog,...current],notes,5,today),false,'195 current + 5 new is exactly the limit');
+ assert.equal(proposalQueueFull([...backlog,...current],notes,6,today),true,'current decisions still cap at 200');
+ assert.equal(proposalQueueFull([meeting('d','recent',{state:'deferred'}),...current],notes,5,today),false,'deferred cards never count');
+});
