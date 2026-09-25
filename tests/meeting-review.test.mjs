@@ -227,3 +227,28 @@ test('a card naming a project that neither exists nor is proposed goes to the me
  assert.equal(task.action.task.projectId,note.projectId);assert.equal(event.action.event.projectId,note.projectId);
  assert.match(task.reason,/\[프로젝트 확인 필요\]/);
 }finally{db.close()}});
+
+test('rejecting a proposed project moves its task and event cards to the meeting project so they can still be approved',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const [newProject,draftTask,draftEvent]=proposals();
+ const d=await analyze(db,[newProject,draftTask,draftEvent]);assert.equal(d.status,'completed',d.error);
+ const projectCard=d.actions.find(a=>a.action.type==='project.upsert'),taskCard=d.actions.find(a=>a.action.type==='task.upsert');
+ await decide(db,owner,{id:projectCard.id,decision:'reject'},env);
+ const after=await meetingReviewDetail(db,owner,note.id);
+ const moved=after.actions.find(a=>a.id===taskCard.id),event=after.actions.find(a=>a.action.type==='event.upsert');
+ assert.equal(moved.action.task.projectId,note.projectId);assert.equal(event.action.event.projectId,note.projectId);
+ assert.match(moved.reason,/\[프로젝트 확인 필요\]/);
+ await decide(db,owner,{id:taskCard.id,decision:'approve'},env);
+ assert.equal((await readWorkspace(db,owner)).data.tasks.find(t=>t.title===moved.action.task.title).projectId,note.projectId);
+}finally{db.close()}});
+
+test('a card already orphaned by an earlier rejection is moved on approval with a clear reason, then approves',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const [newProject,draftTask]=proposals();
+ const d=await analyze(db,[newProject,draftTask]);assert.equal(d.status,'completed',d.error);
+ const projectCard=d.actions.find(a=>a.action.type==='project.upsert'),taskCard=d.actions.find(a=>a.action.type==='task.upsert');
+ await db.prepare("UPDATE orbit_agent_actions SET state='rejected' WHERE owner_id=? AND id=?").bind(owner,projectCard.id).run();
+ await assert.rejects(()=>decide(db,owner,{id:taskCard.id,decision:'approve'},env),e=>/새 프로젝트/.test(e.message)&&!/회의록 또는 연결 대상이 바뀌었습니다/.test(e.message));
+ await decide(db,owner,{id:taskCard.id,decision:'approve'},env);
+ assert.equal((await readWorkspace(db,owner)).data.tasks.find(t=>t.title===taskCard.action.task.title).projectId,note.projectId);
+}finally{db.close()}});

@@ -4,13 +4,14 @@ import {splitProposals,FRESH_DAYS,proposalQueueFull,PROPOSAL_LIMIT} from '../lib
 
 const today='2026-09-25';
 const note=(id,date,title=id)=>({id,title,kind:'meeting',projectId:'',summary:'',body:'',tags:[],updated:'2026-09-24',source:{provider:'plaud',externalId:id,date}});
-const card=(id,over={})=>({id,turnId:'t',title:id,reason:'',expectedRevision:1,state:'pending',note:'',revisitDate:null,createdAt:'2026-09-24T01:00:00Z',action:{type:'task.upsert',task:{id:'x'+id,title:id}},...over});
+const card=(id,over={})=>({id,turnId:'t',title:id,reason:'',expectedRevision:1,state:'pending',note:'',revisitDate:null,createdAt:'2026-09-01T01:00:00Z',action:{type:'task.upsert',task:{id:'x'+id,title:id}},...over});
 const meeting=(id,noteId,over={})=>card(id,{guard:{meeting:{noteId,revision:1},version:1,actionHash:'h',values:{}},...over});
 
-test('meeting proposals are dated by the meeting, not by when the card was made',()=>{
+test('an old meeting\'s cards are backlog once they are a week old themselves; new cards stay in view for a week',()=>{
  const notes=[note('old','2026-09-04T01:24:00Z','09-04 주간 회의'),note('recent','2026-09-22')];
- const {fresh,backlog,backlogCount}=splitProposals([meeting('a','old'),meeting('b','old'),meeting('c','recent')],notes,today);
- assert.deepEqual(fresh.map(a=>a.id),['c'],'a card created yesterday for a 3-week-old meeting is backlog');
+ const made='2026-09-10T01:00:00Z';
+ const {fresh,backlog,backlogCount}=splitProposals([meeting('a','old',{createdAt:made}),meeting('b','old',{createdAt:made}),meeting('c','recent',{createdAt:made}),meeting('n','old',{createdAt:'2026-09-25T01:00:00Z'})],notes,today);
+ assert.deepEqual(fresh.map(a=>a.id),['c','n'],'a card made yesterday for a 3-week-old meeting is in view; cards made weeks ago for it are backlog');
  assert.equal(backlogCount,2);
  assert.equal(backlog.length,1);
  assert.deepEqual({key:backlog[0].key,title:backlog[0].title,date:backlog[0].date,ids:backlog[0].actions.map(a=>a.id)},{key:'meeting:old',title:'09-04 주간 회의',date:'2026-09-04',ids:['a','b']});
@@ -46,7 +47,7 @@ test('decided and deferred cards are not part of either list; groups are newest 
 });
 
 test('a meeting card whose note is missing falls back to the card date',()=>{
- const {fresh,backlog}=splitProposals([meeting('lost','missing',{createdAt:'2026-09-02T00:00:00Z'}),meeting('lost2','missing2')],[],today);
+ const {fresh,backlog}=splitProposals([meeting('lost','missing',{createdAt:'2026-09-02T00:00:00Z'}),meeting('lost2','missing2',{createdAt:'2026-09-24T01:00:00Z'})],[],today);
  assert.deepEqual(fresh.map(a=>a.id),['lost2']);
  assert.equal(backlog[0].title,'회의록');
 });
@@ -56,8 +57,8 @@ test('dates are taken in the owner\'s time zone and notes without a source use t
  const early=splitProposals([card('kst',{createdAt:'2026-09-18T20:00:00Z'})],[],'2026-09-26','Asia/Seoul');
  assert.deepEqual(early.fresh.map(a=>a.id),['kst']);
  const manual={id:'m',title:'수동 회의록',kind:'meeting',projectId:'',summary:'',body:'',tags:[],updated:'2026-08-30'};
- const split=splitProposals([meeting('re','m',{createdAt:'2026-09-25T00:00:00Z'})],[manual],today,'Asia/Seoul');
- assert.equal(split.backlogCount,1,'a re-analysed old manual meeting is backlog, not fresh');
+ const split=splitProposals([meeting('re','m',{createdAt:'2026-09-10T00:00:00Z'})],[manual],today,'Asia/Seoul');
+ assert.equal(split.backlogCount,1,'a manual meeting uses its update date: an old one whose cards are old too is backlog');
 });
 
 
