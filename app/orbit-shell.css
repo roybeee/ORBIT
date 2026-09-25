@@ -219,4 +219,29 @@
 .project-detail-tabs>[data-slot=tabs-list],.project-flow-detail .project-detail-tabs>[data-slot=tabs-list]{grid-template-columns:repeat(4,minmax(0,1fr))}
 .project-detail-tabs>[data-slot=tabs-list]>[data-slot=tabs-trigger]{white-space:nowrap;min-width:0;font-size:.82rem}
 
+/* 결재함: loading line and the backlog of old meeting proposals */
+.inbox-loading{margin:0;font-size:.85rem;color:var(--muted-foreground)}
+.inbox-backlog{display:grid;gap:10px;margin-top:6px;padding:14px;border-radius:18px;border:1px solid var(--border);background:color-mix(in srgb,var(--muted) 55%,var(--card))}
+.inbox-backlog>header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px}
+.inbox-backlog h2{display:flex;align-items:center;gap:7px;margin:0;font-size:1rem}
+.inbox-backlog h2 em{font-style:normal;color:var(--galaxy-amber);font-variant-numeric:tabular-nums}
+.inbox-backlog header p{margin:4px 0 0;max-width:60ch;color:var(--muted-foreground);font-size:.85rem;line-height:1.55}
+.inbox-backlog-list{list-style:none;margin:0;padding:0;display:grid}
+.inbox-backlog-list>li{display:grid;gap:8px;padding:8px 0;border-top:1px solid var(--border)}
+.inbox-backlog-list>li:first-child{border-top:0}
+.inbox-backlog-row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px}
+.inbox-backlog-date{font-size:.8rem;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+.inbox-backlog-title{display:grid;min-width:0}
+.inbox-backlog-title strong{font-size:.9rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-backlog-title small{font-size:.78rem;color:var(--muted-foreground)}
+.inbox-backlog-actions{display:inline-flex;align-items:center;gap:4px}
+.inbox-backlog-actions .text-button{font-size:.8rem;white-space:nowrap}
+.inbox-backlog-cards{display:grid;gap:8px;padding-left:12px;border-left:2px solid var(--border)}
+.inbox-backlog-form{padding:12px;border-radius:12px;background:var(--card)}
+.inbox-backlog-form>strong{font-size:.9rem}
+.inbox-backlog-progress{position:relative;height:22px;border-radius:999px;background:var(--muted);overflow:hidden}
+.inbox-backlog-progress span{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--galaxy-violet) 45%,transparent);transition:width .2s}
+.inbox-backlog-progress small{position:relative;display:block;text-align:center;font-size:.75rem;line-height:22px;font-variant-numeric:tabular-nums}
+@media(max-width:600px){.inbox-backlog-row{grid-template-columns:40px minmax(0,1fr)}.inbox-backlog-actions{grid-column:2;justify-content:flex-start}}
+
 @media(prefers-reduced-motion:reduce){.area-sections-track{scroll-behavior:auto}}

@@ -39,6 +39,16 @@ test('prerequisite approval advances related cards, while changed targets requir
 test('defer requires a reason and future review date and cannot silently approve',()=>fixture(async db=>{
  const [card]=await stage(db,[{type:'project.upsert',project}]);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'defer',reason:'',revisitDate:tomorrow},env));await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'defer',reason:'자료 대기',revisitDate:today},env));await decide(db,'owner',{id:card.id,decision:'defer',reason:'자료 대기',revisitDate:tomorrow},env);await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'approve'},env));assert.equal((await readWorkspace(db,'owner')).revision,0);await decide(db,'owner',{id:card.id,decision:'reconsider'},env);assert.equal((await findAction(db,'owner',card.id)).state,'pending');
 }));
+test('a closed or replaced proposal cannot be brought back by deferring it',()=>fixture(async db=>{
+ const [card]=await stage(db,[{type:'project.upsert',project}]);
+ await decide(db,'owner',{id:card.id,decision:'reject'},env);
+ await assert.rejects(()=>decide(db,'owner',{id:card.id,decision:'defer',reason:'나중에',revisitDate:tomorrow},env),e=>e.code==='CONFLICT');
+ assert.equal((await findAction(db,'owner',card.id)).state,'rejected');
+ const [again]=await stage(db,[{type:'project.upsert',project:{...project,id:'project-2'}}]);
+ await decide(db,'owner',{id:again.id,decision:'defer',reason:'자료 대기',revisitDate:tomorrow},env);
+ await decide(db,'owner',{id:again.id,decision:'defer',reason:'더 기다림',revisitDate:addDays(tomorrow,1)},env);
+ assert.equal((await findAction(db,'owner',again.id)).note,'더 기다림','a deferred card can be deferred again with a new reason');
+}));
 test('only one change per owner and one AI turn per conversation can be in flight; stale leases cannot finish a replacement turn',()=>fixture(async db=>{
  const [a,b]=await stage(db,[{type:'project.upsert',project},{type:'project.upsert',project:{...project,id:'other'}}]);const lease=await claimAction(db,'owner',a.id);await assert.rejects(()=>claimAction(db,'owner',b.id),e=>e.code==='BUSY');await resetAction(db,'owner',a.id,lease);await claimAction(db,'owner',b.id);const id=randomUUID(),turn=await beginTurn(db,'owner',id,'첫 메시지');await assert.rejects(()=>beginTurn(db,'owner',randomUUID(),'다른 메시지'),e=>e.code==='BUSY');await assert.rejects(()=>finishTurn(db,'owner',id,'old-lease',{text:'이전 결과',sources:[]},[]));await finishTurn(db,'owner',id,turn.lease,{text:'현재 결과',sources:[]},[]);assert.equal((await beginTurn(db,'owner',id,'첫 메시지')).replayed,true);await assert.rejects(()=>beginTurn(db,'owner',id,'바뀐 내용'));
 }));
