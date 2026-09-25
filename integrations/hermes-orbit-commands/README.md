@@ -7,6 +7,7 @@ One Slack instruction registers everywhere it belongs:
 | To-do (`orbit_slack_task`) | Google Tasks (`@default` list) | ORBIT task linked by `googleTask` (no extra Google Calendar reminder) |
 | Memo (`orbit_slack_note`) | — | ORBIT knowledge note |
 | Timed event | Created by Hermes in Google Calendar | Read by ORBIT from Google Calendar; `orbit_slack_directive_sync` only confirms this |
+| "오늘 할 일" question (`orbit_slack_today`) | — | Read-only `GET …/commands?today=1`: counts (today incl. overdue, overdue, in progress, focus, done today, open) and up to 10 items to act on first, with an ORBIT link |
 
 Project choice: the project the user named (or, with none named, a single clear keyword match) is used at once. A name matching several projects returns numbered candidates; the requester answers with a number and Hermes calls `orbit_slack_choose`. Nothing named and nothing matched goes to the `Slack 보관함` project.
 

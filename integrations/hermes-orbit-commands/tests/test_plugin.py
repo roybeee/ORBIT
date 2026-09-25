@@ -172,10 +172,10 @@ class PluginTest(unittest.TestCase):
         self.assertEqual((origin['workspace'], origin['user'], origin['message_ts'], origin['event_id']), ('TLEDGER', 'ULEDGER', '1790000000.000001', 'Ev1'))
         self.assertIsNone(contextvars.Context().run(plugin.current_origin), 'outside a Slack turn there is no origin')
 
-    def test_registers_four_tools_and_short_guidance(self):
+    def test_registers_five_tools_and_short_guidance(self):
         ctx = Context()
         self.plugin.register(ctx)
-        self.assertEqual(sorted(ctx.tools), ['orbit_slack_choose', 'orbit_slack_directive_sync', 'orbit_slack_note', 'orbit_slack_task'])
+        self.assertEqual(sorted(ctx.tools), ['orbit_slack_choose', 'orbit_slack_directive_sync', 'orbit_slack_note', 'orbit_slack_task', 'orbit_slack_today'])
         self.assertLessEqual(len(self.plugin.GUIDANCE), 1200)
         self.assertIn('needs_confirmation', self.plugin.GUIDANCE)
 
@@ -187,6 +187,31 @@ class PluginTest(unittest.TestCase):
         title = ctx.tools['orbit_slack_task']['schema']['parameters']['properties']['title']
         self.assertIn('never add instruction words', title['description'])
         self.assertEqual(title['maxLength'], 160)
+
+    def test_today_reads_orbit_for_the_slack_requester_only(self):
+        summary = {'contract': 'orbit-slack-today-v1', 'date': '2026-09-25', 'counts': {'today': 3, 'overdue': 1, 'doing': 0, 'focus': 1, 'doneToday': 2, 'open': 9},
+                   'items': [{'title': '계약서 검토', 'due': '2026-09-25', 'state': 'focus', 'status': 'todo', 'project': 'Old Ferry Donut'}], 'url': 'https://orbit.example/#today'}
+        self.orbit_replies = [(200, summary)]
+        result = json.loads(self.plugin.today({}))
+        self.assertEqual((result['success'], result['counts']['today']), (True, 3))
+        self.assertEqual(result['items'][0]['title'], '계약서 검토')
+        call, = self.orbit_calls()
+        self.assertEqual(call['method'], 'GET')
+        self.assertIn('/api/integrations/slack/commands?', call['url'])
+        self.assertIn('today=1', call['url'])
+        self.assertIn('workspaceId=TTEST', call['url'])
+        self.assertIn('requesterId=UTEST', call['url'])
+        self.assertEqual(self.google_creates(), [], 'reading ORBIT never touches Google')
+
+    def test_today_reports_failures_instead_of_guessing(self):
+        self.orbit_replies = [(403, {'error': 'source_scope_mismatch'})]
+        result = json.loads(self.plugin.today({}))
+        self.assertEqual((result['success'], result['error']), (False, 'source_scope_mismatch'))
+        self.plugin.current_origin = lambda: None
+        self.assertEqual(json.loads(self.plugin.today({}))['error'], 'slack_origin_required')
+
+    def test_guidance_sends_orbit_task_questions_to_the_today_tool(self):
+        self.assertIn('orbit_slack_today', self.plugin.GUIDANCE)
 
 
 if __name__ == '__main__':
