@@ -43,6 +43,7 @@ import {activeHold,clearHold,gateProvider,holdMessage,recordLimit,releaseProbe} 
 import {contract,parseAction} from './protocol.ts';
 import type {AgentAction} from './types.ts';
 import {proposalQueueFull,PROPOSAL_LIMIT} from '../inbox-backlog.ts';
+const isNewProject=(proposal:{action?:unknown},data:{projects:{id:string}[]})=>{const a=proposal.action as {type?:string;project?:{id?:string}}|undefined;return a?.type==='project.upsert'&&!data.projects.some(p=>p.id===a.project?.id)};
 export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 
 type Message={role:'user'|'assistant';content:string};
@@ -425,7 +426,8 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
     const note=await readNote(db,owner,meta.id,job.meeting.revision);
     await db.prepare('UPDATE orbit_meeting_reviews SET summary=? WHERE owner_id=? AND turn_id=?').bind(parsed.text,owner,id).run();
     const previous=(await listAgent(db,owner,undefined,turn.conversation_id)).actions;
-    parsed.proposals=await meetingProposals(note,snapshot.data,parsed.proposals,previous);
+    // Project keys are resolved in order, so a new project must precede the cards that name it.
+    parsed.proposals=await meetingProposals(note,snapshot.data,[...parsed.proposals].sort((a,b)=>Number(isNewProject(b,snapshot.data))-Number(isNewProject(a,snapshot.data))),previous);
     parsed.evidence=[...new Set([...(parsed.evidence??[]),...job.sources.map(x=>x.id!).filter(Boolean)])];
    }else if(parsed.proposals.length>8)throw new AgentError('한 대화에서는 최대 8개의 변경을 제안할 수 있습니다.','INPUT',422);
    if(parsed.proposals.length){
@@ -442,6 +444,9 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    }
    const timeZone=snapshot.data.preferences.timeZone;
    if(proposalQueueFull(pending,snapshot.data.notes,parsed.proposals.length,todayInZone(timeZone),timeZone))throw new AgentError('최근 7일 미결 제안이 '+PROPOSAL_LIMIT+'개에 도달했습니다. 결재함을 먼저 정리해 주세요.','QUEUE_FULL',422);
+   // A task may name a project proposed later in the same answer; stage new projects first so the
+   // projected workspace always has them (the order within each group is kept).
+   parsed.proposals=[...parsed.proposals].sort((a,b)=>Number(isNewProject(b,snapshot.data))-Number(isNewProject(a,snapshot.data)));
    let projected=structuredClone(snapshot.data);const cards:AgentAction[]=[];
    const selectedSources=selectEvidence(job.evidence??{},parsed.evidence??(job.evidence?[]:undefined),job.sources);
    for(const proposal of parsed.proposals){
