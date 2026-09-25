@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {illustrationScreens} from '../lib/orbit/city-themes.ts';
-import {areas,tabAreas,areaOf,viewLabels,searchEntries,searchScreens,inboxCounts,badgeText} from '../lib/orbit/navigation.ts';
+import {areas,tabAreas,areaOf,viewLabels,searchEntries,searchScreens,inboxCounts,badgeText,orderNeedsDecision} from '../lib/orbit/navigation.ts';
 
 const allViews=[...illustrationScreens];
 
@@ -49,7 +49,13 @@ test('inbox count adds only decisions the owner must make',()=>{
   decisions:[{status:'active',reviewDate:'2026-09-26'},{status:'closed',reviewDate:'2026-09-01'},{status:'active',reviewDate:'2026-09-30'}],
   delegations:[{status:'working',checkDate:'2026-09-20'},{status:'verified',checkDate:'2026-09-20'},{status:'cancelled',checkDate:'2026-09-20'}],
  });
- assert.deepEqual(counts,{plans:2,ai:2,orders:2,followups:2,total:8});
+ // A finished order waits for no decision: its result arrives as a 소식 notice and is reviewed in 업무 진행.
+ assert.deepEqual(counts,{plans:2,ai:2,orders:1,followups:2,total:7});
+});
+
+test('only an order waiting for execution approval is a decision',()=>{
+ assert.equal(orderNeedsDecision({status:'waiting_for_approval'}),true);
+ for(const status of ['completed','running','failed','cancelled'])assert.equal(orderNeedsDecision({status}),false,status);
 });
 
 test('inbox count tolerates missing collections and unknown AI state',()=>{
