@@ -42,6 +42,7 @@ import {AgentError} from './errors.ts';
 import {activeHold,clearHold,gateProvider,holdMessage,recordLimit,releaseProbe} from './provider-hold.ts';
 import {contract,parseAction} from './protocol.ts';
 import type {AgentAction} from './types.ts';
+import {proposalQueueFull,PROPOSAL_LIMIT} from '../inbox-backlog.ts';
 export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 
 type Message={role:'user'|'assistant';content:string};
@@ -439,7 +440,8 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
      await db.prepare('DELETE FROM orbit_hermes_jobs WHERE owner_id=? AND turn_id=?').bind(owner,id).run();return;
     }
    }
-   if(pending.length+parsed.proposals.length>200)throw new AgentError('미결 제안이 200개에 도달했습니다. 검토함을 먼저 정리해 주세요.','QUEUE_FULL',422);
+   const timeZone=snapshot.data.preferences.timeZone;
+   if(proposalQueueFull(pending,snapshot.data.notes,parsed.proposals.length,todayInZone(timeZone),timeZone))throw new AgentError('최근 7일 미결 제안이 '+PROPOSAL_LIMIT+'개에 도달했습니다. 결재함을 먼저 정리해 주세요.','QUEUE_FULL',422);
    let projected=structuredClone(snapshot.data);const cards:AgentAction[]=[];
    const selectedSources=selectEvidence(job.evidence??{},parsed.evidence??(job.evidence?[]:undefined),job.sources);
    for(const proposal of parsed.proposals){
