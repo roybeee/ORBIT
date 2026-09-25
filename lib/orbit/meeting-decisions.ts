@@ -18,19 +18,21 @@ export function decisionRow(item:Item,projects:readonly Project[]){
  return {kind:'할 일',date:needsDue?'마감 미정':`${monthDay(a.task?.due)} 마감`,project,needsDue};
 }
 
-export function bulkPlan<T extends Item>(items:readonly T[],selected:ReadonlySet<string>,{rejectRest}:{rejectRest:boolean}){
+// dueOf: a date typed in the row or set for the whole selection; a 마감 미정 card with one is saved first.
+export function bulkPlan<T extends Item>(items:readonly T[],selected:ReadonlySet<string>,{rejectRest,dueOf=()=>undefined}:{rejectRest:boolean;dueOf?:(item:T)=>string|undefined}){
  const open=items.filter(i=>i.state==='pending');
- const approve:T[]=[],blocked:Blocked<T>[]=[];
+ const approve:T[]=[],blocked:Blocked<T>[]=[],setDue:{item:T;due:string}[]=[];
  for(const item of open.filter(i=>selected.has(i.id))){
   const prerequisite=proposedProject(item,open);
-  if(item.guard?.meeting?.needsDue)blocked.push({item,reason:'마감일을 먼저 지정해 주세요.'});
+  const due=item.guard?.meeting?.needsDue?dueOf(item):undefined;
+  if(item.guard?.meeting?.needsDue&&!due)blocked.push({item,reason:'마감일을 먼저 지정해 주세요.'});
   else if(prerequisite&&!selected.has(prerequisite.id))blocked.push({item,reason:'함께 제안된 새 프로젝트를 먼저 선택해 주세요.'});
-  else approve.push(item);
+  else{approve.push(item);if(due)setDue.push({item,due})}
  }
  approve.sort((a,b)=>Number(b.action.type==='project.upsert')-Number(a.action.type==='project.upsert'));
  // Chosen-but-blocked cards stay for the owner; only the cards left unchosen are closed.
  const reject=rejectRest?open.filter(i=>!selected.has(i.id)):[];
- return {approve,reject,blocked};
+ return {approve,reject,blocked,setDue};
 }
 
 export function summarizeResults(results:readonly {decision:'approve'|'reject';ok:boolean}[]){
