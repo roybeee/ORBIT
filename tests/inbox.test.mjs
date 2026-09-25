@@ -119,3 +119,16 @@ test('while Orbit proposals load the inbox says so instead of showing a partial 
  assert.match(partial,/지금까지 <em>2<\/em>건/);
 });
 
+
+test('a meeting proposal without a due date offers "마감일 지정하고 승인", never a bare approve, and shows the due as undecided',async()=>{
+ const {ActionCard}=await vite.ssrLoadModule('/components/orbit/agent/action-review.tsx');
+ const data=await workspace();
+ const review={acting:null,decide:noop,openDefer:noop,notice:()=>null};
+ const undated=action('u',{guard:{meeting:{noteId:'note-1',revision:1,needsDue:true},version:1,actionHash:'h',values:{}},action:{type:'task.upsert',task:{id:'task-u',title:'라라 협업안',due:'2026-09-24',duration:30}}});
+ const html=renderToStaticMarkup(React.createElement(ActionCard,{item:undated,snapshot:{data},review}));
+ assert.doesNotMatch(html,/승인하고 반영/);
+ assert.match(html,/마감일 지정하고 승인/);assert.match(html,/type="date"/);
+ assert.match(html,/미정 · 승인 전 지정/);assert.doesNotMatch(html,/2026-09-24/,'the placeholder due is not shown as if decided');
+ const dated=renderToStaticMarkup(React.createElement(ActionCard,{item:action('d'),snapshot:{data},review}));
+ assert.match(dated,/승인하고 반영/);assert.doesNotMatch(dated,/마감일 지정하고 승인/);
+});
