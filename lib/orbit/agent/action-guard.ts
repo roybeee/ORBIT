@@ -44,7 +44,7 @@ function keysFor(action:AgentAction['action'],data:WorkspaceData):string[]{
   case 'task.laser':task(a.id);keys.add('preferences');for(const t of data.tasks.filter(t=>t.laserDate===a.date))task(t.id);break;
   case 'task.assign':for(const assignment of a.assignments){task(assignment.id);project(assignment.projectId)}for(const p of a.projects??[])draftProject(p);break;
   case 'note.upsert':row('notes',a.note.id);project(a.note.projectId);break;
-  case 'event.upsert':row('events',a.event.id);task(a.event.taskId);project(a.event.projectId);keys.add('preferences');break;
+  case 'event.upsert':row('events',a.event.id);task(a.event.taskId);project(a.event.projectId);keys.add('preferences');if(a.project)draftProject(a.project);break;
   case 'preferences.update':keys.add('preferences');break;
   case 'project.domino':keys.add('dominoProjectId');project(a.id);break;
   case 'goal.upsert':row('goals',a.goal.id);row('goals',a.goal.parentId);break;
@@ -78,6 +78,12 @@ export async function guardFor(action:AgentAction['action'],data:WorkspaceData,b
 export function rebaseProjectValues(guard:ActionGuard,basis:WorkspaceBasis):ActionGuard{
  const values=Object.fromEntries(Object.entries(guard.values).map(([key,value])=>
   key.startsWith('projects:')||key.startsWith('projectName:')||key==='projects'?[key,basis[key]??null]:[key,value]));
+ return {...guard,values};
+}
+// When the owner moves a proposal to another project, the project it used to name
+// (possibly a draft that will now never be created) no longer bears on the proposal.
+export function withoutProject(guard:ActionGuard,projectId:string):ActionGuard{
+ const {['projects:'+projectId]:_dropped,...values}=guard.values;
  return {...guard,values};
 }
 export async function guardMatches(guard:ActionGuard,action:AgentAction['action'],data:WorkspaceData,basis?:WorkspaceBasis){

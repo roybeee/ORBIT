@@ -151,3 +151,14 @@
 .project-action-dialog .secondary-button:focus-visible{outline:2px solid #6653cc;outline-offset:3px}
 .project-resource-actions{display:flex;flex-wrap:wrap;gap:8px}
 .project-resource-actions .secondary-button{min-height:44px;flex:1 1 130px;justify-content:center;white-space:nowrap}
+.project-merge-dialog{max-height:calc(100dvh - 32px);overflow-y:auto}
+.project-merge-suggest{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.project-merge-suggest strong{flex-basis:100%;font-size:.8125rem;color:var(--muted-foreground)}
+.project-merge-suggest .secondary-button{min-height:40px;text-align:left}
+.project-merge-list{max-height:240px;overflow-y:auto;margin:0;padding:4px 12px;border:1px solid var(--border);border-radius:10px}
+.project-merge-list legend{padding:0 4px;font-size:.8125rem;color:var(--muted-foreground)}
+.approve-dialog .project-merge-list label{grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;font-size:.875rem}
+.project-merge-list label span{overflow-wrap:anywhere}
+.project-merge-list small,.project-merge-preview{color:var(--muted-foreground);font-size:.8125rem}
+.approve-dialog label.project-search{display:flex;gap:10px}
+.project-merge-dialog .sheet-actions{position:sticky;bottom:-24px;z-index:1;margin:0 -24px -24px;padding:12px 24px 24px;background:var(--background);border-top:1px solid var(--border)}
