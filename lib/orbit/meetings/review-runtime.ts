@@ -14,6 +14,7 @@ import {guardFor,recordFingerprint} from '../agent/action-guard.ts';
 import {toAction} from '../agent/repository.ts';
 import {directChatConfigured} from '../agent/direct-model.ts';
 import {activeHold,waitsForLimit} from '../agent/provider-hold.ts';
+import {rehomeOrphanCards} from './orphan-cards.ts';
 // Same choice runAgent makes for a meeting turn (no planning, no attachments).
 const meetingProvider=(env:Runtime)=>directChatConfigured(env)?'openai' as const:'hermes' as const;
 // Automatic reviews cover meetings recorded in the last 30 days. Older ones (e.g. a bulk Plaud
@@ -101,6 +102,8 @@ export async function meetingReviewDetail(db:Database,owner:string,noteId:string
 export async function processMeetingReviews(db:Database,owner:string,env:Runtime,noteId?:string){
  await collectNotifications(db,owner);
  await advanceMeetingReviews(db,owner);
+ // Cards stranded by a project proposal rejected earlier (before this was handled on reject).
+ await rehomeOrphanCards(db,owner).catch(()=>[]);
  const snapshot=await readWorkspace(db,owner);
  const known=await db.prepare('SELECT note_id,revision,status,engine_version,attempts FROM orbit_meeting_reviews WHERE owner_id=?').bind(owner).all<{note_id:string;revision:number;status:string;engine_version:number;attempts:number}>();
  const cutoff=await reviewCutoff(db,owner);

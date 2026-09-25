@@ -14,6 +14,7 @@ import {createGoogleEvent,syncCalendar} from './calendar.ts';
 import {deleteCalendarSeries} from './calendar-delete.ts';
 import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
+import {rehomeOrphanCards} from '../meetings/orphan-cards.ts';
 // An approval may rename the registration, recolor it or move it to another project,
 // either an existing one or one created from a typed name. Only these fields, and only
 // on the proposals that actually carry them.
@@ -71,7 +72,10 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   if(input.decision==='defer'&&action.state!=='pending'&&action.state!=='deferred')throw new AgentError('이미 닫힌 제안이라 보류할 수 없습니다.','CONFLICT',409);
   if(input.decision==='defer'){const current=await readWorkspace(db,owner);if(!input.reason?.trim()||!input.revisitDate||input.revisitDate<=todayInZone(current.data.preferences.timeZone))throw new AgentError('보류 이유와 이후의 검토일을 입력해 주세요.');}
   const state=input.decision==='defer'?'deferred':input.decision==='reject'?'rejected':'pending';
-  const result=await db.prepare("UPDATE orbit_agent_actions SET state=?,note=?,revisit_date=?,updated_at=? WHERE owner_id=? AND id=? AND state=?").bind(state,input.reason?.trim()??'',input.revisitDate??null,new Date().toISOString(),owner,input.id,action.state).run();if(result.meta?.changes!==1)throw new AgentError('제안 상태가 변경됐습니다.','CONFLICT',409);return;
+  const result=await db.prepare("UPDATE orbit_agent_actions SET state=?,note=?,revisit_date=?,updated_at=? WHERE owner_id=? AND id=? AND state=?").bind(state,input.reason?.trim()??'',input.revisitDate??null,new Date().toISOString(),owner,input.id,action.state).run();if(result.meta?.changes!==1)throw new AgentError('제안 상태가 변경됐습니다.','CONFLICT',409);
+  // Rejecting a proposed project must not strand the same meeting's cards that belong to it.
+  if(input.decision==='reject'&&action.action.type==='project.upsert'&&action.guard?.meeting)await rehomeOrphanCards(db,owner,action.guard.meeting.noteId);
+  return;
  }
  if(action.state==='approved')return;
  if(action.guard?.meeting?.needsDue)throw new AgentError('회의록 결재안에서 마감일을 지정한 뒤 승인해 주세요.','MEETING_DUE',422);
@@ -107,7 +111,10 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
  }catch(error){
   if(error instanceof AgentError&&error.code==='ACTION_CHANGED'){
    const meeting=action.guard?.meeting;
-   if(meeting){await resetAction(db,owner,action.id,lease);throw new AgentError('회의록 또는 연결 대상이 바뀌었습니다. 회의록에서 최신 내용으로 다시 분석한 뒤 승인해 주세요.','MEETING_CHANGED',409);}
+   if(meeting){await resetAction(db,owner,action.id,lease);
+    // The usual cause: the new project this card belongs to was rejected. Move it and say so.
+    if((await rehomeOrphanCards(db,owner,meeting.noteId)).includes(action.id))throw new AgentError('함께 제안된 새 프로젝트가 없어 이 결재안을 회의록의 프로젝트로 옮겼습니다. 프로젝트를 확인하고 다시 승인해 주세요.','MEETING_CHANGED',409);
+    throw new AgentError('회의록 또는 연결 대상이 바뀌었습니다. 회의록에서 최신 내용으로 다시 분석한 뒤 승인해 주세요.','MEETING_CHANGED',409);}
    // Refresh is analysis only. The old card is retired atomically when the new
    // response is stored; refreshed changes always require a new approval.
    const existing=action.result?.refreshTurnId?await db.prepare('SELECT status FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,action.result.refreshTurnId).first<{status:string}>():null;

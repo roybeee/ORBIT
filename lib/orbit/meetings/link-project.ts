@@ -5,16 +5,12 @@ import {guardFor,withoutProject} from '../agent/action-guard.ts';
 import type {AgentAction} from '../agent/types.ts';
 import {actionSchema} from '../validation.ts';
 import {mergedNotePrefix} from './merge.ts';
+import {relinked} from './orphan-cards.ts';
 import {meetingReviewDetail} from './review-runtime.ts';
 // A meeting may propose a "new" project that the owner already runs under another
 // name. Linking closes that card without creating anything and moves the same
 // meeting's task and event cards onto the chosen project. The existing project's
 // goal and due date stay as they are.
-function relinked(action:AgentAction['action'],draftId:string,projectId:string){
- if(action.type==='task.upsert'&&action.task.projectId===draftId)return {...action,task:{...action.task,projectId}};
- if(action.type==='event.upsert'&&action.event.projectId===draftId)return {...action,event:{...action.event,projectId}};
- return null;
-}
 export async function linkMeetingProject(db:Database,owner:string,noteId:string,actionId:string,projectId:string){
  const item=await findAction(db,owner,actionId),meeting=item.guard?.meeting;
  if(item.state!=='pending'||!meeting||meeting.noteId!==noteId)throw new AgentError('연결할 회의 결재안이 아닙니다.','CONFLICT',409);

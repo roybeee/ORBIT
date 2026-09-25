@@ -2,8 +2,9 @@ import {addDays,todayInZone} from './dates.ts';
 import type {Note} from './model.ts';
 import type {AgentAction} from './agent/types.ts';
 
-// The 결재함 badge counts decisions that are current. Orbit proposals older than this
-// (by meeting date for meeting cards) are shown as a backlog to clear in bulk instead.
+// The 결재함 badge counts decisions that are current: made in the last FRESH_DAYS days, or about a
+// meeting held in that window. Older ones are shown as a backlog to clear in bulk instead, so a
+// newly analyzed older meeting still shows up for its first week.
 export const FRESH_DAYS=7;
 
 export interface BacklogGroup {key:string;title:string;date:string;noteId?:string;actions:AgentAction[]}
@@ -14,12 +15,15 @@ const open=(a:AgentAction)=>a.state==='pending'||a.state==='applying';
 // Meeting cards are dated by the meeting (recording date, else the note's date, as elsewhere
 // in ORBIT): a full re-analysis can create cards today for a meeting held weeks ago. Other
 // proposals are dated by when Orbit made them, in the owner's time zone.
+function createdDay(action:AgentAction,timeZone:string){
+ const created=new Date(action.createdAt);
+ return Number.isNaN(created.getTime())?action.createdAt.slice(0,10):todayInZone(timeZone,created);
+}
 function proposalDay(action:AgentAction,notes:ReadonlyMap<string,Note>,timeZone:string):string{
  const noteId=action.guard?.meeting?.noteId,note=noteId?notes.get(noteId):undefined;
  const noteDay=note?.source?.date??note?.updated;
  if(noteDay)return noteDay.slice(0,10);
- const created=new Date(action.createdAt);
- return Number.isNaN(created.getTime())?action.createdAt.slice(0,10):todayInZone(timeZone,created);
+ return createdDay(action,timeZone);
 }
 
 export function splitProposals(actions:readonly AgentAction[],notes:readonly Note[],today:string,timeZone='Asia/Seoul'):ProposalSplit{
@@ -29,7 +33,7 @@ export function splitProposals(actions:readonly AgentAction[],notes:readonly Not
  for(const action of actions.filter(open)){
   const day=proposalDay(action,byId,timeZone);
   // A card being applied is mid-flight and must stay in sight whatever its age.
-  if(action.state==='applying'||day>=since){fresh.push(action);continue;}
+  if(action.state==='applying'||day>=since||createdDay(action,timeZone)>=since){fresh.push(action);continue;}
   const noteId=action.guard?.meeting?.noteId;
   const key=noteId?'meeting:'+noteId:'chat';
   const group=groups.get(key)??{key,title:noteId?byId.get(noteId)?.title??'회의록':'Orbit 대화에서 나온 지난 제안',date:day,noteId,actions:[]};

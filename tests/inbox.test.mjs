@@ -100,7 +100,7 @@ test('the inbox chip shows a count for decisions and only a dot for unread news'
 test('old meeting proposals leave the badge and wait in a backlog that can be deferred in bulk',async()=>{
  const data=await workspace();
  data.notes=[{id:'old',title:'09-04 주간 회의',kind:'meeting',projectId:'',summary:'',body:'',tags:[],updated:'2026-09-24',source:{provider:'plaud',externalId:'old',date:'2026-09-04'}}];
- const old=over=>({guard:{meeting:{noteId:'old',revision:1},version:1,actionHash:'h',values:{}},...over});
+ const old=over=>({guard:{meeting:{noteId:'old',revision:1},version:1,actionHash:'h',values:{}},createdAt:'2026-09-10T00:00:00Z',...over});
  const html=await render({data,actions:[action('o1',old()),action('o2',old()),action('new')],counts:counts({ai:1,total:1})});
  assert.match(html,/쌓인 회의 결재 <em>2<\/em>건/);
  assert.match(html,/09-04 주간 회의/);
