@@ -6,16 +6,16 @@ import type {AgentAction} from '@/lib/orbit/agent/types';
 import {scopedRequest} from '@/lib/orbit/agent/client-request';
 import {sendDecision} from '@/lib/orbit/agent/decision-client';
 import {AgentRequestError} from '@/lib/orbit/agent/approval-feedback';
-import {bulkPlan,summarizeResults} from '@/lib/orbit/meeting-decisions';
+import {bulkPlan,bulkReject,summarizeResults} from '@/lib/orbit/meeting-decisions';
 import {MeetingReview} from '../meeting-review';
 import {agentRequest} from '../agent/connections';
 import {agentRefresh} from '../agent/refresh';
 
-interface Props {noteId:string;title:string;items:readonly AgentAction[];onOpenNote:(id:string)=>void;initiallyOpen?:boolean}
+interface Props {noteId:string;title:string;items:readonly AgentAction[];onOpenNote:(id:string)=>void;initiallyOpen?:boolean;picked?:boolean;onPick?:()=>void}
 
 // Every decision of one meeting, shown with the meeting note's own cards (마감일 지정, 승인하고 등록,
 // 수정 후 등록, 보류, 다른 일정과 통합, 반려), plus a checkbox per card for 선택 승인 / 나머지 반려.
-export function MeetingDecisions({noteId,title,items,onOpenNote,initiallyOpen=true}:Props){
+export function MeetingDecisions({noteId,title,items,onOpenNote,initiallyOpen=true,picked=false,onPick}:Props){
  // Only a few meetings are laid out at once; the others open on demand (hundreds of cards were slow).
  const [open,setOpen]=useState(initiallyOpen);
  const [selected,setSelected]=useState<Set<string>>(()=>new Set());
@@ -48,7 +48,11 @@ export function MeetingDecisions({noteId,title,items,onOpenNote,initiallyOpen=tr
     catch(error){dueFailed.add(item.id);results.push({decision:'approve',ok:false});failed[item.id]=error instanceof Error?error.message:'마감일을 저장하지 못했습니다.'}
    }
    for(const item of plan.approve.filter(i=>!dueFailed.has(i.id)))await decide(item,'approve');
-   for(const item of plan.reject)await decide(item,'reject');
+   // One server call for the whole rest; a card someone already decided is skipped, not failed.
+   if(plan.reject.length){
+    try{const {rejected}=await bulkReject(plan.reject.map(i=>i.id),request);results.push(...Array.from({length:rejected},()=>({decision:'reject' as const,ok:true})))}
+    catch(error){for(const item of plan.reject){results.push({decision:'reject',ok:false});failed[item.id]=error instanceof Error?error.message:'반려하지 못했습니다.'}}
+   }
    for(const {item,reason} of plan.blocked)failed[item.id]=reason;
   }finally{
    setFailures(Object.fromEntries(Object.entries(failed).map(([id,message])=>[id,{message,version:cards.get(id)??''}])));setSelected(new Set());setConfirmReject(false);setBulkDue('');
@@ -65,7 +69,7 @@ export function MeetingDecisions({noteId,title,items,onOpenNote,initiallyOpen=tr
  </div>;
 
  return <section className="inbox-group meeting-decisions" aria-label={`회의 결재 · ${title}`}>
-  <header className="inbox-group-head"><span className="inbox-kind tone-ai">회의 결재</span><strong>{title}</strong><span className="inbox-group-count">{pending.length}건</span><button className="text-button" onClick={()=>onOpenNote(noteId)}><FileText size={14}/>회의록 열기</button></header>
+  <header className="inbox-group-head">{onPick&&<input type="checkbox" className="decision-meeting-pick" aria-label={title+' 회의 전체 선택'} checked={picked} disabled={!pending.length} onChange={onPick}/>}<span className="inbox-kind tone-ai">회의 결재</span><strong>{title}</strong><span className="inbox-group-count">{pending.length}건</span><button className="text-button" onClick={()=>onOpenNote(noteId)}><FileText size={14}/>회의록 열기</button></header>
   {!open&&<button className="text-button decision-open" onClick={()=>setOpen(true)}>결재안 펼치기 · {pending.length}건</button>}
   {open&&<>
   <label className="decision-select-all"><input type="checkbox" checked={all} disabled={busy||!pending.length} onChange={()=>setSelected(all?new Set():new Set(pending.map(i=>i.id)))}/> 전체 선택</label>

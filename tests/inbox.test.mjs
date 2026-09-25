@@ -141,4 +141,7 @@ test('only the first five meeting groups are laid out with cards; the rest open 
  assert.equal((html.match(/meeting-review-focus/g)??[]).length,5,'cards of the first five meetings');
  assert.equal((html.match(/회의 결재 · 회의/g)??[]).length,7,'every meeting still has its group');
  assert.match(html,/결재안 펼치기/);
+ // Whole meetings can be picked for rejection without opening them.
+ assert.equal((html.match(/회의 전체 선택/g)??[]).length,7,'a meeting checkbox on every group, collapsed or not');
+ assert.match(html,/모든 회의 선택/);assert.match(html,/선택한 회의 0개 · 결재안 0건 반려/);
 });
