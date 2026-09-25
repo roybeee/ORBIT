@@ -248,20 +248,10 @@
 
 /* 결재함 · one meeting's decisions as a list */
 .meeting-decisions .decision-select-all{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted-foreground)}
-.decision-list{display:grid;gap:6px;margin:0;padding:0;list-style:none}
-.decision-row{display:grid;gap:8px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:color-mix(in srgb,var(--card) 88%,transparent)}
-.decision-row.approved,.decision-row.rejected{opacity:.55}
-.decision-line{display:flex;align-items:center;gap:10px;min-width:0}
-.decision-line>input[type=checkbox]{width:20px;height:20px;flex:none}
-.decision-main{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"kind title chev" "kind meta chev";column-gap:8px;align-items:center;flex:1;min-width:0;text-align:left;background:none;border:0;padding:0;color:inherit;cursor:pointer}
-.decision-main .inbox-kind{grid-area:kind;align-self:start}
-.decision-main strong{grid-area:title;font-size:.92rem;line-height:1.35;overflow-wrap:anywhere}
-.decision-main small{grid-area:meta;color:var(--muted-foreground);font-size:.78rem;font-variant-numeric:tabular-nums}
-.decision-main svg{grid-area:chev;color:var(--muted-foreground)}
-.decision-quick{display:flex;gap:6px;flex:none}
-.decision-due{display:flex;flex-wrap:wrap;align-items:end;gap:8px;padding-left:30px}
-.decision-due label{display:grid;gap:4px;font-size:.8rem;color:var(--muted-foreground)}
 .decision-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;position:sticky;bottom:0;z-index:2;margin:0 -12px -12px;padding:10px 12px 12px;border-top:1px solid var(--border);border-radius:0 0 18px 18px;background:var(--background)}
 .decision-bulk-due{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted-foreground)}
 .decision-reject-confirm{border-color:color-mix(in srgb,var(--destructive,#ef4444) 70%,var(--border));color:var(--destructive,#ef4444)}
-.decision-row .meeting-review-focus{margin:0;padding:0;border:0;background:none}
+.meeting-decisions .meeting-review-focus{margin:0;padding:0;border:0;background:none}
+.decision-pick{display:grid;gap:6px;margin-bottom:8px}
+.decision-pick label{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted-foreground)}
+.decision-pick input[type=checkbox]{width:20px;height:20px}

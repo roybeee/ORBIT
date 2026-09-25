@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useState,type ReactNode} from 'react';
 import {Check,RefreshCw,FileCheck2,Merge,PenLine} from 'lucide-react';
 import {agentRequest} from './agent/connections';
 import {AgentRequestError} from '@/lib/orbit/agent/approval-feedback';
@@ -8,8 +8,10 @@ import {formatTime} from '@/lib/orbit/model';
 import {MeetingEditDialog,type MeetingOverrides} from './meeting-edit-dialog';
 import {agentRefresh} from './agent/refresh';
 type Review={status:string;summary:string;error?:string;progress?:string;revision:number;stale?:boolean;actions:AgentAction[];projects:{id:string;name:string;goal:string}[];candidates?:{tasks:{id:string;title:string;projectId:string;due:string}[];events:{id:string;title:string;date:string;start:number;end:number}[]}};
-// focus: show only that proposal's card, exactly as in the meeting note (used by the 결재함 list).
-export function MeetingReview({noteId,revision,demo,onChanged,focus}:{noteId:string;revision:number;demo:boolean;onChanged?:()=>void;focus?:string}){
+// focus: show only these proposals' cards, exactly as in the meeting note (used by the 결재함);
+// lead renders above each card (the 결재함's selection checkbox).
+export function MeetingReview({noteId,revision,demo,onChanged,focus,lead}:{noteId:string;revision:number;demo:boolean;onChanged?:()=>void;focus?:string|readonly string[];lead?:(item:AgentAction)=>ReactNode}){
+ const shown=(id:string)=>!focus||(typeof focus==='string'?focus===id:focus.includes(id));
  const [dates,setDates]=useState<Record<string,string>>({}),[merging,setMerging]=useState(''),[targets,setTargets]=useState<Record<string,string>>({});
  // "수정 후 등록"은 제안 내용을 미리 채운 창(MeetingEditDialog)을 열고, 이름·색·프로젝트만 바꿔 승인에 함께 보낸다.
  const [editing,setEditing]=useState('');
@@ -39,9 +41,9 @@ export function MeetingReview({noteId,revision,demo,onChanged,focus}:{noteId:str
  {data?.status==='deferred'&&<p role="status">최근 30일 안의 회의만 자동으로 요약합니다. 이 회의가 필요하면 요약하기를 눌러 주세요.</p>}
  {data?.status==='waiting_source'&&<p role="status">텍스트 원문이 들어오면 자동으로 요약과 결재안을 준비합니다.</p>}
  {data?.status==='waiting_quota'&&<p role="status">AI 사용량 한도가 회복되면 자동으로 이어서 분석합니다. 원문과 기록은 그대로 보존됩니다.</p>}</>}
- {data?.actions.filter(x=>!focus||x.id===focus).map(item=>{const a=item.action,p=a.type==='task.upsert'?a.task.projectId:a.type==='event.upsert'?a.event.projectId:a.type==='project.upsert'?a.project.id:null,project=data.projects.find(x=>x.id===p),prerequisite=p&&!project&&a.type!=='project.upsert'?data.actions.find(x=>x.action.type==='project.upsert'&&x.action.project.id===p&&x.state!=='approved'):undefined;
+ {data?.actions.filter(x=>shown(x.id)).map(item=>{const a=item.action,p=a.type==='task.upsert'?a.task.projectId:a.type==='event.upsert'?a.event.projectId:a.type==='project.upsert'?a.project.id:null,project=data.projects.find(x=>x.id===p),prerequisite=p&&!project&&a.type!=='project.upsert'?data.actions.find(x=>x.action.type==='project.upsert'&&x.action.project.id===p&&x.state!=='approved'):undefined;
  const mergeable=item.state==='pending'&&(a.type==='task.upsert'||a.type==='event.upsert'),candidates=mergeable?data.actions.filter(x=>x.id!==item.id&&x.state==='pending'&&x.action.type===a.type):[],existing=!mergeable?[]:a.type==='task.upsert'?(data.candidates?.tasks??[]).filter(t=>t.id!==a.task.id).map(t=>({id:t.id,label:t.title+' · '+t.due+(data.projects.find(p=>p.id===t.projectId)?' · '+data.projects.find(p=>p.id===t.projectId)!.name:'')})):(data.candidates?.events??[]).filter(e=>e.id!==a.event.id).map(e=>({id:e.id,label:e.title+' · '+e.date+' '+formatTime(e.start)+'–'+formatTime(e.end)}));
- return <article key={item.id} className="meeting-review-card"><div className="section-title"><strong>{item.title}</strong><span>{item.state==='approved'?'등록 완료':item.state==='rejected'?(item.note.startsWith('통합됨')?'통합됨':'반려'):item.state==='deferred'?'보류':item.state==='applying'?'등록 중':'승인 대기'}</span></div><p>{item.reason}</p>{item.state==='rejected'&&item.note.startsWith('통합됨')&&<p className="form-hint">{item.note}</p>}
+ return <article key={item.id} className="meeting-review-card">{lead?.(item)}<div className="section-title"><strong>{item.title}</strong><span>{item.state==='approved'?'등록 완료':item.state==='rejected'?(item.note.startsWith('통합됨')?'통합됨':'반려'):item.state==='deferred'?'보류':item.state==='applying'?'등록 중':'승인 대기'}</span></div><p>{item.reason}</p>{item.state==='rejected'&&item.note.startsWith('통합됨')&&<p className="form-hint">{item.note}</p>}
  <dl><div><dt>분류</dt><dd>{a.type==='task.upsert'?'할 일':a.type==='event.upsert'?'일정':project?'프로젝트 내용 수정':'신규 프로젝트'}</dd></div><div><dt>프로젝트</dt><dd>{project?.name??(a.type==='project.upsert'?a.project.name:prerequisite?.title??'등록 시 자동 연결')}</dd></div>
  {a.type==='task.upsert'&&<><div><dt>마감일</dt><dd>{item.guard?.meeting?.needsDue?'미정 · 승인 전 지정':a.task.due}</dd></div><div><dt>예상 시간</dt><dd>{a.task.duration}분</dd></div><div><dt>완료 기준</dt><dd>{a.task.definition}</dd></div></>}
  {a.type==='event.upsert'&&<><div><dt>일시</dt><dd>{a.event.date} · {formatTime(a.event.start)}–{formatTime(a.event.end)}</dd></div>{a.event.description&&<div><dt>메모</dt><dd>{a.event.description}</dd></div>}</>}

@@ -52,9 +52,8 @@ test('Orbit proposals are decided in place and meeting cards are grouped under t
  assert.equal((html.match(/회의 결재 · 주간 회의록/g)??[]).length,1,'one group per meeting');
  assert.match(html,/2건/);
  assert.equal((html.match(/승인하고 반영/g)??[]).length,1,'a chat proposal keeps its full card');
- assert.equal((html.match(/aria-label="[^"]* 승인"/g)??[]).length,2,'each meeting decision row can be approved at once');
- assert.equal((html.match(/aria-label="[^"]* 선택"/g)??[]).length,2,'each meeting decision row can be chosen for a bulk decision');
- assert.match(html,/선택 0건 승인/);assert.match(html,/선택하지 않은 2건 반려/);
+ // Meeting cards are the meeting note's own cards, loaded from its review; the group adds the bulk bar.
+ assert.match(html,/전체 선택/);assert.match(html,/선택 0건 승인/);assert.match(html,/선택하지 않은 2건 반려/);
  assert.match(html,/대화 열기/,'a chat proposal links back to its conversation');
  assert.doesNotMatch(html,/제안 done/,'decided cards leave the inbox');
  assert.doesNotMatch(html,/제안 later/,'deferred cards wait for their revisit date');

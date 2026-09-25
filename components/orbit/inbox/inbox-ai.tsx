@@ -25,7 +25,7 @@ export function InboxAiDecisions({actions,snapshot,onOpenNote,onOpenConversation
  const others=open.filter(a=>!meetingOf(a));
 const card=(item:AgentAction,lead?:ReactNode)=><ActionCard key={item.id} item={item} snapshot={snapshot} review={review} onAskOther={askOther} lead={lead}/>;
  return <>
-  {meetings.map(noteId=>{const note=snapshot.data.notes.find(n=>n.id===noteId);return <MeetingDecisions key={noteId} noteId={noteId} title={note?.title??'회의록'} items={open.filter(a=>meetingOf(a)===noteId)} snapshot={snapshot} review={review} onOpenNote={onOpenNote} onAskOther={askOther}/>;})}
+  {meetings.map(noteId=>{const note=snapshot.data.notes.find(n=>n.id===noteId);return <MeetingDecisions key={noteId} noteId={noteId} title={note?.title??'회의록'} items={open.filter(a=>meetingOf(a)===noteId)} onOpenNote={onOpenNote}/>;})}
   {others.map(item=>card(item,item.conversationId?<button className="text-button inbox-source" onClick={()=>onOpenConversation(item.conversationId!)}>Orbit 대화에서 나온 제안 · 대화 열기 <ArrowUpRight size={14}/></button>:null))}
   {deferred>0&&<button className="text-button inbox-deferred" onClick={onReviewDeferred}>보류한 Orbit 제안 {deferred}건 · 다시 검토일과 함께 보기 <ArrowUpRight size={14}/></button>}
   {review.deferDialog}
