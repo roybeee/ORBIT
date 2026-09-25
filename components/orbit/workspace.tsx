@@ -16,6 +16,7 @@ import {GoalLadderStrip} from './projects/goal-ladder-strip';
 import {InboxPanel} from './inbox/inbox-panel';
 import {useEveningHour} from './today/use-evening-hour';
 import {areaOf,inboxCounts,viewLabels} from '@/lib/orbit/navigation';
+import {splitProposals} from '@/lib/orbit/inbox-backlog';
 import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {AppearanceShortcut} from './appearance';
@@ -990,7 +991,9 @@ function WorkspaceContent({
     }
     return ok;
   };
-  const inbox = inboxCounts({today:TODAY,proposals:data.proposals,aiPending:aiActions?aiActions.filter(a=>a.state==='pending'||a.state==='applying').length:null,orders:homeOrders,decisions:data.decisions,delegations:data.delegations});
+  // Orbit proposals older than a week (meeting cards by meeting date) are a backlog, not badge items.
+  const proposalSplit = useMemo(()=>splitProposals(aiActions??[],notes,TODAY,preferences.timeZone),[aiActions,notes,TODAY,preferences.timeZone]);
+  const inbox = inboxCounts({today:TODAY,proposals:data.proposals,aiPending:aiActions?proposalSplit.fresh.length:null,orders:homeOrders,decisions:data.decisions,delegations:data.delegations});
   const openSearch = () => setSearchOpen(true);
   // Orbit opens beside the current screen (dock); the 대화 page itself stays a full view.
   const openOrbit = () => { if (view !== 'agent') { setDockProject(null); setDockOpen(true); } };
@@ -1183,7 +1186,7 @@ function WorkspaceContent({
           {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{openOrbit();window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{askOrbit(text)}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{askOrbit(text)}} onConnect={()=>{window.dispatchEvent(new Event('orbit:connections'))}}/>}
-          {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{askOrbit(text)}} onReviewDeferred={()=>{openOrbit();window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
+          {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} split={proposalSplit} aiLoading={!demo&&aiActions===null} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{askOrbit(text)}} onReviewDeferred={()=>{openOrbit();window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
           {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
           {view === 'tasks' && (
             <>

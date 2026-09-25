@@ -9,16 +9,15 @@ import {ActionCard,useActionDecisions} from '../agent/action-review';
 // The chat owns the proposal list; ask that single instance to reload after a decision.
 // Rejects when that reload fails so the card says the list could not be refreshed; resolves
 // after 15s so a missing listener never leaves a decision hanging.
-const agentRefresh=()=>new Promise<void>((resolve,reject)=>{const timer=setTimeout(resolve,15000);window.dispatchEvent(new CustomEvent('orbit:agent-refresh',{detail:{done:(error?:unknown)=>{clearTimeout(timer);if(error)reject(error);else resolve()}}}))});
+export const agentRefresh=()=>new Promise<void>((resolve,reject)=>{const timer=setTimeout(resolve,15000);window.dispatchEvent(new CustomEvent('orbit:agent-refresh',{detail:{done:(error?:unknown)=>{clearTimeout(timer);if(error)reject(error);else resolve()}}}))});
 
-interface Props {actions:readonly AgentAction[];snapshot:WorkspaceSnapshot;onOpenNote:(id:string)=>void;onOpenConversation:(id:string)=>void;onAskOrbit:(text:string)=>void;onReviewDeferred:()=>void}
+interface Props {actions:readonly AgentAction[];snapshot:WorkspaceSnapshot;onOpenNote:(id:string)=>void;onOpenConversation:(id:string)=>void;onAskOrbit:(text:string)=>void;onReviewDeferred:()=>void;deferredCount:number}
 
 // Orbit proposals, decided in place with the same card and checks as the chat review queue.
 // Meeting-review cards are grouped under their meeting note.
-export function InboxAiDecisions({actions,snapshot,onOpenNote,onOpenConversation,onAskOrbit,onReviewDeferred}:Props){
+export function InboxAiDecisions({actions,snapshot,onOpenNote,onOpenConversation,onAskOrbit,onReviewDeferred,deferredCount:deferred}:Props){
  const askOther=(item:AgentAction)=>onAskOrbit('“'+item.title+'” 제안을 기존 일정과 겹치지 않는 시간으로 다시 제안해 줘.');
  const review=useActionDecisions({timeZone:snapshot.data.preferences.timeZone,refresh:agentRefresh,load:agentRefresh,onFeedback:message=>toast(message),onAskOther:askOther});
- const deferred=actions.filter(a=>a.state==='deferred').length;
  const open=actions.filter(a=>a.state==='pending'||a.state==='applying');
  const meetingOf=(a:AgentAction)=>a.guard?.meeting?.noteId;
  const meetings=[...new Set(open.map(meetingOf).filter((id):id is string=>!!id))];

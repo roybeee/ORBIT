@@ -5,7 +5,8 @@
 import {useRef,useState,type ReactNode} from 'react';
 import {Check,ChevronDown,Clock3,LoaderCircle,ArrowUpRight,X} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
-import {isConnectionError,scopedRequest,decisionReceiptMatches} from '@/lib/orbit/agent/client-request';
+import {scopedRequest} from '@/lib/orbit/agent/client-request';
+import {sendDecision} from '@/lib/orbit/agent/decision-client';
 import {AgentRequestError,type OverlapDetails} from '@/lib/orbit/agent/approval-feedback';
 import {addDays,todayInZone} from '@/lib/orbit/dates';
 import {formatTime,type WorkspaceSnapshot} from '@/lib/orbit/model';
@@ -31,7 +32,8 @@ export function ActionPreview({item,snapshot}:{item:AgentAction;snapshot:Workspa
 }
 
 
-export type ActionDecision='approve'|'defer'|'reconsider'|'reject';
+export type {Decision as ActionDecision} from '@/lib/orbit/agent/decision-client';
+import type {Decision as ActionDecision} from '@/lib/orbit/agent/decision-client';
 type Notice={message:string;success?:boolean;overlap?:OverlapDetails};
 
 export function useActionDecisions({timeZone,refresh,load,onStart,onFeedback,onAskOther}:{timeZone:string;refresh:()=>Promise<void>;load:()=>Promise<unknown>;onStart?:()=>void;onFeedback?:(message:string)=>void;onAskOther?:(item:AgentAction)=>void}){
@@ -42,13 +44,7 @@ export function useActionDecisions({timeZone,refresh,load,onStart,onFeedback,onA
   if(lock.current||acting)return;lock.current=true;setActing(item.id);onStart?.();
   setNotices(previous=>({...previous,[item.id]:{message:'처리 중입니다…'}}));
   try{
-   let result;const request=scopedRequest(agentRequest);
-   try{result=await request('/api/agent','PATCH',{id:item.id,decision,...(overlapConfirmation?{overlapConfirmation}:{}),...(decision==='defer'?{reason,revisitDate:revisit}:{})});}catch(error){
-    if(!isConnectionError(error))throw error;
-    const check=await request('/api/agent?actionReceipt='+encodeURIComponent(item.id));
-    if(!decisionReceiptMatches(check.receipt,{decision,reason,revisitDate:revisit}))throw error;
-    result=decision==='approve'&&check.receipt.refreshTurnId&&check.receipt.state!=='approved'?{ok:true,refreshing:true}:{ok:true};
-   }
+   const result=await sendDecision(item,decision,{reason,revisitDate:revisit,overlapConfirmation},scopedRequest(agentRequest));
    if(result.refreshing){setNotices(previous=>({...previous,[item.id]:{message:'관련 기록이 변경되어 최신 내용으로 제안을 다시 준비하고 있습니다. 새 제안을 확인한 뒤 승인해 주세요.',success:true}}));await refresh().catch(()=>{});return;}
    setDeferred(null);
    const message=decision==='approve'?(item.action.type==='agent.dispatch'?'업무 지시를 저장했습니다. 실행실에서 접수와 진행을 확인하세요.':'승인한 내용을 반영했습니다.'):decision==='defer'?'검토할 날짜와 보류 이유를 저장했습니다.':decision==='reject'?'제안을 닫았습니다.':'다시 검토할 수 있습니다.';

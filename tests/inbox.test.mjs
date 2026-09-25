@@ -11,7 +11,7 @@ after(async()=>{await vite.close();});
 
 const noop=()=>{};
 const counts=(over={})=>({plans:0,ai:0,orders:0,followups:0,total:0,...over});
-const action=(id,over={})=>({id,turnId:'turn-'+id,title:'제안 '+id,reason:'근거 '+id,expectedRevision:1,state:'pending',conversationId:'conv-'+id,action:{type:'task.upsert',task:{id:'task-'+id,title:'할 일 '+id}},...over});
+const action=(id,over={})=>({id,turnId:'turn-'+id,title:'제안 '+id,reason:'근거 '+id,expectedRevision:1,state:'pending',conversationId:'conv-'+id,createdAt:'2026-09-25T00:00:00Z',action:{type:'task.upsert',task:{id:'task-'+id,title:'할 일 '+id}},...over});
 
 async function workspace(){
  const {emptyWorkspace}=await vite.ssrLoadModule('/lib/orbit/model.ts');
@@ -26,8 +26,10 @@ async function workspace(){
 }
 async function render(props){
  const {InboxPanel}=await vite.ssrLoadModule('/components/orbit/inbox/inbox-panel.tsx');
+ const {splitProposals}=await vite.ssrLoadModule('/lib/orbit/inbox-backlog.ts');
  const data=props.data??await workspace();
- return renderToStaticMarkup(React.createElement(InboxPanel,{data,snapshot:{data},today:'2026-09-26',nowMinute:720,counts:counts(),orders:[],actions:[],news:null,busy:false,demo:false,perform:async()=>true,onProposal:noop,onOrder:noop,onFollowup:noop,onNews:noop,onOpenNote:noop,onOpenConversation:noop,onAskOrbit:noop,...props}));
+ const split=splitProposals(props.actions??[],data.notes,'2026-09-26');
+ return renderToStaticMarkup(React.createElement(InboxPanel,{data,snapshot:{data},today:'2026-09-26',nowMinute:720,counts:counts(),orders:[],actions:[],split,aiLoading:false,news:null,busy:false,demo:false,perform:async()=>true,onProposal:noop,onOrder:noop,onFollowup:noop,onNews:noop,onOpenNote:noop,onOpenConversation:noop,onAskOrbit:noop,...props}));
 }
 
 test('a plan item whose start has passed cannot be approved and is routed to re-planning',async()=>{
@@ -92,3 +94,21 @@ test('the inbox chip shows a count for decisions and only a dot for unread news'
  assert.match(chip(0,5),/class="nav-dot"/);
  assert.doesNotMatch(chip(0,0),/nav-(badge|dot)/);
 });
+
+test('old meeting proposals leave the badge and wait in a backlog that can be deferred in bulk',async()=>{
+ const data=await workspace();
+ data.notes=[{id:'old',title:'09-04 주간 회의',kind:'meeting',projectId:'',summary:'',body:'',tags:[],updated:'2026-09-24',source:{provider:'plaud',externalId:'old',date:'2026-09-04'}}];
+ const old=over=>({guard:{meeting:{noteId:'old',revision:1},version:1,actionHash:'h',values:{}},...over});
+ const html=await render({data,actions:[action('o1',old()),action('o2',old()),action('new')],counts:counts({ai:1,total:1})});
+ assert.match(html,/쌓인 회의 결재 <em>2<\/em>건/);
+ assert.match(html,/09-04 주간 회의/);
+ assert.match(html,/이 회의 보류/);
+ assert.match(html,/전체 보류/);
+ assert.equal((html.match(/승인하고 반영/g)??[]).length,1,'only the fresh proposal is laid out as a card; old ones stay folded');
+});
+
+test('while Orbit proposals load the inbox says so instead of showing a partial count as final',async()=>{
+ const html=await render({aiLoading:true});
+ assert.match(html,/Orbit 제안을 불러오는 중/);
+});
+
