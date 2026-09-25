@@ -23,14 +23,18 @@ export function enqueueMeetingStatement(db:Database,owner:string,note:Note,gate=
 }
 export async function stableMeetingId(noteId:string,kind:string,title:string){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([noteId,kind,normalize(title)])));return 'meeting-'+Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('').slice(0,40)}
 type Proposal={title:string;reason:string;action?:unknown;source?:{line:number;quote:string}};
-export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Proposal[],previous:AgentAction[]){
+// A card that fails its own checks (quote, shape, scope) is left out and reported in `dropped`; only
+// when every card fails does the error reach the caller, which asks the model to correct the answer.
+export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Proposal[],previous:AgentAction[],dropped:{title:string;reason:string}[]=[]){
  const out:Proposal[]=[],projects=new Map<string,string>(),seen=new Set<string>();
  // A card may name a project that neither exists nor is proposed in this answer (the model left the
  // project card out). Rather than failing the whole meeting, it goes to the meeting's own project and
  // says so, so the owner can pick another project when approving.
  const knownProject=(id:string)=>data.projects.some(x=>x.id===id)||[...projects.values()].includes(id);
  const orphanNotice=(id:string)=>'[프로젝트 확인 필요] 제안한 프로젝트('+id+')가 없어 회의록의 프로젝트에 연결했습니다. 승인 전 프로젝트를 확인해 주세요.\n';
+ let firstError:AgentError|undefined;
  for(let p of proposals){
+  try{
   // Repair harmless omitted UI fields on the server, never invent dates or facts.
   const raw=structuredClone(p.action) as {type?:unknown;project?:Record<string,unknown>;task?:Record<string,unknown>;event?:Record<string,unknown>}|null|undefined;
   if(raw?.type==='project.upsert'&&raw.project){const old=data.projects.find(x=>x.id===raw.project!.id);raw.project={id:'draft-project',color:'#7067eb',symbol:'O',priority:3,...old,...raw.project};}
@@ -71,7 +75,12 @@ export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Pr
   const key=JSON.stringify(a);
   if(seen.has(key)||previous.some(x=>x.note!=='새 분석으로 대체'&&['pending','deferred','applying','approved','rejected'].includes(x.state)&&JSON.stringify(x.action)===key))continue;
   seen.add(key);out.push({...p,reason:(p.reason+'\n원문 '+s.line+'행: '+s.quote).slice(0,2000),action:a});
+  }catch(error){
+   if(!(error instanceof AgentError&&['MEETING_SCOPE','MEETING_FORMAT','MEETING_EVIDENCE'].includes(error.code)))throw error;
+   dropped.push({title:p.title,reason:error.message});firstError??=error;
+  }
  }
+ if(!out.length&&firstError&&dropped.length===proposals.length)throw firstError;
  return out;
 }
 

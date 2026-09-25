@@ -252,3 +252,11 @@ test('a card already orphaned by an earlier rejection is moved on approval with 
  await decide(db,owner,{id:taskCard.id,decision:'approve'},env);
  assert.equal((await readWorkspace(db,owner)).data.tasks.find(t=>t.title===taskCard.action.task.title).projectId,note.projectId);
 }finally{db.close()}});
+
+test('one card with a wrong quote is left out; the rest of the meeting is kept and the summary says what was left out',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const d=await analyze(db,[task('ok','정상 할 일'),{...task('bad','근거 없는 할 일'),source:{line:1,quote:'회의에 없던 발언'}}]);
+ assert.equal(d.status,'completed',d.error);
+ assert.deepEqual(d.actions.map(a=>a.title),['정상 할 일']);
+ assert.match(d.summary,/제외한 결재안/);assert.match(d.summary,/근거 없는 할 일/);
+}finally{db.close()}});
