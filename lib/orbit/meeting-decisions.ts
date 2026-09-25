@@ -1,24 +1,12 @@
-// One meeting's decisions as a list: what each row shows and how a bulk approve/close runs.
+// How a bulk approve/close of one meeting's decisions runs.
 // Approval stays per card on the server (same checks as a single approval); this only orders it.
 type Item={id:string;state:string;guard?:{meeting?:{needsDue?:boolean}};action:{type:string;task?:{projectId?:string;due?:string};event?:{projectId?:string;date?:string;start?:number};project?:{id:string;name:string;due?:string}}};
-type Project={id:string;name:string};
 export type Blocked<T>={item:T;reason:string};
 
-const monthDay=(date?:string)=>date?`${Number(date.slice(5,7))}/${Number(date.slice(8,10))}`:'';
-const clock=(minute=0)=>`${String(Math.floor(minute/60)).padStart(2,'0')}:${String(minute%60).padStart(2,'0')}`;
 const projectOf=(item:Item)=>item.action.task?.projectId??item.action.event?.projectId;
 // A task or event may point at a project proposed in the same meeting; that card must be approved first.
 const proposedProject=<T extends Item>(item:T,items:readonly T[])=>{const id=projectOf(item);return id?items.find(x=>x.action.type==='project.upsert'&&x.action.project?.id===id&&x.id!==item.id):undefined};
 
-export function decisionRow(item:Item,projects:readonly Project[]){
- const needsDue=!!item.guard?.meeting?.needsDue,a=item.action;
- if(a.type==='project.upsert')return {kind:projects.some(p=>p.id===a.project?.id)?'프로젝트 수정':'새 프로젝트',date:needsDue?'목표일 미정':`${monthDay(a.project?.due)} 목표`,project:a.project?.name??'',needsDue};
- const id=projectOf(item),project=projects.find(p=>p.id===id)?.name??'';
- if(a.type==='event.upsert')return {kind:'일정',date:`${monthDay(a.event?.date)} ${clock(a.event?.start)}`,project,needsDue};
- return {kind:'할 일',date:needsDue?'마감 미정':`${monthDay(a.task?.due)} 마감`,project,needsDue};
-}
-
-// dueOf: a date typed in the row or set for the whole selection; a 마감 미정 card with one is saved first.
 export function bulkPlan<T extends Item>(items:readonly T[],selected:ReadonlySet<string>,{rejectRest,dueOf=()=>undefined}:{rejectRest:boolean;dueOf?:(item:T)=>string|undefined}){
  const open=items.filter(i=>i.state==='pending');
  const approve:T[]=[],blocked:Blocked<T>[]=[],setDue:{item:T;due:string}[]=[];
