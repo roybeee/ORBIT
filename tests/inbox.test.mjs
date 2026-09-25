@@ -145,3 +145,13 @@ test('only the first five meeting groups are laid out with cards; the rest open 
  assert.equal((html.match(/회의 전체 선택/g)??[]).length,7,'a meeting checkbox on every group, collapsed or not');
  assert.match(html,/모든 회의 선택/);assert.match(html,/선택한 회의 0개 · 결재안 0건 반려/);
 });
+
+test('the meeting reject bar stays on screen once a meeting is picked, so a collapsed group far below can still be rejected',async()=>{
+ const {MeetingBulkReject}=await vite.ssrLoadModule('/components/orbit/inbox/meeting-bulk-reject.tsx');
+ const meeting=(id,noteId)=>action(id,{guard:{meeting:{noteId,revision:1},version:1,actionHash:'h',values:{}}});
+ const items=[meeting('a','n1'),meeting('b','n1'),meeting('c','n2')];
+ const idle=renderToStaticMarkup(React.createElement(MeetingBulkReject,{meetings:['n1','n2'],items,picked:new Set(),onPick:noop}));
+ assert.doesNotMatch(idle,/is-picked/);
+ const picked=renderToStaticMarkup(React.createElement(MeetingBulkReject,{meetings:['n1','n2'],items,picked:new Set(['n1']),onPick:noop}));
+ assert.match(picked,/is-picked/);assert.match(picked,/선택한 회의 1개 · 결재안 2건 반려/);
+});

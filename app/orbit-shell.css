@@ -250,6 +250,7 @@
 .meeting-decisions .decision-select-all{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted-foreground)}
 .decision-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;position:sticky;top:0;z-index:2;margin:0 -12px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--background)}
 .meeting-bulk-reject{position:static;margin:0 0 4px;border:1px solid var(--border);border-radius:10px}
+.meeting-bulk-reject.is-picked{position:sticky;top:0;z-index:3;box-shadow:0 6px 16px rgb(0 0 0 / .25)}
 .decision-meeting-pick{width:20px;height:20px;flex:none}
 .decision-bulk-due{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted-foreground)}
 .decision-reject-confirm{border-color:color-mix(in srgb,var(--destructive,#ef4444) 70%,var(--border));color:var(--destructive,#ef4444)}

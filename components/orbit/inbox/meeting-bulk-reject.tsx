@@ -34,7 +34,8 @@ export function MeetingBulkReject({meetings,items,picked,onPick}:Props){
   }
  }
 
- return <div className="decision-bulk meeting-bulk-reject" aria-label="회의 단위 일괄 반려">
+ // Once a meeting is picked the bar stays on screen: a collapsed group can sit far below the open ones.
+ return <div className={'decision-bulk meeting-bulk-reject'+(chosen.size?' is-picked':'')} aria-label="회의 단위 일괄 반려">
   <label className="decision-select-all"><input type="checkbox" checked={all} disabled={running||!meetings.length} onChange={()=>{setConfirm(false);onPick(all?new Set():new Set(meetings))}}/> 모든 회의 선택</label>
   <button className={'secondary-button'+(confirm?' decision-reject-confirm':'')} disabled={running||!ids.length} onClick={()=>{if(!confirm){setConfirm(true);return}void reject()}}>{running&&<LoaderCircle size={15} className="animate-spin"/>}{confirm?'한 번 더 누르면 '+label:label}</button>
   {confirm&&!running&&<button className="text-button" onClick={()=>setConfirm(false)}>취소</button>}
