@@ -72,3 +72,10 @@ test('only current proposals count toward the proposal limit; the old-meeting ba
  assert.equal(proposalQueueFull([...backlog,...current],notes,6,today),true,'current decisions still cap at 200');
  assert.equal(proposalQueueFull([meeting('d','recent',{state:'deferred'}),...current],notes,5,today),false,'deferred cards never count');
 });
+
+test('cards made today for older meetings are shown, but do not fill the proposal limit',()=>{
+ const notes=[note('older','2026-09-12')];
+ const made=Array.from({length:436},(_,i)=>meeting('m'+i,'older',{createdAt:'2026-09-25T10:00:00Z'}));
+ assert.equal(splitProposals(made,notes,today).fresh.length,436,'they are in view for their first week');
+ assert.equal(proposalQueueFull(made,notes,8,today),false,'a new meeting can still be analyzed');
+});

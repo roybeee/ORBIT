@@ -45,9 +45,12 @@ export function splitProposals(actions:readonly AgentAction[],notes:readonly Not
  return {fresh,backlog,backlogCount:backlog.reduce((n,g)=>n+g.actions.length,0)};
 }
 
-// Open proposals cap. Only current ones count: the old-meeting backlog is cleared in bulk from the
-// 결재함 and must not stop recent meetings from being analyzed.
+// Open proposals cap. Only proposals about the last FRESH_DAYS days count (meeting cards by meeting
+// date): cards made today for older meetings are shown for a week but must not stop new meetings
+// from being analyzed, and the backlog is cleared in bulk from the 결재함.
 export const PROPOSAL_LIMIT=200;
 export function proposalQueueFull(pending:readonly AgentAction[],notes:readonly Note[],adding:number,today:string,timeZone='Asia/Seoul'){
- return splitProposals(pending,notes,today,timeZone).fresh.length+adding>PROPOSAL_LIMIT;
+ const byId=new Map(notes.map(n=>[n.id,n])),since=addDays(today,-FRESH_DAYS);
+ const current=pending.filter(a=>open(a)&&(a.state==='applying'||proposalDay(a,byId,timeZone)>=since)).length;
+ return current+adding>PROPOSAL_LIMIT;
 }
