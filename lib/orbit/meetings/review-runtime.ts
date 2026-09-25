@@ -51,6 +51,8 @@ export async function advanceMeetingReviews(db:Database,owner:string,env?:Runtim
  for(const r of done.results)await db.prepare("UPDATE orbit_meeting_reviews SET status=?,error=?,updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND turn_id=? AND status='running'").bind(r.turn_status==='failed'&&waitsForLimit(r.error)?'waiting_quota':r.turn_status,r.error,new Date().toISOString(),owner,r.note_id,r.revision,r.turn_id).run();
  if(!env)return {active:false};
  await deferOldReviews(db,owner);
+ // A slot claimed by a worker that died before its turn existed must not block the queue forever.
+ await db.prepare("UPDATE orbit_meeting_reviews SET status='queued',updated_at=? WHERE owner_id=? AND status='running' AND updated_at<? AND NOT EXISTS(SELECT 1 FROM orbit_agent_turns t WHERE t.owner_id=orbit_meeting_reviews.owner_id AND t.id=orbit_meeting_reviews.turn_id)").bind(new Date().toISOString(),owner,new Date(Date.now()-10*60000).toISOString()).run();
  if(await db.prepare("SELECT turn_id FROM orbit_meeting_reviews WHERE owner_id=? AND status='running' LIMIT 1").bind(owner).first())return {active:true};
  // While the provider's limit is spent nothing new starts; every waiting record is tagged with the episode.
  // After the next check time one record starts and becomes the single recovery probe in the runner.
@@ -67,10 +69,14 @@ export async function advanceMeetingReviews(db:Database,owner:string,env?:Runtim
   if(!meta||(meta.revision??1)!==row.revision){await db.prepare("UPDATE orbit_meeting_reviews SET status='superseded',updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status IN ('queued','waiting_quota')").bind(now,owner,row.note_id,row.revision).run();return {active:true};}
   const note=await readNote(db,owner,row.note_id,row.revision);
   if(!hasReadableMeeting(note)){await db.prepare("UPDATE orbit_meeting_reviews SET status='waiting_source',error='Plaud에 텍스트 전사가 아직 없습니다. 전사가 들어오면 자동으로 분석합니다.',updated_at=? WHERE owner_id=? AND note_id=? AND revision=?").bind(now,owner,row.note_id,row.revision).run();return {active:true};}
+  // Claim the single running slot in one statement: concurrent requests (one per meeting) each
+  // pass the 'nothing running' check above, but only one of them can win this update.
+  const claimed=await db.prepare("UPDATE orbit_meeting_reviews SET status='running',updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status IN ('queued','waiting_quota') AND NOT EXISTS(SELECT 1 FROM orbit_meeting_reviews r WHERE r.owner_id=? AND r.status='running')").bind(now,owner,row.note_id,row.revision,owner).run();
+  if(claimed.meta?.changes!==1)return {active:true};
   await db.prepare("INSERT OR IGNORE INTO orbit_conversations(owner_id,id,title,project_id,revision,created_at,updated_at) VALUES(?,?,?,NULL,0,?,?)").bind(owner,row.conversation_id,('회의 결재 · '+meta.title).slice(0,100),now,now).run();
   const status=await runAgent(db,owner,{id:row.turn_id,conversationId:row.conversation_id,message:'회의록 “'+meta.title+'”의 핵심 요약과 일정·할 일·신규 프로젝트·프로젝트 내용 변경 결재안을 준비해 주세요. 실제 등록은 제 승인 후에만 진행합니다.',meeting:{noteId:row.note_id,revision:row.revision},retryFailed:true},env,{defer:true});
-  await db.prepare("UPDATE orbit_meeting_reviews SET status=?,error='',updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status IN ('queued','waiting_quota')").bind(status,now,owner,row.note_id,row.revision).run();
- }catch(e){await db.prepare("UPDATE orbit_meeting_reviews SET status='failed',error=?,updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status IN ('queued','waiting_quota')").bind(e instanceof Error?e.message:'회의록 분석 준비 실패',now,owner,row.note_id,row.revision).run();}
+  await db.prepare("UPDATE orbit_meeting_reviews SET status=?,error='',updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status IN ('queued','waiting_quota','running')").bind(status,now,owner,row.note_id,row.revision).run();
+ }catch(e){await db.prepare("UPDATE orbit_meeting_reviews SET status='failed',error=?,updated_at=? WHERE owner_id=? AND note_id=? AND revision=? AND status IN ('queued','waiting_quota','running')").bind(e instanceof Error?e.message:'회의록 분석 준비 실패',now,owner,row.note_id,row.revision).run();}
  return {active:true};
 }
 // Registered records a pending card may be folded into: open tasks and recent or upcoming local events.
