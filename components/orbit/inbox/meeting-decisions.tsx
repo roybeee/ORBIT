@@ -17,7 +17,9 @@ interface Props {noteId:string;title:string;items:readonly AgentAction[];onOpenN
 // 수정 후 등록, 보류, 다른 일정과 통합, 반려), plus a checkbox per card for 선택 승인 / 나머지 반려.
 export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
  const [selected,setSelected]=useState<Set<string>>(()=>new Set());
- const [failures,setFailures]=useState<Record<string,string>>({});
+ // A bulk notice belongs to the card as it was; once the card changes (merge, date saved) it is dropped.
+ const [failures,setFailures]=useState<Record<string,{message:string;version:string}>>({});
+ const version=(item:AgentAction)=>JSON.stringify([item.title,item.guard?.meeting?.needsDue,item.action]);
  const [running,setRunning]=useState('');
  const [confirmReject,setConfirmReject]=useState(false);
  const [bulkDue,setBulkDue]=useState('');
@@ -31,6 +33,7 @@ export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
  async function run(label:string,plan:ReturnType<typeof bulkPlan<AgentAction>>){
   setRunning(label);setFailures({});
   const results:{decision:'approve'|'reject';ok:boolean}[]=[],failed:Record<string,string>={};
+  const cards=new Map(items.map(i=>[i.id,version(i)]));
   const request=scopedRequest(agentRequest);
   const decide=async(item:AgentAction,decision:'approve'|'reject')=>{
    try{await sendDecision(item,decision,{},request);results.push({decision,ok:true})}
@@ -46,7 +49,7 @@ export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
    for(const item of plan.reject)await decide(item,'reject');
    for(const {item,reason} of plan.blocked)failed[item.id]=reason;
   }finally{
-   setFailures(failed);setSelected(new Set());setConfirmReject(false);setBulkDue('');
+   setFailures(Object.fromEntries(Object.entries(failed).map(([id,message])=>[id,{message,version:cards.get(id)??''}])));setSelected(new Set());setConfirmReject(false);setBulkDue('');
    const summary=summarizeResults(results);
    if(summary||plan.blocked.length)toast([summary,plan.blocked.length?`남은 ${plan.blocked.length}건은 먼저 확인이 필요합니다.`:''].filter(Boolean).join(' · '));
    await agentRefresh().catch(()=>toast('목록을 새로 불러오지 못했습니다. 잠시 후 다시 열어 주세요.'));
@@ -56,18 +59,18 @@ export function MeetingDecisions({noteId,title,items,onOpenNote}:Props){
 
  const lead=(item:AgentAction)=>item.state!=='pending'?null:<div className="decision-pick">
   <label><input type="checkbox" aria-label={item.title+' 선택'} checked={selected.has(item.id)} disabled={busy} onChange={()=>toggle(item.id)}/> 일괄 처리에 포함</label>
-  {failures[item.id]&&<p role="alert" className="agent-error">{failures[item.id]}</p>}
+  {failures[item.id]?.version===version(item)&&<p role="alert" className="agent-error">{failures[item.id].message}</p>}
  </div>;
 
  return <section className="inbox-group meeting-decisions" aria-label={`회의 결재 · ${title}`}>
   <header className="inbox-group-head"><span className="inbox-kind tone-ai">회의 결재</span><strong>{title}</strong><span className="inbox-group-count">{pending.length}건</span><button className="text-button" onClick={()=>onOpenNote(noteId)}><FileText size={14}/>회의록 열기</button></header>
   <label className="decision-select-all"><input type="checkbox" checked={all} disabled={busy||!pending.length} onChange={()=>setSelected(all?new Set():new Set(pending.map(i=>i.id)))}/> 전체 선택</label>
-  <MeetingReview noteId={noteId} revision={revision} demo={false} focus={items.map(i=>i.id)} lead={lead} onChanged={()=>void agentRefresh().catch(()=>{})}/>
   {pending.length>0&&<div className="decision-bulk">
    {pending.some(i=>selected.has(i.id)&&i.guard?.meeting?.needsDue)&&<label className="decision-bulk-due">마감 미정 항목 마감일<input type="date" value={bulkDue} onChange={e=>setBulkDue(e.target.value)}/></label>}
    <button className="primary-button" disabled={busy||!selected.size} onClick={()=>void run('approve',bulkPlan(items,selected,{rejectRest:false,dueOf:()=>bulkDue||undefined}))}>{running==='approve'?<LoaderCircle size={15} className="animate-spin"/>:<Check size={15}/>} 선택 {selected.size}건 승인</button>
    <button className={'secondary-button'+(confirmReject?' decision-reject-confirm':'')} disabled={busy||!rest.length} onClick={()=>{if(!confirmReject){setConfirmReject(true);return}void run('reject',{approve:[],reject:rest,blocked:[],setDue:[]})}}>{confirmReject?`한 번 더 누르면 ${rest.length}건 반려`:`선택하지 않은 ${rest.length}건 반려`}</button>
    {confirmReject&&<button className="text-button" onClick={()=>setConfirmReject(false)}>취소</button>}
   </div>}
+  <MeetingReview noteId={noteId} revision={revision} demo={false} focus={items.map(i=>i.id)} lead={lead} onChanged={()=>void agentRefresh().catch(()=>{})}/>
  </section>;
 }
