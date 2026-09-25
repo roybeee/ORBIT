@@ -108,7 +108,12 @@ test('old meeting proposals leave the badge and wait in a backlog that can be de
 });
 
 test('while Orbit proposals load the inbox says so instead of showing a partial count as final',async()=>{
- const html=await render({aiLoading:true});
+ const data=await workspace();data.proposals=[];
+ const html=await render({data,aiLoading:true});
  assert.match(html,/Orbit 제안을 불러오는 중/);
+ assert.match(html,/정할 일을 확인하는 중/);
+ assert.doesNotMatch(html,/모두 처리됐습니다|지금 정할 일이 없습니다/,'nothing claims to be done before the proposals arrive');
+ const partial=await render({aiLoading:true,counts:counts({plans:2,total:2})});
+ assert.match(partial,/지금까지 <em>2<\/em>건/);
 });
 
