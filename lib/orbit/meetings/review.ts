@@ -25,6 +25,11 @@ export async function stableMeetingId(noteId:string,kind:string,title:string){co
 type Proposal={title:string;reason:string;action?:unknown;source?:{line:number;quote:string}};
 export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Proposal[],previous:AgentAction[]){
  const out:Proposal[]=[],projects=new Map<string,string>(),seen=new Set<string>();
+ // A card may name a project that neither exists nor is proposed in this answer (the model left the
+ // project card out). Rather than failing the whole meeting, it goes to the meeting's own project and
+ // says so, so the owner can pick another project when approving.
+ const knownProject=(id:string)=>data.projects.some(x=>x.id===id)||[...projects.values()].includes(id);
+ const orphanNotice=(id:string)=>'[프로젝트 확인 필요] 제안한 프로젝트('+id+')가 없어 회의록의 프로젝트에 연결했습니다. 승인 전 프로젝트를 확인해 주세요.\n';
  for(let p of proposals){
   // Repair harmless omitted UI fields on the server, never invent dates or facts.
   const raw=structuredClone(p.action) as {type?:unknown;project?:Record<string,unknown>;task?:Record<string,unknown>;event?:Record<string,unknown>}|null|undefined;
@@ -50,12 +55,14 @@ export async function meetingProposals(note:Note,data:WorkspaceData,proposals:Pr
   if(a.type==='task.upsert'){
    if(a.task.status!=='todo'||a.project||data.tasks.some(t=>t.id===a.task.id))throw new AgentError('회의록 후속 업무는 새 할 일로 제안해야 합니다.','MEETING_SCOPE',422);
    a.task.projectId=projects.get(a.task.projectId)??a.task.projectId;
+   if(!knownProject(a.task.projectId)){p={...p,reason:orphanNotice(a.task.projectId)+p.reason};a.task.projectId=note.projectId;}
    if(data.tasks.some(t=>t.projectId===a.task.projectId&&normalize(t.title)===normalize(a.task.title)))continue;
    a.task={...a.task,id:await stableMeetingId(note.source?.externalId??note.id,'task',a.task.projectId+':'+a.task.title),focus:false,noteId:note.id,noteCitation:{revision:note.revision??1,line:s.line,quote:s.quote}};a.autoAssign=false;
   }
   if(a.type==='event.upsert'){
    if(data.events.some(e=>e.id===a.event.id)||a.attachmentIds?.length||a.event.taskId||a.project)throw new AgentError('회의록 일정은 별도의 새 일정으로 제안해야 합니다.','MEETING_SCOPE',422);
    if(a.event.projectId)a.event.projectId=projects.get(a.event.projectId)??a.event.projectId;
+   if(a.event.projectId&&!knownProject(a.event.projectId)){p={...p,reason:orphanNotice(a.event.projectId)+p.reason};a.event.projectId=note.projectId;}
    if(data.events.some(e=>e.date===a.event.date&&e.start===a.event.start&&normalize(e.title)===normalize(a.event.title)))continue;
    a.event.id=await stableMeetingId(note.source?.externalId??note.id,'event',a.event.title+':'+a.event.date+':'+a.event.start);
    a.event.description=(a.event.description??'')+'\n회의 근거: '+note.title+' · '+note.updated+' · '+s.quote;
