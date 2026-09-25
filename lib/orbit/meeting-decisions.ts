@@ -1,0 +1,40 @@
+// One meeting's decisions as a list: what each row shows and how a bulk approve/close runs.
+// Approval stays per card on the server (same checks as a single approval); this only orders it.
+type Item={id:string;state:string;guard?:{meeting?:{needsDue?:boolean}};action:{type:string;task?:{projectId?:string;due?:string};event?:{projectId?:string;date?:string;start?:number};project?:{id:string;name:string;due?:string}}};
+type Project={id:string;name:string};
+export type Blocked<T>={item:T;reason:string};
+
+const monthDay=(date?:string)=>date?`${Number(date.slice(5,7))}/${Number(date.slice(8,10))}`:'';
+const clock=(minute=0)=>`${String(Math.floor(minute/60)).padStart(2,'0')}:${String(minute%60).padStart(2,'0')}`;
+const projectOf=(item:Item)=>item.action.task?.projectId??item.action.event?.projectId;
+// A task or event may point at a project proposed in the same meeting; that card must be approved first.
+const proposedProject=<T extends Item>(item:T,items:readonly T[])=>{const id=projectOf(item);return id?items.find(x=>x.action.type==='project.upsert'&&x.action.project?.id===id&&x.id!==item.id):undefined};
+
+export function decisionRow(item:Item,projects:readonly Project[]){
+ const needsDue=!!item.guard?.meeting?.needsDue,a=item.action;
+ if(a.type==='project.upsert')return {kind:projects.some(p=>p.id===a.project?.id)?'프로젝트 수정':'새 프로젝트',date:needsDue?'목표일 미정':`${monthDay(a.project?.due)} 목표`,project:a.project?.name??'',needsDue};
+ const id=projectOf(item),project=projects.find(p=>p.id===id)?.name??'';
+ if(a.type==='event.upsert')return {kind:'일정',date:`${monthDay(a.event?.date)} ${clock(a.event?.start)}`,project,needsDue};
+ return {kind:'할 일',date:needsDue?'마감 미정':`${monthDay(a.task?.due)} 마감`,project,needsDue};
+}
+
+export function bulkPlan<T extends Item>(items:readonly T[],selected:ReadonlySet<string>,{rejectRest}:{rejectRest:boolean}){
+ const open=items.filter(i=>i.state==='pending');
+ const approve:T[]=[],blocked:Blocked<T>[]=[];
+ for(const item of open.filter(i=>selected.has(i.id))){
+  const prerequisite=proposedProject(item,open);
+  if(item.guard?.meeting?.needsDue)blocked.push({item,reason:'마감일을 먼저 지정해 주세요.'});
+  else if(prerequisite&&!selected.has(prerequisite.id))blocked.push({item,reason:'함께 제안된 새 프로젝트를 먼저 선택해 주세요.'});
+  else approve.push(item);
+ }
+ approve.sort((a,b)=>Number(b.action.type==='project.upsert')-Number(a.action.type==='project.upsert'));
+ // Chosen-but-blocked cards stay for the owner; only the cards left unchosen are closed.
+ const reject=rejectRest?open.filter(i=>!selected.has(i.id)):[];
+ return {approve,reject,blocked};
+}
+
+export function summarizeResults(results:readonly {decision:'approve'|'reject';ok:boolean}[]){
+ const count=(test:(r:{decision:string;ok:boolean})=>boolean)=>results.filter(test).length;
+ const parts=[['승인',count(r=>r.ok&&r.decision==='approve')],['반려',count(r=>r.ok&&r.decision==='reject')],['실패',count(r=>!r.ok)]] as const;
+ return parts.filter(([,n])=>n>0).map(([label,n])=>`${label} ${n}건`).join(' · ');
+}
