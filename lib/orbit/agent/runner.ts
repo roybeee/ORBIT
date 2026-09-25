@@ -427,7 +427,12 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
     await db.prepare('UPDATE orbit_meeting_reviews SET summary=? WHERE owner_id=? AND turn_id=?').bind(parsed.text,owner,id).run();
     const previous=(await listAgent(db,owner,undefined,turn.conversation_id)).actions;
     // Project keys are resolved in order, so a new project must precede the cards that name it.
-    parsed.proposals=await meetingProposals(note,snapshot.data,[...parsed.proposals].sort((a,b)=>Number(isNewProject(b,snapshot.data))-Number(isNewProject(a,snapshot.data))),previous);
+    const dropped:{title:string;reason:string}[]=[];
+    parsed.proposals=await meetingProposals(note,snapshot.data,[...parsed.proposals].sort((a,b)=>Number(isNewProject(b,snapshot.data))-Number(isNewProject(a,snapshot.data))),previous,dropped);
+    if(dropped.length){
+     parsed.text+='\n\n확인할 내용\n'+dropped.map(d=>'- 제외한 결재안 「'+d.title+'」: '+d.reason).join('\n');
+     await db.prepare('UPDATE orbit_meeting_reviews SET summary=? WHERE owner_id=? AND turn_id=?').bind(parsed.text,owner,id).run();
+    }
     parsed.evidence=[...new Set([...(parsed.evidence??[]),...job.sources.map(x=>x.id!).filter(Boolean)])];
    }else if(parsed.proposals.length>8)throw new AgentError('한 대화에서는 최대 8개의 변경을 제안할 수 있습니다.','INPUT',422);
    if(parsed.proposals.length){
