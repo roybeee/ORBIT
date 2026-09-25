@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bulkPlan,summarizeResults} from '../lib/orbit/meeting-decisions.ts';
+import {bulkPlan,summarizeResults,bulkReject,meetingRejectIds} from '../lib/orbit/meeting-decisions.ts';
 
 // The 결재함 lists every decision of one meeting and can approve the chosen ones and close the rest
 // in one go. The plan decides the order and what cannot be approved yet.
@@ -44,4 +44,14 @@ test('a due date typed in the row or set for the whole selection lets 마감 미
  assert.deepEqual(plan.blocked,[]);
  const none=bulkPlan(items,new Set(['a']),{rejectRest:false,dueOf:()=>undefined});
  assert.deepEqual(none.blocked.map(b=>b.item.id),['a']);assert.deepEqual(none.setDue,[]);
+});
+
+test('whole-meeting reject sends only open cards of the chosen meetings, 500 per request, and adds up the results',async()=>{
+ const card=(id,noteId,state='pending')=>({id,state,guard:noteId?{meeting:{noteId}}:undefined,action:{type:'task.upsert'}});
+ const items=[card('a','n1'),card('b','n1','applying'),card('c','n2'),card('d','n3'),card('e',undefined)];
+ assert.deepEqual(meetingRejectIds(items,new Set(['n1','n2'])),['a','c']);
+ const ids=Array.from({length:1203},(_,i)=>'id'+i),calls=[];
+ const result=await bulkReject(ids,async(path,method,body)=>{calls.push([path,method,body.ids.length]);return {rejected:body.ids.length-1,skipped:1}});
+ assert.deepEqual(calls,[['/api/agent/bulk-reject','POST',500],['/api/agent/bulk-reject','POST',500],['/api/agent/bulk-reject','POST',203]]);
+ assert.deepEqual(result,{rejected:1200,skipped:3});
 });

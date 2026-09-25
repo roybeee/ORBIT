@@ -8,6 +8,7 @@ import {decide,decisionSchema} from '../lib/orbit/agent/decisions.ts';
 import {meetingProposals} from '../lib/orbit/meetings/review.ts';
 import {mergeMeetingProposals,mergedNotePrefix} from '../lib/orbit/meetings/merge.ts';
 import {mergeAndApply} from '../lib/orbit/meetings/merge-apply.ts';
+import {rejectActions} from '../lib/orbit/agent/bulk-reject.ts';
 import {importRecording} from '../lib/orbit/meetings/store.ts';
 import {projectTimeline} from '../lib/orbit/project-context.ts';
 const owner='meeting-owner',env={OPENAI_API_KEY:'fixture-only',ORBIT_CHAT_MODEL:'gpt-5.6-luna'};
@@ -274,4 +275,25 @@ test('a placeholder card title is replaced by what the card registers',async()=>
  await seed(db);
  const d=await analyze(db,[{...task('a','제안서 1장 수정'),title:'승인할 변경'}]);assert.equal(d.status,'completed',d.error);
  assert.equal(d.actions[0].title,'제안서 1장 수정');
+}finally{db.close()}});
+
+test('whole meetings can be rejected in one call: pending and deferred cards close, decided ones stay, other owners untouched',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const d=await analyze(db,[task('a','일괄 반려 1'),task('b','일괄 반려 2'),task('c','이미 승인')]);assert.equal(d.status,'completed',d.error);
+ const [a,b,c]=d.actions;
+ await decide(db,owner,{id:c.id,decision:'approve'},env);
+ await decide(db,owner,{id:b.id,decision:'defer',reason:'나중에',revisitDate:'2099-03-01'},env);
+ const result=await rejectActions(db,owner,[a.id,b.id,c.id,'00000000-0000-4000-8000-000000000000']);
+ assert.deepEqual(result,{rejected:2,skipped:2});
+ const states=(await meetingReviewDetail(db,owner,note.id)).actions.map(x=>[x.title,x.state]);
+ assert.deepEqual(states,[['일괄 반려 1','rejected'],['일괄 반려 2','rejected'],['이미 승인','approved']]);
+ assert.deepEqual(await rejectActions(db,'someone-else',[a.id]),{rejected:0,skipped:1});
+}finally{db.close()}});
+
+test('bulk-rejecting a proposed project moves that meeting\'s remaining cards to the note project, as a single reject does',async()=>{const db=createDatabase();try{
+ await seed(db);const [newProject,draftTask]=proposals();const d=await analyze(db,[newProject,draftTask]);assert.equal(d.status,'completed',d.error);
+ const sea=d.actions.find(a=>a.action.type==='project.upsert');
+ assert.deepEqual(await rejectActions(db,owner,[sea.id]),{rejected:1,skipped:0});
+ const task=(await meetingReviewDetail(db,owner,note.id)).actions.find(a=>a.action.type==='task.upsert');
+ assert.equal(task.state,'pending');assert.equal(task.action.task.projectId,'oda');assert.match(task.reason,/프로젝트 확인 필요/);
 }finally{db.close()}});

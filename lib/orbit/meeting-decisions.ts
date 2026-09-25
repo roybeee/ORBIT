@@ -1,6 +1,6 @@
 // How a bulk approve/close of one meeting's decisions runs.
 // Approval stays per card on the server (same checks as a single approval); this only orders it.
-type Item={id:string;state:string;guard?:{meeting?:{needsDue?:boolean}};action:{type:string;task?:{projectId?:string;due?:string};event?:{projectId?:string;date?:string;start?:number};project?:{id:string;name:string;due?:string}}};
+type Item={id:string;state:string;guard?:{meeting?:{noteId?:string;needsDue?:boolean}};action:{type:string;task?:{projectId?:string;due?:string};event?:{projectId?:string;date?:string;start?:number};project?:{id:string;name:string;due?:string}}};
 export type Blocked<T>={item:T;reason:string};
 
 const projectOf=(item:Item)=>item.action.task?.projectId??item.action.event?.projectId;
@@ -27,4 +27,18 @@ export function summarizeResults(results:readonly {decision:'approve'|'reject';o
  const count=(test:(r:{decision:string;ok:boolean})=>boolean)=>results.filter(test).length;
  const parts=[['승인',count(r=>r.ok&&r.decision==='approve')],['반려',count(r=>r.ok&&r.decision==='reject')],['실패',count(r=>!r.ok)]] as const;
  return parts.filter(([,n])=>n>0).map(([label,n])=>`${label} ${n}건`).join(' · ');
+}
+
+// Closing whole meetings from 결재함: the open cards of the chosen meetings, rejected on the server
+// in batches (the endpoint takes up to 500 ids) instead of one request per card.
+export const BULK_REJECT_BATCH=500;
+type Counts={rejected:number;skipped:number};
+export function meetingRejectIds(items:readonly Item[],noteIds:ReadonlySet<string>){
+ return items.filter(i=>i.state==='pending'&&noteIds.has(i.guard?.meeting?.noteId??'')).map(i=>i.id);
+}
+export async function bulkReject(ids:readonly string[],request:(path:string,method:string,body:{ids:string[]})=>Promise<Counts>){
+ const batches=Array.from({length:Math.ceil(ids.length/BULK_REJECT_BATCH)},(_,i)=>ids.slice(i*BULK_REJECT_BATCH,(i+1)*BULK_REJECT_BATCH));
+ const results:Counts[]=[];
+ for(const batch of batches)results.push(await request('/api/agent/bulk-reject','POST',{ids:batch}));
+ return results.reduce((sum,r)=>({rejected:sum.rejected+r.rejected,skipped:sum.skipped+r.skipped}),{rejected:0,skipped:0});
 }
