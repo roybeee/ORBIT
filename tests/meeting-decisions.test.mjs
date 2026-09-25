@@ -43,3 +43,13 @@ test('the summary says what happened, including failures',()=>{
  assert.equal(summarizeResults([{decision:'approve',ok:true},{decision:'approve',ok:false},{decision:'reject',ok:true},{decision:'reject',ok:true}]),'승인 1건 · 반려 2건 · 실패 1건');
  assert.equal(summarizeResults([{decision:'reject',ok:true}]),'반려 1건');
 });
+
+test('a due date typed in the row or set for the whole selection lets 마감 미정 cards be approved',()=>{
+ const items=[task('a',{},{needsDue:true}),task('b',{},{needsDue:true}),task('c')];
+ const plan=bulkPlan(items,new Set(['a','b','c']),{rejectRest:false,dueOf:item=>item.id==='a'?'2026-10-10':'2026-10-20'});
+ assert.deepEqual(plan.approve.map(i=>i.id),['a','b','c']);
+ assert.deepEqual(plan.setDue.map(d=>[d.item.id,d.due]),[['a','2026-10-10'],['b','2026-10-20']],'due dates are saved before approving');
+ assert.deepEqual(plan.blocked,[]);
+ const none=bulkPlan(items,new Set(['a']),{rejectRest:false,dueOf:()=>undefined});
+ assert.deepEqual(none.blocked.map(b=>b.item.id),['a']);assert.deepEqual(none.setDue,[]);
+});
