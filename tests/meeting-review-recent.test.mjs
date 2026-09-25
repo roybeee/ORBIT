@@ -64,3 +64,28 @@ test('a deferred review whose earlier turn failed on the AI limit shows as defer
  const detail=await meetingReviewDetail(db,owner,old.id);
  assert.equal(detail.status,'deferred');assert.equal(detail.error,'');
 }));
+
+// D1 is asynchronous: every statement is a network round trip, so workers interleave between them.
+function interleaving(db){
+ const tick=()=>new Promise(r=>setTimeout(r,1));
+ const statement=s=>new Proxy(s,{get(t,k){if(k==='bind')return(...a)=>statement(t.bind(...a));if(['first','run','all'].includes(k))return async(...a)=>{await tick();return t[k](...a)};const v=t[k];return typeof v==='function'?v.bind(t):v}});
+ return new Proxy(db,{get(t,k){if(k==='prepare')return(...a)=>statement(t.prepare(...a));if(k==='batch')return async(list)=>{await tick();return t.batch(list)};const v=t[k];return typeof v==='function'?v.bind(t):v}});
+}
+test('concurrent workers start at most one meeting review at a time',()=>fixture(async db=>{
+ for(const id of ['a','b','c'])await importRecording(db,owner,record(id,addDays(today,-2)+'T01:00:00Z'));
+ const shared=interleaving(db);
+ // As in production: each request asks for its own meeting (POST /api/meetings/review per note).
+ const ids=(await readWorkspace(db,owner)).data.notes.map(n=>n.id);
+ await Promise.all(ids.map(id=>advanceMeetingReviews(shared,owner,env,id)));
+ const {n}=await db.prepare("SELECT count(*) AS n FROM orbit_meeting_reviews WHERE owner_id=? AND status='running'").bind(owner).first();
+ assert.equal(n,1);
+}));
+
+test('a running slot left without a turn (crashed worker) is released after ten minutes',()=>fixture(async db=>{
+ for(const id of ['a','b'])await importRecording(db,owner,record(id,addDays(today,-2)+'T01:00:00Z'));
+ const [stale]=(await db.prepare('SELECT note_id FROM orbit_meeting_reviews WHERE owner_id=?').bind(owner).all()).results;
+ await db.prepare("UPDATE orbit_meeting_reviews SET status='running',updated_at=? WHERE owner_id=? AND note_id=?").bind(new Date(Date.now()-11*60000).toISOString(),owner,stale.note_id).run();
+ await advanceMeetingReviews(db,owner,env);
+ const running=(await db.prepare("SELECT r.note_id,t.id AS turn FROM orbit_meeting_reviews r LEFT JOIN orbit_agent_turns t ON t.owner_id=r.owner_id AND t.id=r.turn_id WHERE r.owner_id=? AND r.status='running'").bind(owner).all()).results;
+ assert.equal(running.length,1);assert.ok(running[0].turn,'the running review has a real turn, the queue is not stuck');
+}));
