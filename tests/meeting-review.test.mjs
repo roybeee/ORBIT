@@ -204,3 +204,14 @@ test('merging a card into a registered record applies it at once and closes the 
  assert.equal(combined.applied,false,'two proposals combined into one card still wait for approval');
  assert.equal((await meetingReviewDetail(db,owner,note.id)).actions.find(x=>x.id===b.id).state,'pending');
 }finally{db.close()}});
+
+test('a meeting answer that lists a task before the new project it belongs to still completes',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const [newProject,draftTask,draftEvent]=proposals();
+ const d=await analyze(db,[draftTask,draftEvent,newProject]);
+ assert.equal(d.status,'completed',d.error);
+ const titles=d.actions.map(a=>a.title);
+ assert.ok(titles.indexOf('바다 프로젝트 등록')<titles.indexOf('제안서 작성'),'the new project card comes before the cards that need it');
+ const projectCard=d.actions.find(a=>a.title==='바다 프로젝트 등록');
+ assert.equal(d.actions.find(a=>a.title==='제안서 작성').action.task.projectId,projectCard.action.project.id,'the task points at the proposed project');
+}finally{db.close()}});
