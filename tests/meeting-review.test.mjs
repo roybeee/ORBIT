@@ -7,6 +7,7 @@ import {advanceAgent} from '../lib/orbit/agent/runner.ts';
 import {decide,decisionSchema} from '../lib/orbit/agent/decisions.ts';
 import {meetingProposals} from '../lib/orbit/meetings/review.ts';
 import {mergeMeetingProposals,mergedNotePrefix} from '../lib/orbit/meetings/merge.ts';
+import {mergeAndApply} from '../lib/orbit/meetings/merge-apply.ts';
 import {importRecording} from '../lib/orbit/meetings/store.ts';
 import {projectTimeline} from '../lib/orbit/project-context.ts';
 const owner='meeting-owner',env={OPENAI_API_KEY:'fixture-only',ORBIT_CHAT_MODEL:'gpt-5.6-luna'};
@@ -186,3 +187,20 @@ test('the approval request accepts a non-UUID project id chosen in 수정 후 �
  assert.equal(decisionSchema.safeParse({...request,overrides:{projectId:''}}).success,false);
  assert.equal(decisionSchema.safeParse({...request,overrides:{projectId:'x'.repeat(101)}}).success,false);
 });
+
+test('merging a card into a registered record applies it at once and closes the card; merging two proposals still waits',async()=>{const db=createDatabase();try{
+ await seed(db);
+ await cmd(db,{type:'task.upsert',autoAssign:false,task:{id:'existing-task',title:'기존 물류 정리',projectId:'oda',status:'todo',duration:20,due:'2099-01-10',impact:2,focus:false,definition:'기존 기준'}});
+ const undated=task('a','물류사 단가 문의');delete undated.action.task.due;
+ const d=await analyze(db,[undated,task('b','공급 조건 확인'),task('c','공급 단가 비교')]);assert.equal(d.status,'completed',d.error);
+ const [a,b,c]=d.actions;
+ const applied=await mergeAndApply(db,owner,note.id,a.id,{kind:'task',id:'existing-task'},env);
+ assert.equal(applied.applied,true);
+ const detail=await meetingReviewDetail(db,owner,note.id);
+ assert.equal(detail.actions.find(x=>x.id===a.id).state,'approved','the merged card is closed');
+ const saved=(await readWorkspace(db,owner)).data.tasks.find(t=>t.id==='existing-task');
+ assert.equal(saved.duration,50);assert.match(saved.definition,/\[통합\] 물류사 단가 문의/);
+ const combined=await mergeAndApply(db,owner,note.id,b.id,{kind:'proposal',id:c.id},env);
+ assert.equal(combined.applied,false,'two proposals combined into one card still wait for approval');
+ assert.equal((await meetingReviewDetail(db,owner,note.id)).actions.find(x=>x.id===b.id).state,'pending');
+}finally{db.close()}});
