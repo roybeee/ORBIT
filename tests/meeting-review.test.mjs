@@ -215,3 +215,15 @@ test('a meeting answer that lists a task before the new project it belongs to st
  const projectCard=d.actions.find(a=>a.title==='바다 프로젝트 등록');
  assert.equal(d.actions.find(a=>a.title==='제안서 작성').action.task.projectId,projectCard.action.project.id,'the task points at the proposed project');
 }finally{db.close()}});
+
+test('a card naming a project that neither exists nor is proposed goes to the meeting project with a notice',async()=>{const db=createDatabase();try{
+ await seed(db);
+ const [,draftTask,draftEvent]=proposals();
+ const ghostTask={...draftTask,action:{...draftTask.action,task:{...draftTask.action.task,projectId:'new-ghost-project'}}};
+ const ghostEvent={...draftEvent,action:{...draftEvent.action,event:{...draftEvent.action.event,projectId:'new-ghost-project'}}};
+ const d=await analyze(db,[ghostTask,ghostEvent]);
+ assert.equal(d.status,'completed',d.error);
+ const task=d.actions.find(a=>a.action.type==='task.upsert'),event=d.actions.find(a=>a.action.type==='event.upsert');
+ assert.equal(task.action.task.projectId,note.projectId);assert.equal(event.action.event.projectId,note.projectId);
+ assert.match(task.reason,/\[프로젝트 확인 필요\]/);
+}finally{db.close()}});
