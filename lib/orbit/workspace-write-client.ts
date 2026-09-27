@@ -50,7 +50,12 @@ export class WorkspaceWrites {
   snapshot:WorkspaceSnapshot;
   queue:QueuedWrite[]=[];
   running=false;
-  failure:Failure|null=null;
+  private currentFailure:Failure|null=null;
+  get failure():Failure|null {
+    return this.currentFailure??(this.queue.some(entry=>entry.blocked)
+      ? {code:'CONFLICT',message:'확인이 필요한 저장 요청이 있습니다. 보관된 입력을 확인해 주세요.'}:null);
+  }
+  set failure(value:Failure|null){this.currentFailure=value;}
   stopped=false;
   private waiters=new Map<string,(ok:boolean)=>void>();
   private io:{

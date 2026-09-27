@@ -41,6 +41,8 @@ test('same field conflict preserves input and does not block an unrelated save',
  await writeCommand(f.db,'owner',{operationId:crypto.randomUUID(),expectedRevision:1,action:action('a','Other device')});
  await f.client.enqueue(action('a','My edit'));await f.flush();
  assert.equal(f.client.queue[0].blocked,true);assert.equal(f.persisted[0].command.action.project.name,'My edit');
+ const restored=new WorkspaceWrites(f.client.snapshot,{post:async()=>f.client.snapshot,read:async()=>f.client.snapshot,persist:()=>{},change:()=>{},online:()=>true});
+ restored.queue=restoreWrites(f.persisted);assert.equal(restored.failure.code,'CONFLICT','a reloaded conflict remains visible without a transient in-memory error');
  assert.equal(f.client.view.data.projects[0].name,'Other device');
  await f.client.enqueue(action('b'));await f.flush();assert.equal(f.client.snapshot.data.projects.length,2);assert.equal(f.client.failure.code,'CONFLICT');
 }));
