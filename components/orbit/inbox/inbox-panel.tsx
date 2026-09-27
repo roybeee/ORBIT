@@ -8,6 +8,7 @@ import type {NewsSummary} from '../notifications';
 import {InboxAiDecisions} from './inbox-ai';
 import {InboxNews} from './inbox-news';
 import {InboxBacklog} from './inbox-backlog';
+import {SlackRequests} from './slack-requests';
 import type {ProposalSplit} from '@/lib/orbit/inbox-backlog';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 import {orderStatusLabel,type WorkOrder} from '@/lib/orbit/agent/orders-schema';
@@ -63,6 +64,7 @@ export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiL
  return <section className="inbox-panel" aria-label="결재함">
   <header className="inbox-summary"><div><strong>{aiLoading?(counts.total?<>지금까지 <em>{counts.total}</em>건 · 나머지를 확인하는 중</>:'정할 일을 확인하는 중…'):counts.total?<>내가 정할 일 <em>{counts.total}</em>건</>:'지금 정할 일이 없습니다'}</strong><p>승인한 항목만 할 일·일정에 반영됩니다. 외부 연락과 Google 일정 등록은 따로 한 번 더 확인합니다.</p>{split.backlogCount>0&&<button className="text-button inbox-backlog-jump" onClick={toBacklog}>7일 넘은 회의 결재 {split.backlogCount}건 보기</button>}</div></header>
   <div className="inbox-filters" role="group" aria-label="결재함 분류">{chips.filter(([id,,n])=>id==='all'||n>0).map(([id,label,n])=><button key={id} className={filter===id?'is-selected':''} aria-pressed={filter===id} onClick={()=>setPicked(id)}>{label}<span>{n}</span></button>)}</div>
+  {filter==='all'&&<SlackRequests timeZone={data.preferences.timeZone} onOpenDrafts={id=>{setPicked('ai');requestAnimationFrame(()=>document.querySelector(`[data-slack-drafts="${CSS.escape(id)}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}))}}/>}
   {show('plans')&&plans.map(({date,item})=><PlanCard key={date+item.id} date={date} today={today} late={date===today&&item.start<nowMinute} item={item} title={data.tasks.find(t=>t.id===item.taskId)?.title??item.draftTask?.title??'저장된 실행 항목'} busy={busy} demo={demo} perform={perform} onProposal={onProposal}/>)}
   {aiLoading&&<p className="inbox-loading" role="status">{slow?'Orbit 제안을 아직 불러오지 못했습니다. 연결을 확인하거나 Orbit 대화를 한 번 열어 주세요.':'Orbit 제안을 불러오는 중…'}</p>}
   {show('ai')&&<InboxAiDecisions actions={split.fresh} deferredCount={actions.filter(a=>a.state==='deferred').length} snapshot={snapshot} onOpenNote={onOpenNote} onOpenConversation={onOpenConversation} onAskOrbit={onAskOrbit} onReviewDeferred={onReviewDeferred}/>}

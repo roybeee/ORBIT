@@ -14,6 +14,8 @@ import sqlite3
 from pathlib import Path
 from urllib import error, parse, request
 
+from .receipts import Receipts
+
 GUIDANCE = (
     "Slack에서 할 일 등록을 지시받으면 orbit_slack_task 하나로 Google Tasks와 ORBIT에 동시에 등록하세요. Google Tasks API를 따로 호출하지 마세요. "
     "title에는 사용자가 말한 할 일 문구만 그대로 넣으세요. '추가', '등록', '해줘', '할 일로' 같은 지시어나 날짜 표현은 붙이지 마세요(예: '내일 할 일로 A 추가해줘' → title 'A'). "
@@ -112,13 +114,13 @@ def send(req):
             return exc.code, {'error': 'non_json_response'}
 
 
-def orbit(method, body=None, query=None):
+def orbit(method, body=None, query=None, path='commands'):
     endpoint = setting('ORBIT_SLACK_DIRECTIVE_URL')
     token, gate = setting('ORBIT_SLACK_INGEST_KEY'), setting('ORBIT_SLACK_SITES_BEARER')
     url = parse.urlsplit(endpoint)
     if url.scheme != 'https' or not url.path.endswith('/directives') or not token or not gate:
         raise RuntimeError('orbit_configuration_required')
-    target = endpoint[:-len('/directives')] + '/commands' + ('?' + parse.urlencode(query) if query else '')
+    target = endpoint[:-len('/directives')] + '/' + path + ('?' + parse.urlencode(query) if query else '')
     req = request.Request(target, data=json.dumps(body, ensure_ascii=False).encode() if body is not None else None, method=method,
                           headers={'Authorization': 'Bearer ' + token, 'OAI-Sites-Authorization': 'Bearer ' + gate, 'Content-Type': 'application/json'})
     return send(req)
@@ -295,7 +297,20 @@ TOOLS = [
 ]
 
 
+def receipts():
+    """Saves every Slack request in ORBIT before the model runs; see receipts.py."""
+    return Receipts(hermes_home() / 'plugin-state' / 'orbit-commands' / 'requests.sqlite3',
+                    post=lambda body: orbit('POST', body, path='requests'), origin=lambda: current_origin(),
+                    provider=setting('ORBIT_SLACK_MODEL_PROVIDER') or 'openai-codex', time_zone=setting('ORBIT_SLACK_TIME_ZONE') or 'Asia/Seoul')
+
+
 def register(ctx):
+    saved = receipts()
+    ctx.register_hook('pre_gateway_dispatch', saved.on_dispatch)
+    ctx.register_hook('api_request_error', saved.on_api_error)
+    ctx.register_hook('post_api_request', saved.on_api_success)
+    ctx.register_hook('post_llm_call', saved.on_llm_done)
+    saved.resume()
     for name, handler, description, parameters in TOOLS:
         ctx.register_tool(name=name, toolset='orbit', schema={'name': name, 'description': description, 'parameters': parameters}, handler=handler)
     ctx.register_system_prompt_section('orbit.slack-commands', GUIDANCE, position='after_memory', max_chars=1200)

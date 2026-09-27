@@ -259,3 +259,14 @@
 .decision-pick label{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted-foreground)}
 .decision-pick input[type=checkbox]{width:20px;height:20px}
 .agent-due-approve{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* 결재함 · Slack requests kept while AI could not process them, and the drafts recovered from them */
+.slack-request-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.slack-request{display:grid;gap:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card)}
+.slack-request-summary{margin:0;font-size:.92rem;overflow-wrap:anywhere}
+.slack-request-status{margin:0;font-size:.82rem;color:var(--muted-foreground)}
+.slack-request.is-failed .slack-request-status,.slack-request.is-expired .slack-request-status,.slack-request.is-unconfirmed .slack-request-status{color:var(--galaxy-amber)}
+.slack-draft-time{display:flex;flex-wrap:wrap;align-items:end;gap:8px;margin-top:8px}
+.slack-draft-time label{display:grid;gap:4px;font-size:.8rem;color:var(--muted-foreground)}
+.slack-draft-time .inbox-card-late{flex-basis:100%}
+@media(max-width:600px){.slack-draft-time label{flex:1 1 40%}}

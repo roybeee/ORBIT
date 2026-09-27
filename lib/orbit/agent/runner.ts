@@ -49,7 +49,7 @@ export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 type Message={role:'user'|'assistant';content:string};
 type ReadRequest={tool:string;arguments:Record<string,unknown>};
 interface Job {
- meeting?:MeetingAnalysis; meetingRepairs?:number; briefRepairs?:number; meetingInput?:string;
+ meeting?:MeetingAnalysis; slackRequest?:{id:string;manual?:boolean}; meetingRepairs?:number; briefRepairs?:number; meetingInput?:string;
  provider?:'hermes'|'openai'; model?:string; directOutput?:string;
  basis?:WorkspaceBasis; revalidations?:number; refreshActionId?:string;
  batch?:BatchState; analysisGeneration?:string; posts?:number; analysis?:RunMetrics;
@@ -127,6 +127,9 @@ const AUTH_FAILURE=/authentication failed|api key|unauthori[sz]ed|invalid.{0,20}
 // retry ladder like an auth failure does, and it earns its own hint: no API key is wrong.
 const QUOTA_FAILURE=/quota|usage limit|rate.?limit|\b429\b/i;
 const MAX_PLANNING_ATTEMPTS=3;
+// Work the owner did not just send (meeting reviews, daily planning, resumed Slack requests) waits for a
+// spent provider limit instead of calling it; a Slack request the owner asked to process again is manual.
+const automaticJob=(job:Job)=>!!(job.meeting||job.planning||job.slackRequest&&!job.slackRequest.manual);
 const HOLD_WARNING='AI 사용량 한도 소진으로 자동 분석이 대기 중이라 이 요청도 실패할 수 있습니다 · ';
 // A planning run that cannot finish still owes the owner a day: fall back to the deterministic BRAINY
 // planner, the same one used when no Hermes is connected, before the turn is recorded as failed. An
@@ -155,7 +158,7 @@ function remember(job:Job,input:string,output:string){
  for(let i=2;i<job.history.length-2&&total()>budget.history;i++){const m=job.history[i];if(m.role==='user'&&m.content.length>4000)job.history[i]={role:'user',content:m.content.slice(0,4000)+'\n…[이전 조회 결과 '+(m.content.length-4000)+'자 생략 — 근거 ID는 유효합니다]'}}
 }
 
-export async function runAgent(db:Database,owner:string,input:{id:string;message:string;conversationId?:string;attachmentIds?:string[];meeting?:MeetingAnalysis;planning?:PlanningRequest;refreshActionId?:string;retryFailed?:boolean},env:Runtime,options:{defer?:boolean}={}){
+export async function runAgent(db:Database,owner:string,input:{id:string;message:string;conversationId?:string;attachmentIds?:string[];meeting?:MeetingAnalysis;slackRequest?:{id:string;manual?:boolean};planning?:PlanningRequest;refreshActionId?:string;retryFailed?:boolean},env:Runtime,options:{defer?:boolean}={}){
  let conversationId=input.conversationId??'legacy';const attachmentIds=input.attachmentIds??[];
  const old=await db.prepare('SELECT attachment_ids,conversation_id,input,status,updated_at FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,input.id).first<{attachment_ids:string;conversation_id:string;input:string;status:string;updated_at:string}>();
  // Existing jobs retain their original conversation and native session across deployment.
@@ -167,7 +170,7 @@ export async function runAgent(db:Database,owner:string,input:{id:string;message
  const provider=existing&&old?.status!=='failed'?(JSON.parse(existing.job_json).provider??'hermes'):!input.planning&&!attachmentIds.length&&directChatConfigured(env)?'openai':'hermes';
  const config=provider==='hermes'?await hermesConfig(db,owner,env):null;
  if(old?.status==='failed'||!await getJob(db,owner,input.id)){
-  const job:Job={holdWarning:!input.meeting&&!input.planning&&!!await activeHold(db,owner,provider),meeting:input.meeting,provider,model:provider==='openai'?chatModel(env):undefined,refreshActionId:input.refreshActionId,planning:input.planning,attachmentIds,phase:'prepare',connectionId:config?.connectionId??'openai-server',sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner,conversationId),started:Date.now(),round:0,revision:0,history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
+  const job:Job={holdWarning:!input.meeting&&!input.planning&&!input.slackRequest&&!!await activeHold(db,owner,provider),meeting:input.meeting,slackRequest:input.slackRequest,provider,model:provider==='openai'?chatModel(env):undefined,refreshActionId:input.refreshActionId,planning:input.planning,attachmentIds,phase:'prepare',connectionId:config?.connectionId??'openai-server',sessionId:'orbit-'+crypto.randomUUID(),sessionKey:await scope(owner,conversationId),started:Date.now(),round:0,revision:0,history:[],reads:[],results:[],notes:{},sources:[],invalid:0};
   let lease=old?.status==='running'?old.updated_at:'';
   if(!lease){try{lease=(await beginTurn(db,owner,input.id,input.message,conversationId,attachmentIds,input.retryFailed?old?.updated_at:undefined,packed(job))).lease;if(!lease)return 'completed' as const}catch(error){
    const accepted=await db.prepare('SELECT input,conversation_id,attachment_ids,status FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,input.id).first<{input:string;conversation_id:string;attachment_ids:string;status:'running'|'completed'|'failed'}>();
@@ -288,7 +291,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    if(!job.cancel&&job.retryAt&&Date.now()<job.retryAt)return;
    // Automatic analysis does not call a provider whose limit is spent; it fails into a waiting state that
    // the meeting queue and the daily runtime resume. A manual request is sent and only counted.
-   const automatic=!!(job.meeting||job.planning);
+   const automatic=automaticJob(job);
    if(!job.attempted&&!job.cancel&&(automatic||!job.holdSeen)){
     const gate=await gateProvider(db,owner,job.provider??'hermes',{id,automatic});job.holdSeen=true;
     if(gate.state==='wait'){await failPlanning(db,owner,id,row.turn_lease,job,holdMessage(gate.hold!));return}
@@ -328,7 +331,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
    if(result.run_id!==job.runId||result.object!=='hermes.run')throw new AgentError('헤르메스 실행 결과가 일치하지 않습니다.','HERMES_FORMAT',502);
    if(['failed','cancelled'].includes(result.status)){
     const detail=hermesError(result);
-    if(result.status==='failed')await recordLimit(db,owner,'hermes',detail,{id,automatic:!!(job.meeting||job.planning),submittedAt:job.submittedAt});
+    if(result.status==='failed')await recordLimit(db,owner,'hermes',detail,{id,automatic:automaticJob(job),submittedAt:job.submittedAt});
     if(job.cancel){await discard(db,owner,id,row.turn_lease,'요청을 중지했습니다. 변경사항은 반영하지 않았습니다.');return}
     if(job.batch&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&!QUOTA_FAILURE.test(detail)&&job.batch.retries<2){retryBatch(job);await save('이 묶음만 다시 분석합니다.'+(detail?' · '+detail:''));return}
     if(!job.batch&&job.planning&&result.status==='failed'&&!AUTH_FAILURE.test(detail)&&!QUOTA_FAILURE.test(detail)&&(job.attempts?.length??0)<MAX_PLANNING_ATTEMPTS-1){
@@ -560,7 +563,7 @@ export async function advanceAgent(db:Database,owner:string,id:string,env:Runtim
   }
   // Retain native run IDs across transport loss; publish no partial changes.
   if(error instanceof AgentError&&['STORAGE','UPSTREAM_NETWORK','UPSTREAM_REDIRECT','UPSTREAM','HERMES_UPSTREAM','HERMES_CAPACITY','HERMES_AUTH','BUSY'].includes(error.code)){job.failures=(job.failures??0)+1;await save(error.message).catch(()=>{});throw error}
-  if(error instanceof AgentError&&error.code==='OPENAI_LIMIT')await recordLimit(db,owner,'openai',error.message,{id,automatic:!!(job.meeting||job.planning),submittedAt:job.submittedAt});
+  if(error instanceof AgentError&&error.code==='OPENAI_LIMIT')await recordLimit(db,owner,'openai',error.message,{id,automatic:automaticJob(job),submittedAt:job.submittedAt});
   if(job.provider!=='openai')await recordSource(db,owner,'hermes',{state:'error',detail:'분석 단계를 완료하지 못했습니다. 실행 기록의 오류를 확인해 주세요.'});
   if(!(error instanceof AgentError))console.error('orbit.agent.failure',{turnId:id,provider:job.provider??'hermes',phase:stepPhase,planning:!!job.planning,name:error instanceof Error?error.name:typeof error,message:error instanceof Error?error.message:String(error),stack:error instanceof Error?error.stack:undefined});
   await failPlanning(db,owner,id,row.turn_lease,job,error instanceof AgentError&&error.code==='HERMES_MISSING'&&job.phase==='poll'?'헤르메스가 이 실행 기록을 잃었습니다(gateway 재시작 등). 같은 메시지를 다시 요청해 주세요. 변경사항은 반영하지 않았습니다.':job.meeting?'회의 분석을 완료하지 못했습니다. '+(error instanceof AgentError?error.message:'오류: '+thrownDetail(error)) :error instanceof AgentError?error.message:'응답을 완료하지 못했습니다. 오류: '+thrownDetail(error)+' 입력을 확인하고 다시 요청해 주세요.');throw error;

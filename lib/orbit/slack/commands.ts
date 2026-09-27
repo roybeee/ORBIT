@@ -12,7 +12,7 @@ import {slackToday} from './today.ts';
 // Calendar events are not handled here: ORBIT reads Google Calendar itself.
 export const SLACK_INBOX={id:'slack-inbox',name:'Slack 보관함'};
 const id=z.string().min(1).max(160);
-const sourceSchema=z.object({platform:z.literal('slack'),workspaceId:id,requesterId:id,channelId:id,messageTs:z.string().regex(/^\d{10}\.\d{6}$/),threadId:z.string().regex(/^\d{10}\.\d{6}$/).optional(),eventId:id.optional(),clientMsgId:id.optional()}).strict();
+export const sourceSchema=z.object({platform:z.literal('slack'),workspaceId:id,requesterId:id,channelId:id,messageTs:z.string().regex(/^\d{10}\.\d{6}$/),threadId:z.string().regex(/^\d{10}\.\d{6}$/).optional(),eventId:id.optional(),clientMsgId:id.optional()}).strict();
 const projectHint=z.string().trim().min(1).max(160).optional();
 const commandSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('task'),title:z.string().trim().min(1).max(160),due:dateSchema,duration:z.number().int().min(5).max(480).optional(),description:z.string().max(4000).optional(),project:projectHint,
@@ -143,7 +143,7 @@ async function choose(db:Database,p:Principal,raw:unknown){
  return readback(db,p,(await lookup(db,p,operationKey))!);
 }
 
-async function readJson(request:Request){
+export async function readJson(request:Request){
  if(!request.headers.get('content-type')?.startsWith('application/json'))throw new Failure(415,'json_required');
  const text=await request.text();
  if(new TextEncoder().encode(text).byteLength>12000)throw new Failure(413,'body_too_large');
