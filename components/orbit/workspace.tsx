@@ -129,6 +129,7 @@ import { agentRequest } from '@/components/orbit/agent/connections';
 import {readDraft,saveDraft,clearDraft} from '@/lib/orbit/device-drafts';
 import { setRequestOwner } from '@/lib/orbit/request-owner';
 import { useWorkspace } from '@/lib/orbit/use-workspace';
+import {instantAction} from '@/lib/orbit/workspace-write-client';
 import { TaskCoach } from '@/components/orbit/coach/task-coach';
 import { FocusSession, type RecordInput } from '@/components/orbit/coach/focus-session';
 import { ReviewWizard } from '@/components/orbit/coach/review-wizard';
@@ -300,7 +301,7 @@ function WorkspaceContent({
   ownerId?: string;
 }) {
   const cosmic=useCosmicMotion();
-  const { snapshot, loaded, busy, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh, acceptSnapshot } =
+  const { snapshot, loaded, busy, saving, savedInputs, failure, online, mutate, retry, refresh, discardRequestAndRefresh, hasPending, pauseRefresh, acceptSnapshot } =
     useWorkspace(demo, ownerId);
   const notificationLinkOpened=useRef(false);
   useEffect(()=>{const changed=()=>{if(!hasPending)void refresh()};window.addEventListener('orbit-meeting-approved',changed);return()=>window.removeEventListener('orbit-meeting-approved',changed)},[hasPending,refresh]);
@@ -482,7 +483,7 @@ function WorkspaceContent({
       action={...action,overlapConfirmation:review.confirmation};
     }
     const ok = await mutate(action);
-    if (ok && message) toast.success(message);
+    if (ok && message) {if(!demo&&instantAction(action))toast('기기에 저장됨 · 동기화 중');else toast.success(message);}
     return ok;
   };
   const openTaskSchedule=(id:string,date=calendarDate)=>{
@@ -1080,18 +1081,18 @@ function WorkspaceContent({
             예시 체험 · 변경은 저장되지 않습니다. <Link href="/">내 워크스페이스로 이동 →</Link>
           </div>
         ) : (
-          <div className={`sync-bar ${failure || !online ? 'has-error' : ''}`} hidden={loaded&&!busy&&!failure&&online} role="status">
+          <div className={`sync-bar ${failure || !online ? 'has-error' : ''}`} hidden={loaded&&!busy&&!saving&&!failure&&online} role="status">
             {!online ? (
               <>
                 <AlertCircle size={15} />
-                <span>오프라인 · 연결 후 저장해 주세요. 작성 중인 화면을 유지해 주세요.</span>
+                <span>오프라인 · 입력은 기기에 보관되며 연결 후 자동으로 동기화합니다.</span>
               </>
             ) : failure ? (
               <>
                 <AlertCircle size={15} />
-                <span>{failure.message}</span>
+                <span>{failure.message}</span>{savedInputs.length>0&&<details><summary>보관된 입력 {savedInputs.length}건 보기</summary>{savedInputs.map((input,index)=><div key={index}><strong>{input.title}</strong><pre style={{whiteSpace:'pre-wrap'}}>{input.text}</pre><button onClick={()=>void navigator.clipboard.writeText(input.text).then(()=>toast('입력을 복사했습니다.')).catch(()=>toast.error('내용을 선택해서 복사해 주세요.'))}>내용 복사</button></div>)}</details>}
                 <button onClick={() => void retry()}>다시 시도</button>
-                <button onClick={() => (hasPending ? setRefreshConfirm(true) : void refresh())}>
+                <button onClick={() => ((hasPending || failure) ? setRefreshConfirm(true) : void refresh())}>
                   최신 내용 불러오기
                 </button>
               </>
@@ -1099,7 +1100,9 @@ function WorkspaceContent({
               <>
                 <CloudCheck size={15} />
                 <span>
-                  {busy
+                  {saving
+                    ? '기기에 저장됨 · 서버에 동기화 중…'
+                    : busy
                     ? '저장소와 연결 중…'
                     : !loaded
                       ? '내 업무를 불러오는 중…'

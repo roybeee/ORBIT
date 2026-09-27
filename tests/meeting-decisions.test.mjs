@@ -55,3 +55,12 @@ test('whole-meeting reject sends only open cards of the chosen meetings, 500 per
  assert.deepEqual(calls,[['/api/agent/bulk-reject','POST',500],['/api/agent/bulk-reject','POST',500],['/api/agent/bulk-reject','POST',203]]);
  assert.deepEqual(result,{rejected:1200,skipped:3});
 });
+
+test('rejecting a selection sends only selected pending cards, leaves unselected and decided cards alone',async()=>{
+ const {selectedPending,bulkReject}=await import('../lib/orbit/meeting-decisions.ts');
+ const cards=['a','b','c','d'].map(id=>({id,state:id==='d'?'approved':'pending',action:{type:'task.upsert'}}));
+ const selected=new Set(['a','c','d','removed']);let sent;
+ const targets=selectedPending(cards,selected);
+ await bulkReject(targets.map(i=>i.id),async(path,method,body)=>{sent=body.ids;return {rejected:body.ids.length,skipped:0}});
+ assert.deepEqual(sent,['a','c']);assert.deepEqual(selectedPending(cards,new Set()),[]);
+});

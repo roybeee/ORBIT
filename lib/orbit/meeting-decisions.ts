@@ -42,3 +42,8 @@ export async function bulkReject(ids:readonly string[],request:(path:string,meth
  for(const batch of batches)results.push(await request('/api/agent/bulk-reject','POST',{ids:batch}));
  return results.reduce((sum,r)=>({rejected:sum.rejected+r.rejected,skipped:sum.skipped+r.skipped}),{rejected:0,skipped:0});
 }
+
+// Approval and rejection use exactly the same selected, still-pending cards.
+export function selectedPending<T extends Item>(items:readonly T[],selected:ReadonlySet<string>):T[]{
+ return items.filter(item=>item.state==='pending'&&selected.has(item.id));
+}
