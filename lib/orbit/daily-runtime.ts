@@ -11,6 +11,7 @@ import {todayInZone,addDays} from './dates.ts';
 import {connections,type Runtime} from './agent/integrations.ts';
 import {syncCalendar} from './agent/calendar.ts';
 import {runAgent} from './agent/runner.ts';
+import {processSlackRequests} from './slack/request-runtime.ts';
 import {advanceRuntimeWork} from './runtime-work.ts';
 import {syncWikiMail} from './wiki/mail.ts';
 import {briefMessage} from './brief/schema.ts';
@@ -36,6 +37,8 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  try{
  const config=(await runtimeStatus(db,owner)).config;if(!config.enabled)return {disabled:true,active:false};
  await processMeetingReviews(db,owner,env).catch(()=>{});
+ // Slack requests a provider limit stopped resume here once the limit is back.
+ await processSlackRequests(db,owner,env).catch(()=>{});
  const discord=await syncDiscord(db,owner,env).catch(()=>({active:false}));
  let meetingsActive=false;
  const finish=async(active:boolean)=>{await db.prepare("UPDATE orbit_daily_runtime SET config_json=json_set(?,'$.enabled',json(CASE WHEN json_extract(config_json,'$.enabled') THEN 'true' ELSE 'false' END),'$.eveningHour',json_extract(config_json,'$.eveningHour')) WHERE owner_id=? AND lease_until=?").bind(JSON.stringify(config),owner,lease).run();return {active:active||discord.active||meetingsActive};};

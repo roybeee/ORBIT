@@ -7,12 +7,12 @@ import {isConnectionError,decisionReceiptMatches} from './client-request.ts';
 export type Decision='approve'|'defer'|'reconsider'|'reject';
 export interface DecisionResponse {refreshing?:boolean;receipt?:Parameters<typeof decisionReceiptMatches>[0]&{refreshTurnId?:string}}
 export type DecisionRequest=(path:string,method?:string,body?:unknown)=>Promise<DecisionResponse>;
-export interface DecisionInput {reason?:string;revisitDate?:string;overlapConfirmation?:string}
+export interface DecisionInput {reason?:string;revisitDate?:string;overlapConfirmation?:string;overrides?:{date?:string;start?:number;end?:number}}
 
 export async function sendDecision(item:{id:string},decision:Decision,input:DecisionInput,request:DecisionRequest):Promise<{refreshing?:boolean}>{
- const {reason,revisitDate,overlapConfirmation}=input;
+ const {reason,revisitDate,overlapConfirmation,overrides}=input;
  try{
-  return await request('/api/agent','PATCH',{id:item.id,decision,...(overlapConfirmation?{overlapConfirmation}:{}),...(decision==='defer'?{reason,revisitDate}:{})});
+  return await request('/api/agent','PATCH',{id:item.id,decision,...(overlapConfirmation?{overlapConfirmation}:{}),...(decision==='approve'&&overrides?{overrides}:{}),...(decision==='defer'?{reason,revisitDate}:{})});
  }catch(error){
   if(!isConnectionError(error))throw error;
   const check=await request('/api/agent?actionReceipt='+encodeURIComponent(item.id));

@@ -7,6 +7,8 @@ import type {AgentAction} from '@/lib/orbit/agent/types';
 import {ActionCard,useActionDecisions} from '../agent/action-review';
 import {MeetingDecisions} from './meeting-decisions';
 import {MeetingBulkReject} from './meeting-bulk-reject';
+import {SlackDrafts} from './slack-drafts';
+import {SLACK_REQUEST_CONVERSATION} from '@/lib/orbit/slack/request-view';
 
 import {agentRefresh} from '../agent/refresh';
 export {agentRefresh};
@@ -26,11 +28,15 @@ export function InboxAiDecisions({actions,snapshot,onOpenNote,onOpenConversation
  const open=actions.filter(a=>a.state==='pending'||a.state==='applying');
  const meetingOf=(a:AgentAction)=>a.guard?.meeting?.noteId;
  const meetings=[...new Set(open.map(meetingOf).filter((id):id is string=>!!id))];
- const others=open.filter(a=>!meetingOf(a));
+ // Drafts recovered from a saved Slack request are reviewed together, one group per request.
+ const slackOf=(a:AgentAction)=>a.conversationId?.startsWith(SLACK_REQUEST_CONVERSATION)?a.conversationId:undefined;
+ const slackGroups=[...new Set(open.map(slackOf).filter((id):id is string=>!!id))];
+ const others=open.filter(a=>!meetingOf(a)&&!slackOf(a));
 const card=(item:AgentAction,lead?:ReactNode)=><ActionCard key={item.id} item={item} snapshot={snapshot} review={review} onAskOther={askOther} lead={lead}/>;
  return <>
   {meetings.length>0&&<MeetingBulkReject meetings={meetings} items={open} picked={picked} onPick={setPicked}/>}
   {meetings.map((noteId,index)=>{const note=snapshot.data.notes.find(n=>n.id===noteId);return <MeetingDecisions key={noteId} noteId={noteId} title={note?.title??'회의록'} items={open.filter(a=>meetingOf(a)===noteId)} onOpenNote={onOpenNote} initiallyOpen={index<5} picked={picked.has(noteId)} onPick={()=>togglePick(noteId)}/>;})}
+  {slackGroups.map(id=>{const items=open.filter(a=>slackOf(a)===id);return <SlackDrafts key={id} id={id} title={'초안 준비 '+new Intl.DateTimeFormat('ko-KR',{timeZone:snapshot.data.preferences.timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(items[0].createdAt))} items={items} snapshot={snapshot} review={review} onOpenConversation={()=>onOpenConversation(id)}/>;})}
   {others.map(item=>card(item,item.conversationId?<button className="text-button inbox-source" onClick={()=>onOpenConversation(item.conversationId!)}>Orbit 대화에서 나온 제안 · 대화 열기 <ArrowUpRight size={14}/></button>:null))}
   {deferred>0&&<button className="text-button inbox-deferred" onClick={onReviewDeferred}>보류한 Orbit 제안 {deferred}건 · 다시 검토일과 함께 보기 <ArrowUpRight size={14}/></button>}
   {review.deferDialog}

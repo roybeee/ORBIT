@@ -15,10 +15,13 @@ import {deleteCalendarSeries} from './calendar-delete.ts';
 import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
 import {rehomeOrphanCards} from '../meetings/orphan-cards.ts';
+import {SLACK_REQUEST_CONVERSATION,eventStarted} from '../slack/request-view.ts';
 // An approval may rename the registration, recolor it or move it to another project,
 // either an existing one or one created from a typed name. Only these fields, and only
 // on the proposals that actually carry them.
-export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().min(1).max(100).nullable().optional(),newProject:z.object({name:z.string().trim().min(1).max(160)}).strict().optional()}).strict().refine(o=>!(o.newProject&&o.projectId!==undefined),'기존 프로젝트와 새 프로젝트 중 하나만 선택해 주세요.');
+export const overrideSchema=z.object({title:z.string().trim().min(1).max(200).optional(),color:z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),projectId:z.string().min(1).max(100).nullable().optional(),newProject:z.object({name:z.string().trim().min(1).max(160)}).strict().optional(),
+ // A new time for a proposed event (e.g. a recovered Slack draft whose time has passed).
+ date:dateSchema.optional(),start:z.number().int().min(0).max(1439).optional(),end:z.number().int().min(1).max(1440).optional()}).strict().refine(o=>!(o.newProject&&o.projectId!==undefined),'기존 프로젝트와 새 프로젝트 중 하나만 선택해 주세요.').refine(o=>o.start===undefined&&o.end===undefined||o.start!==undefined&&o.end!==undefined&&o.end>o.start,'종료 시간을 시작 시간 이후로 선택해 주세요.');
 export const editableActions=['task.upsert','event.upsert','project.upsert'] as const;
 export const decisionSchema=z.object({id:z.string().uuid(),decision:z.enum(['approve','defer','reconsider','reject']),reason:z.string().max(2000).optional(),revisitDate:dateSchema.optional(),overlapConfirmation:z.string().regex(/^[a-f0-9]{64}$/).optional(),overrides:overrideSchema.optional()}).strict();
 type ParsedAction=ReturnType<typeof parseAction>;
@@ -31,8 +34,9 @@ function newProjectDraft(actionId:string,name:string,today:string):Project{
 }
 function withOverrides<T extends ParsedAction>(parsed:T,overrides:Overrides|undefined,context:{actionId:string;today:string}):T{
  if(!overrides||!Object.keys(overrides).length)return parsed;
- const {title,color,newProject}=overrides;
+ const {title,color,newProject,date,start,end}=overrides;
  if(newProject&&parsed.type!=='task.upsert'&&parsed.type!=='event.upsert')throw new AgentError('새 프로젝트는 할 일·일정을 등록할 때만 함께 만들 수 있습니다.','ACTION_NOT_EDITABLE',422);
+ if((date!==undefined||start!==undefined)&&parsed.type!=='event.upsert')throw new AgentError('시간은 일정 제안에서만 바꿀 수 있습니다.','ACTION_NOT_EDITABLE',422);
  const project=newProject?newProjectDraft(context.actionId,newProject.name,context.today):undefined;
  const projectId=project?project.id:overrides.projectId;
  const edited=parsed.type==='project.upsert'
@@ -40,7 +44,7 @@ function withOverrides<T extends ParsedAction>(parsed:T,overrides:Overrides|unde
   :parsed.type==='task.upsert'
   ?{...parsed,task:{...parsed.task,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})},...(project?{project}:{})}
   :parsed.type==='event.upsert'
-  ?{...parsed,event:{...parsed.event,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{})},...(project?{project}:{})}
+  ?{...parsed,event:{...parsed.event,...(title?{title}:{}),...(color!==undefined?{color}:{}),...(projectId!==undefined?{projectId}:{}),...(date?{date}:{}),...(start!==undefined&&end!==undefined?{start,end}:{})},...(project?{project}:{})}
   :null;
  if(!edited)throw new AgentError('이 제안은 이름·색을 정해서 등록할 수 없습니다. 그대로 승인해 주세요.','ACTION_NOT_EDITABLE',422);
  const checked=actionSchema.safeParse(edited);
@@ -95,6 +99,8 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
     const moved=movedFrom(parsed,input.overrides),guard=action.guard&&moved?withoutProject(action.guard,moved):action.guard,context={actionId:action.id,today:todayInZone(current.data.preferences.timeZone,new Date(action.createdAt))};
     if(!receipt&&((guard&&!await guardMatches(guard,parsed,current.data))||(!action.guard&&current.revision!==action.expectedRevision)))throw new AgentError('이 제안의 대상 또는 근거가 변경되어 최신 내용으로 다시 확인합니다.','ACTION_CHANGED',409);
     let command=withOverrides(parsed,input.overrides,context);
+    // A recovered Slack draft whose time has passed is never registered as proposed: pick a new time.
+    if(!receipt&&command.type==='event.upsert'&&action.conversationId?.startsWith(SLACK_REQUEST_CONVERSATION)&&eventStarted(command.event,current.data.preferences.timeZone))throw new AgentError('예정 시간이 지나 만료된 초안입니다. 새 시간을 정해 수정 후 등록하거나 닫아 주세요.','SLACK_EXPIRED',409);
     if(!receipt){
      // The reducer checks the command it applies, so the confirmation covers the edited registration.
      const review=registrationOverlap(current.data,command);
@@ -130,7 +136,7 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
    }catch(refreshError){if(!(refreshError instanceof AgentError&&['HERMES_SETUP','BUSY'].includes(refreshError.code)))throw refreshError;throw new AgentError('관련 기록이 변경되었습니다. 연결 또는 진행 중인 대화를 확인한 뒤 이 카드에서 다시 시도하면 최신 제안을 준비합니다.','ACTION_CHANGED',409)}
   }
   await resetAction(db,owner,action.id,lease);
-  if(!(error instanceof AgentError&&['CALENDAR_OVERLAP','ACTION_CHANGED','MEETING_CHANGED','BUSY','INPUT'].includes(error.code)))await notify(db,owner,{id:'action-failed:'+action.id+':'+lease,kind:'failed',title:'승인한 변경 처리 실패',body:action.title+' · '+(error instanceof Error?error.message:'등록 상태를 확인해 주세요.'),href:action.guard?.meeting?'/?note='+encodeURIComponent(action.guard.meeting.noteId):'/?conversation='+encodeURIComponent(action.conversationId??'legacy'),createdAt:new Date().toISOString()}).catch(()=>{});
+  if(!(error instanceof AgentError&&['CALENDAR_OVERLAP','ACTION_CHANGED','MEETING_CHANGED','BUSY','INPUT','SLACK_EXPIRED'].includes(error.code)))await notify(db,owner,{id:'action-failed:'+action.id+':'+lease,kind:'failed',title:'승인한 변경 처리 실패',body:action.title+' · '+(error instanceof Error?error.message:'등록 상태를 확인해 주세요.'),href:action.guard?.meeting?'/?note='+encodeURIComponent(action.guard.meeting.noteId):'/?conversation='+encodeURIComponent(action.conversationId??'legacy'),createdAt:new Date().toISOString()}).catch(()=>{});
   throw error;
  }
 }

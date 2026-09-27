@@ -14,8 +14,10 @@ URL = 'https://orbit.example/api/integrations/slack/directives'
 
 
 def load():
-    spec = importlib.util.spec_from_file_location('orbit_commands_plugin', PLUGIN)
+    # Loaded as a package, like the Hermes plugin loader does, so the plugin's own modules import.
+    spec = importlib.util.spec_from_file_location('orbit_commands_plugin', PLUGIN, submodule_search_locations=[str(PLUGIN.parent)])
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -29,6 +31,9 @@ class Context:
 
     def register_system_prompt_section(self, *args, **kwargs):
         self.sections.append(args)
+
+    def register_hook(self, name, callback):
+        self.hooks = {**getattr(self, 'hooks', {}), name: callback}
 
 
 class PluginTest(unittest.TestCase):
@@ -178,6 +183,7 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(sorted(ctx.tools), ['orbit_slack_choose', 'orbit_slack_directive_sync', 'orbit_slack_note', 'orbit_slack_task', 'orbit_slack_today'])
         self.assertLessEqual(len(self.plugin.GUIDANCE), 1200)
         self.assertIn('needs_confirmation', self.plugin.GUIDANCE)
+        self.assertEqual(sorted(ctx.hooks), ['api_request_error', 'post_llm_call', 'pre_gateway_dispatch'])
 
     def test_title_is_the_to_do_itself_without_instruction_words(self):
         self.assertIn("'추가'", self.plugin.GUIDANCE)
