@@ -46,6 +46,7 @@
 
 ## 다음 행동
 
+-1. ORBIT-20260927-01(Slack 지시 선저장·한도 후 1회 재개, 마이그레이션 0039): 머지 후 Sites 게시 → 소유자가 `integrations/hermes-orbit-commands/deploy.sh`(플러그인 v2.2.0, 훅 4개 등록 확인) 실행. 순서가 바뀌면 플러그인의 영수증 전달이 404로 버려진다. 효과 측정: 14일간 Slack 이벤트 수 ↔ `orbit_slack_requests` 고유 영수증 수, 한도 대기 후 재입력 없이 완료된 비율(`status='done'` + 승인 카드).
 0. 정보 구조 v2 후속: (a) 결재함 배지 노이즈 — 해결(#115·#116, 운영 배지 206→23, 쌓인 회의 결재 183건은 소유자가 일괄 보류 여부 결정). (b) 휴대폰에서 하단 탭·Orbit 도크(키보드 열림)·결재함 승인 1건 실기기 확인.
 1. 게시할 때는 Hermes 계획 분석과 시간대를 나누고, 여러 머지를 한 번에 묶어 게시한다(같은 계정이라 쿼터를 함께 쓴다).
 2. Hermes `openai-codex`의 `relogin_required` 경고(2026-09-21 기록)는 `hermes auth status openai-codex`로 확인한다.
