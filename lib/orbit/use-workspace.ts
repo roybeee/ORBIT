@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { emptyWorkspace, type WorkspaceSnapshot } from './model';
 import {commandSchema} from './validation';
 import type { WorkspaceAction } from './validation';
-import { applyAction, DomainError } from './reducer';
+import { applyAction } from './reducer';
+import {WorkspaceWrites,restoreWrites} from './workspace-write-client';
 import {
   initialProjects,
   initialTasks,
@@ -56,226 +57,77 @@ const initial = (demo: boolean): WorkspaceSnapshot => {
       : empty,
   };
 };
-interface Failure {
-  message: string;
-  code: string;
-}
-export function useWorkspace(demo: boolean, ownerId = '') {
-  const [snapshot, setSnapshot] = useState(() => initial(demo));
-  const snapshotRef = useRef(snapshot);
-  const [loaded, setLoaded] = useState(demo),
-    [busy, setBusy] = useState(false),
-    [failure, setFailure] = useState<Failure | null>(null);
-  const [online, setOnline] = useState(true);
-  const busyRef = useRef(false);
-  const pauseRef = useRef(false);
-  const mounted = useRef(true);
-  const pending = useRef<{ operationId: string; expectedRevision: number; action: WorkspaceAction } | null>(
-    null,
-  );
-  // Render-facing mirror of pending.current: refs must not be read during render.
-  const [hasPending, setHasPending] = useState(false);
-  const publish = useCallback((value: WorkspaceSnapshot) => {
-    snapshotRef.current = value;
-    if (mounted.current) setSnapshot(value);
-  }, []);
-  const load = useCallback(
-    async (automatic = false) => {
-      if (demo || busyRef.current || (automatic && pauseRef.current)) return;
-      if (!navigator.onLine) {
-        setOnline(false);
-        return;
+interface Failure {message:string;code:string}
+export function useWorkspace(demo:boolean, ownerId='') {
+  const [snapshot,setSnapshot]=useState(()=>initial(demo));
+  const [loaded,setLoaded]=useState(demo),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false);
+  const [savedInputs,setSavedInputs]=useState<{title:string;text:string}[]>([]);
+  const [failure,setFailure]=useState<Failure|null>(null),[online,setOnline]=useState(true),[hasPending,setHasPending]=useState(false);
+  const engine=useRef<WorkspaceWrites|null>(null),pauseRef=useRef(false),reading=useRef(false);
+  const draftTarget=useRef('');
+  const read=useCallback(async()=>{
+    const r=await fetch('/api/workspace',{headers:{...requestOwnerHeaders(),...(ownerId?{'x-orbit-owner':ownerId}:{})},cache:'no-store',signal:AbortSignal.timeout(20000)});
+    const body=await r.json();if(!r.ok)throw {message:body.error,code:body.code};return body as WorkspaceSnapshot;
+  },[ownerId]);
+  const load=useCallback(async(automatic=false)=>{
+    const client=engine.current;
+    if(demo||!client||reading.current||client.running||(automatic&&pauseRef.current))return;
+    reading.current=true;
+    try{const value=await read();if(engine.current!==client||automatic&&pauseRef.current)return;client.accept(value);setLoaded(true);if(!client.queue.length){client.failure=null;setFailure(null);}}
+    catch(error){if(engine.current===client)setFailure({message:(error as Error).message||'연결 상태를 확인해 주세요.',code:'NETWORK'});}
+    finally{reading.current=false;}
+  },[demo,read]);
+  useEffect(()=>{
+    let active=true;setLoaded(demo);setSnapshot(initial(demo));setFailure(null);setSavedInputs([]);
+    // Per-tab queues cannot overwrite another tab's unsent commands. sessionStorage
+    // retains this key on reload; drafts remain scoped to the authenticated owner.
+    try{draftTarget.current=sessionStorage.getItem('orbit-write-tab')||crypto.randomUUID();sessionStorage.setItem('orbit-write-tab',draftTarget.current);}catch{draftTarget.current='default';}
+    const target=draftTarget.current;
+    const client:WorkspaceWrites=new WorkspaceWrites(initial(demo),{
+      read,
+      post:async(command):Promise<WorkspaceSnapshot>=>{
+        if(demo)return {data:applyAction(client.snapshot.data,command.action,new Date('2026-09-06T09:00:00Z')),revision:client.snapshot.revision+1,updatedAt:new Date().toISOString()};
+        const r=await fetch('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json',...requestOwnerHeaders(),...(ownerId?{'x-orbit-owner':ownerId}:{})},body:JSON.stringify(command),signal:AbortSignal.timeout(20000)});
+        const body=await r.json();if(!r.ok)throw {message:body.error,code:body.code};return body;
+      },
+      persist:queue=>{if(!demo){if(queue.length)saveDraft(ownerId,'write-queue',target,queue);else clearDraft(ownerId,'write-queue',target);}},
+      online:()=>demo||navigator.onLine,
+      change:()=>{if(!active)return;setSnapshot(client.view);setFailure(client.failure);setSaving(client.queue.some(x=>!x.blocked));setBusy(client.running&&client.blocking);setHasPending(client.blocking);setSavedInputs(client.queue.filter(x=>x.blocked).map(x=>{
+        const a=x.command.action;const record=a.type==='project.upsert'?a.project:a.type==='task.upsert'?a.task:a.type==='event.upsert'?a.event:null;
+        if(!record)return {title:'보관된 변경 요청',text:'내용을 다시 확인한 후 다시 시도해 주세요.'};
+        const labels:Record<string,string>={name:'이름',title:'제목',goal:'목표',description:'설명',memo:'메모',due:'마감일',date:'날짜',start:'시작(분)',end:'종료(분)',definition:'완료 기준'};
+        return {title:'title' in record?record.title:'name' in record?record.name:'보관된 입력',text:Object.entries(record).filter(([k])=>labels[k]).map(([k,v])=>labels[k]+': '+String(v??'')).join('\n')};
+      }));},
+    });
+    engine.current=client;
+    if(!demo){
+      client.queue=restoreWrites(readDraft(ownerId,'write-queue',target));
+      // Recover the old single pending slot with the original operation id first.
+      const old=commandSchema.safeParse(readDraft(ownerId,'command'));
+      if(old.success&&!client.queue.some(x=>x.command.operationId===old.data.operationId)){
+        client.queue.unshift({command:old.data,basis:{revision:old.data.expectedRevision,entity:null},attempted:true});
+        try{saveDraft(ownerId,'write-queue',target,client.queue);clearDraft(ownerId,'command');}catch{/* old copy remains */}
       }
-      busyRef.current = true;
-      setBusy(true);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      try {
-        const r = await fetch('/api/workspace', { headers:requestOwnerHeaders(), cache: 'no-store', signal: controller.signal });
-        const body = await r.json();
-        if (!r.ok) throw { message: body.error, code: body.code };
-        if (automatic && pauseRef.current) return;
-        publish(body);
-        setLoaded(true);
-        if(!pending.current)setFailure(null);
-      } catch (e) {
-        const err = e as Failure;
-        setFailure({
-          message: err.message || '연결 상태를 확인하고 다시 시도해 주세요.',
-          code: err.code || 'NETWORK',
-        });
-      } finally {
-        clearTimeout(timeout);
-        busyRef.current = false;
-        if (mounted.current) setBusy(false);
-      }
-    },
-    [demo, publish, ownerId],
-  );
-  useEffect(() => {
-    mounted.current = true;
-    if (!demo && ownerId) {
-      const restored=commandSchema.safeParse(readDraft(ownerId,'command'));pending.current=restored.success?restored.data:null;
-      if(pending.current)setFailure({code:'PENDING',message:'서버 저장이 확인되지 않은 입력이 있습니다. 같은 요청으로 저장 결과를 확인해 주세요.'});
     }
-    setHasPending(!!pending.current);
-    void load();
-    return () => {
-      mounted.current = false;
-    };
-  }, [load]);
-  const send = useCallback(
-    async (command: NonNullable<typeof pending.current>): Promise<boolean> => {
-      if(busyRef.current){toast('저장 중입니다. 잠시 기다려 주세요.');return false;}
-      if(!demo && ownerId){try{saveDraft(ownerId,'command','',command);pending.current=command;setHasPending(true);}catch{setFailure({code:'DRAFT',message:'기기 임시 저장 공간을 사용할 수 없습니다. 입력을 복사한 뒤 다시 시도해 주세요.'});return false;}}
-      if (!demo && !navigator.onLine) {
-        setOnline(false);
-        setFailure({code:'OFFLINE',message:'입력을 이 기기에 임시 보관했습니다. 인터넷 연결 후 저장 결과 확인을 눌러 주세요.'});toast('이 기기에 임시 보관했습니다. 서버에는 아직 저장되지 않았습니다.');
-        return false;
-      }
-      if (busyRef.current) {
-        toast('저장 중입니다. 잠시 기다려 주세요.');
-        return false;
-      }
-      busyRef.current = true;
-      setBusy(true);
-      pending.current = command;
-      setHasPending(true);
-      const before = snapshotRef.current;
-      let optimistic = false;
-      if (!demo && ['task.status', 'task.focus'].includes(command.action.type)) {
-        try {
-          publish({ ...before, data: applyAction(before.data, command.action) });
-          optimistic = true;
-        } catch {}
-      }
-      try {
-        if (demo) {
-          const data = applyAction(
-            snapshotRef.current.data,
-            command.action,
-            new Date('2026-09-06T09:00:00Z'),
-          );
-          publish({ data, revision: snapshotRef.current.revision + 1, updatedAt: new Date().toISOString() });
-        } else {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 20000);
-          try {
-            const r = await fetch('/api/workspace', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...requestOwnerHeaders() },
-              body: JSON.stringify(command),
-              signal: controller.signal,
-            });
-            const body = await r.json();
-            if (!r.ok) throw { message: body.error, code: body.code };
-            publish(body);
-          } finally {
-            clearTimeout(timeout);
-          }
-        }
-        pending.current = null;
-        setHasPending(false);
-        if(!demo)clearDraft(ownerId,'command');
-        setFailure(null);
-        return true;
-      } catch (e) {
-        if (optimistic) publish(before);
-        const err = e as Failure;
-        const failure = {
-          message: err.message || '저장을 확인하지 못했습니다. 다시 저장해 주세요.',
-          code: err.code || (e instanceof DomainError ? 'INPUT' : 'NETWORK'),
-        };
-        if (failure.code === 'INPUT') {pending.current = null;setHasPending(false);clearDraft(ownerId,'command');}
-        setFailure(failure);
-        toast.error(failure.message);
-        return false;
-      } finally {
-        busyRef.current = false;
-        if (mounted.current) setBusy(false);
-      }
-    },
-    [demo, publish, ownerId],
-  );
-  const mutate = useCallback(
-    async (action: WorkspaceAction) => {
-      if (!loaded) {
-        toast.error('먼저 저장된 내용을 불러와 주세요.');
-        return false;
-      }
-      if (pending.current && !busyRef.current) {
-        toast.error('이전 저장 결과를 먼저 확인해 주세요.');
-        return false;
-      }
-      return send({
-        operationId: crypto.randomUUID(),
-        expectedRevision: snapshotRef.current.revision,
-        action,
-      });
-    },
-    [loaded, send],
-  );
-  const retry = useCallback(async () => {
-    if (pending.current) return send(pending.current);
-    await load();
-    return false;
-  }, [send, load]);
-  const discardRequestAndRefresh = useCallback(async () => {
-    if(pending.current){try{saveDraft(ownerId,'recovered-command','',pending.current);}catch{toast.error('임시 요청 보관에 실패했습니다. 저장 결과 확인으로 다시 시도해 주세요.');return;}}
-    pending.current = null;
-    setHasPending(false);
-    clearDraft(ownerId,'command');
-    await load();
-  }, [load,ownerId]);
-  useEffect(() => {
-    if (demo) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- navigator.onLine is only readable on the client; seed it here before subscribing to online/offline events
+    const start=async()=>{await load();if(active)await client.flush();};void start();
+    const resume=()=>{if(document.visibilityState==='visible'&&navigator.onLine){void client.flush();if(!client.queue.length&&!pauseRef.current)void load(true);}};
+    const connection=()=>{setOnline(navigator.onLine);if(navigator.onLine)resume();};
+    const timer=setInterval(resume,15000);
+    window.addEventListener('focus',resume);window.addEventListener('online',connection);window.addEventListener('offline',connection);document.addEventListener('visibilitychange',resume);
     setOnline(navigator.onLine);
-    const resume = () => {
-      if (
-        document.visibilityState === 'visible' &&
-        navigator.onLine &&
-        !pending.current &&
-        !busyRef.current &&
-        !pauseRef.current
-      )
-        void load(true);
-    };
-    const connection = () => {
-      setOnline(navigator.onLine);
-      if (navigator.onLine) {if(pending.current&&!busyRef.current&&(!failure||['OFFLINE','NETWORK','UNAVAILABLE'].includes(failure.code)))void retry();else resume();}
-    };
-    const timer = setInterval(resume, 60000);
-    window.addEventListener('focus', resume);
-    window.addEventListener('online', connection);
-    window.addEventListener('offline', connection);
-    document.addEventListener('visibilitychange', resume);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', resume);
-      window.removeEventListener('online', connection);
-      window.removeEventListener('offline', connection);
-      document.removeEventListener('visibilitychange', resume);
-    };
-  }, [demo, load, ownerId, retry, failure]);
-  const pauseRefresh = useCallback((value: boolean) => {
-    pauseRef.current = value;
-  }, []);
-  const acceptSnapshot = useCallback((value: WorkspaceSnapshot) => {
-    if (value.revision >= snapshotRef.current.revision && !pending.current) publish(value);
-  }, [publish]);
-  return {
-    snapshot,
-    loaded,
-    busy,
-    failure,
-    online,
-    mutate,
-    retry,
-    pauseRefresh,
-    acceptSnapshot,
-    refresh: load,
-    discardRequestAndRefresh,
-    hasPending,
-  };
+    return()=>{active=false;client.stopped=true;clearInterval(timer);window.removeEventListener('focus',resume);window.removeEventListener('online',connection);window.removeEventListener('offline',connection);document.removeEventListener('visibilitychange',resume);};
+  },[demo,ownerId,load,read]);
+  const mutate=useCallback(async(action:WorkspaceAction)=>{
+    if(!loaded||!engine.current){toast.error('먼저 저장된 내용을 불러와 주세요.');return false;}
+    return engine.current.enqueue(action);
+  },[loaded]);
+  const retry=useCallback(async()=>{if(engine.current?.queue.length)return engine.current.retry();await load();return false;},[load]);
+  const discardRequestAndRefresh=useCallback(async()=>{
+    const client=engine.current;if(!client||client.running)return;
+    try{if(client.queue.length)saveDraft(ownerId,'recovered-command',crypto.randomUUID(),client.queue);}catch{toast.error('입력 보관에 실패했습니다. 다시 시도해 주세요.');return;}
+    client.queue=[];client.failure=null;clearDraft(ownerId,'write-queue',draftTarget.current);await load();
+  },[ownerId,load]);
+  const pauseRefresh=useCallback((value:boolean)=>{pauseRef.current=value;},[]);
+  const acceptSnapshot=useCallback((value:WorkspaceSnapshot)=>{engine.current?.accept(value);},[]);
+  return {snapshot,loaded,busy,saving,savedInputs,failure,online,mutate,retry,pauseRefresh,acceptSnapshot,refresh:load,discardRequestAndRefresh,hasPending};
 }

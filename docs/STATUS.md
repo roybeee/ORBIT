@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-09-28 저장 지연·일괄 반려 수정: `fix/responsive-save-selection`, 검증 기준 main `8f56f8e8bb077e6a1ebc890262cbc93b184d2725`. 일정·할 일·프로젝트 입력을 기기에 먼저 보관하고 즉시 표시, 순차 전송·동일 요청 재생·필드 단위 충돌 병합을 적용한다. 실제 충돌 입력은 보관·복사 가능하며 관계없는 새 저장을 막지 않는다. 회의 일괄 반려는 **선택한 pending 항목만** 처리한다. typecheck 및 최종 전체 회귀 938건, Python-less 검사 5건씩 cold/warm 모두 passed (외부 네트워크 지연/유실은 mocked, SQLite 저장은 real). source/배포 상태는 PR merge 및 Sites 성공·운영 tree 관측으로 각각 갱신한다.
+
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
 - 마지막으로 `published` + `runtime-verified`된 소스는 **`e609378`**이다(2026-09-27 KST, [기록](releases/2026-09-27-e609378.md), 소유자 브라우저 `/api/version` tree `360e6130…`). PR #141(일정 화면 월 달력 + 시간별 타임라인)이 포함된다.
 - 그 이전 `published` + `runtime-verified` 소스는 **`e1f5079`**이다(2026-09-27 KST, [기록](releases/2026-09-27-e1f5079.md), 소유자 브라우저 `/api/version` tree `70ef4f9f…`). PR #139(Slack 지시 선저장·한도 후 1회 재개)가 포함된다. Hermes 플러그인 v2.2.0은 아직 서버 미배포.
@@ -62,19 +64,17 @@
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-09-23T01:48:12Z
-- `origin/main`: `b5d9be64f1aee67553fba030e17b4ee8a299b063` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `cc6edd1e5709b688428462e71b64f8410122dafc`
+- 생성 시각(UTC): 2026-09-27T15:33:59Z
+- `origin/main`: `8f56f8e8bb077e6a1ebc890262cbc93b184d2725` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `6fe6a2f136b47c29e1e8da661fc20967da245f68`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| incremental | fix/plan-stale-basis | `919679a` | 54 / 0 | yes |
-| orbit-e2e-smoke | chore/e2e-smoke | `cfe2567` | 3 / 0 | no |
-| orbit-shared-account-warn | fix/shared-account-warn | `b5d9be6` | 0 / 0 | yes |
+| orbit | fix/responsive-save-selection | `8f56f8e` | 0 / 0 | yes |
 
 ### 열린 PR
 
-- 없음
+- (gh 없음, 확인 불가)
 <!-- status:auto:end -->
