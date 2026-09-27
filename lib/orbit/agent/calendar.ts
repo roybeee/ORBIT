@@ -7,6 +7,7 @@ import {syncGoogleTasks} from './google-tasks.ts';
 import {recordSource} from '../source-status.ts';
 import {readWorkspace,RevisionConflict,queueTaskCalendarBackfill,queueGoogleColorBackfill,type Database} from '../../../db/repository.ts';
 import {addDays,todayInZone,validDate} from '../dates.ts';
+import {calendarSyncWindow} from '../calendar-month.ts';
 import type {CalendarEvent} from '../model.ts';
 import {overlaps} from '../planner.ts';
 import {accessToken,connections,fetchJson,type Runtime} from './integrations.ts';
@@ -37,7 +38,7 @@ export async function googleEvents(db:Database,owner:string,env:Runtime,from:str
 async function syncCalendarInternal(db:Database,owner:string,env:Runtime,date?:string){
  if(!(await connections(db,owner,env)).find(c=>c.provider==='google_calendar')?.connected){if(await db.prepare('SELECT owner_id FROM orbit_calendar_cache WHERE owner_id=?').bind(owner).first())throw new AgentError('Google Calendar를 다시 연결해 최신 일정을 확인해 주세요.','RECONNECT',409);return {connected:false,count:0};}
  const selection=await calendarSelection(db,owner);
- const snapshot=await readWorkspace(db,owner),timeZone=snapshot.data.preferences.timeZone,day=date??todayInZone(timeZone),from=addDays(day,-7),to=addDays(day,31);
+ const snapshot=await readWorkspace(db,owner),timeZone=snapshot.data.preferences.timeZone,day=date??todayInZone(timeZone),{from,to}=calendarSyncWindow(day);
  const events=normalizeEvents(await googleEvents(db,owner,env,from,to,timeZone,selection.ids),timeZone,from,to);const serialized=JSON.stringify(events);if(new TextEncoder().encode(serialized).length>700000)throw new AgentError('일정의 크기가 너무 큽니다.','CALENDAR',422);
  if((await calendarSelection(db,owner)).version!==selection.version)throw new RevisionConflict('캘린더 선택이 변경되었습니다. 다시 동기화해 주세요.');
  const previous=await db.prepare('SELECT events_json,time_zone FROM orbit_calendar_cache WHERE owner_id=?').bind(owner).first<{events_json:string;time_zone:string}>();const now=new Date().toISOString();

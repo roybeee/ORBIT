@@ -6,7 +6,7 @@ import {questReadiness} from '@/lib/orbit/pacemaker';
 import {CalendarEventDelivery} from './agent/calendar-controls';
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import Link from 'next/link';
-import {afterPopupClose,replacePopupRoute,pushPopupRoute,ensurePopupHistory} from '@/components/ui/use-popup-history';
+import {afterPopupClose,replacePopupRoute,pushPopupRoute,ensurePopupHistory,usePopupHistory} from '@/components/ui/use-popup-history';
 import {AppNavigation,AreaSections,SearchTrigger} from './shell/app-navigation';
 import {OrbitSearch,useSearchShortcut,type SearchAction} from './shell/orbit-search';
 import {MeSheet} from './shell/me-sheet';
@@ -109,6 +109,9 @@ import {calendarTimeline} from '@/lib/orbit/calendar-timeline';
 import {ProjectHub} from './project-hub';
 import {ProjectActions,type ProjectIntent} from './project-actions';
 import {CalendarDateStrip} from './calendar-date-strip';
+import {CalendarMonth} from './calendar-month';
+import {CalendarDayGrid} from './calendar-day-grid';
+import {calendarSyncDate,shiftMonth,weekdayLabels,mondayIndex} from '@/lib/orbit/calendar-month';
 import {ItemColorPicker} from './item-color-picker';
 import {CalendarColors} from './calendar-colors';
 import {taskCalendarEvents,calendarCategories,categoryLabels,categoryOf,categoryColor,calendarItemColor,type CalendarCategory} from '@/lib/orbit/calendar-categories';
@@ -333,6 +336,11 @@ function WorkspaceContent({
   const [taskFilter, setTaskFilter] = useState('all');
   const [calendarDate, setCalendarDate] = useState(TODAY);
   const [calendarTab,setCalendarTab]=useState('timeline');
+  // 일정 opens on the month; a day shows its hourly timeline.
+  const [calendarMode,setCalendarMode]=useState<'month'|'day'>('month');
+  // A day opened from the month grid: Back returns to the month instead of leaving 일정.
+  const [dayFromMonth,setDayFromMonth]=useState(false);
+  usePopupHistory({open:view==='calendar'&&calendarMode==='day'&&dayFromMonth,onOpenChange:open=>{if(!open){setCalendarMode('month');setDayFromMonth(false);}}});
   const [scheduleTask,setScheduleTask]=useState<{id:string;date:string}|null>(null);
   const previousToday=useRef(TODAY);
   useEffect(()=>{const previous=previousToday.current;previousToday.current=TODAY;if(previous!==TODAY){setCalendarDate(date=>date===previous?TODAY:date);window.dispatchEvent(new Event('orbit:calendar-changed'));}},[TODAY]);
@@ -456,7 +464,16 @@ function WorkspaceContent({
     setView(v);
     setDetail(null);
     setSearch('');
+    setDayFromMonth(false);
+    if (v === 'calendar') setCalendarMode('month');
     afterPopupClose(()=>{if(location.hash!==`#${v}`)pushPopupRoute(null,`#${v}`);window.scrollTo({top:0,behavior:'instant'});});
+  };
+  // Flows that land on a specific date show that day's timeline, not the month.
+  const openCalendarDay = (date: string, tab?: string) => {
+    navigate('calendar');
+    setCalendarDate(date);
+    setCalendarMode('day');
+    setCalendarTab(current => tab ?? (current === 'list' ? current : 'timeline'));
   };
   const perform = async (action: WorkspaceAction, message?: string) => {
     const review=registrationOverlap(liveCalendar.current.data,action);
@@ -513,7 +530,7 @@ function WorkspaceContent({
       next === 'done' ? '결과물 완료로 기록했습니다.' : '다시 할 일로 옮겼습니다.',
     );
   };
-  const openCreate = (kind: NonNullable<typeof create>,contextProjectId?:string) => {
+  const openCreate = (kind: NonNullable<typeof create>,contextProjectId?:string,at?:{date:string;time:string}) => {
     setAttachmentDraft('event-draft:' + crypto.randomUUID());
     if (kind !== 'project' && kind !== 'event' && kind !== 'task' && projects.length === 0) {
       kind = 'project';
@@ -536,6 +553,7 @@ function WorkspaceContent({
     setNewDuration('45');
     setNewDate(kind === 'event' && view === 'calendar' ? calendarDate : TODAY);
     setNewTime('10:00');
+    if (at) { setNewDate(at.date); setNewTime(at.time); }
     setNewFocus(kind === 'task' && focus.filter((t) => t.status !== 'done').length < preferences.focusLimit);
     setNewBlocker('');
     setNewCheckDate('');
@@ -764,8 +782,7 @@ function WorkspaceContent({
           attachmentDraft,
           eventUploads.ready.map((f) => f.id),
         );
-        setCalendarDate(newDate);
-        navigate('calendar');
+        openCalendarDay(newDate);
       }
       if(create==='project'&&!editingId){navigate('projects');setDetail({kind:'project',id});}
       if(!editingId&&create)clearDraft(ownerId,'form',create);
@@ -1183,11 +1200,11 @@ function WorkspaceContent({
           {loaded && view==='backup'&&<BackupPanel snapshot={snapshot} demo={demo} busy={busy||hasPending} onRefresh={refresh}/>}
           {loaded && view==='data'&&<DataManager initialTab={dataInitialTab} snapshot={snapshot} demo={demo} demoTrash={demoDataTrash} setDemoTrash={setDemoDataTrash} busy={busy||hasPending} today={TODAY} onRefresh={refresh} onSnapshot={acceptSnapshot} onEditing={setDataEditing} onCreate={openCreate} onEdit={openEdit} onNavigate={navigate} onConnections={()=>{window.dispatchEvent(new Event('orbit:connections'))}} perform={perform}/>}
           {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onAsk={text=>{askOrbit(text)}} onNavigate={navigate}/>})()}
-          {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{openOrbit();window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
+          {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{openOrbit();window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{askOrbit(text)}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{askOrbit(text)}} onConnect={()=>{window.dispatchEvent(new Event('orbit:connections'))}}/>}
           {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} split={proposalSplit} aiLoading={!demo&&aiActions===null} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{askOrbit(text)}} onReviewDeferred={()=>{openOrbit();window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
-          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>{setCalendarDate(date);navigate('calendar')}} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
+          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">
@@ -1278,35 +1295,44 @@ function WorkspaceContent({
           {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub onReorder={ids=>perform({type:'project.reorder',ids},'프로젝트 순서를 저장했습니다.')} onMerge={action=>perform(action,'프로젝트를 하나로 합쳤습니다.')} data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}
 
           {loaded&&(view==='wiki'||view==='knowledge')&&<>{!demo&&view==='wiki'&&<GotemMetricsCard/>}{!demo&&<PlaudPanel projects={data.projects} onRefresh={refresh} onOpen={id=>setDetail({kind:'note',id})} onAsk={text=>{askOrbit(text)}}/>}<WikiLibrary key={view} initialKind={view==='knowledge'?'knowledge':''} onAsk={text=>{askOrbit(text)}} data={data} revision={snapshot.revision} perform={perform} demo={demo} busy={busy||hasPending} onRefresh={refresh} onOpen={(kind,id)=>setDetail({kind,id})}/><details className="workspace-more"><summary>기록 관리</summary><div className="workspace-links"><button onClick={()=>navigate('understanding')}>나를 이해하는 기록</button><button onClick={()=>navigate('data')}>전체 데이터 관리</button><button onClick={()=>navigate('backup')}>백업·복구</button></div></details></>}
-          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarDate} timeZone={preferences.timeZone} paused={dataEditing||calendarInteracting||!!scheduleTask||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
+          <CalendarSyncStatus active={view==='calendar'} demo={demo} loaded={loaded} date={calendarSyncDate(calendarDate)} timeZone={preferences.timeZone} paused={dataEditing||calendarInteracting||!!scheduleTask||!!create||settingsOpen||!!deleteTarget||hasPending} workspaceBusy={busy} onSynced={refresh}/>
           {loaded && view === 'calendar' && (
             <div className="calendar-two-col">
-              <section className="full-card calendar-main">
-                <div className="section-title">
+              <section className={`full-card calendar-main ${calendarMode==='month'?'is-month':'is-day'}`}>
+                <div className="calendar-toolbar">
+                  <div className="calendar-mode-toggle" role="group" aria-label="월간·일간 보기 전환">
+                    <button type="button" aria-pressed={calendarMode==='month'} onClick={()=>{setCalendarMode('month');setDayFromMonth(false)}}><LayoutGrid size={16}/>월</button>
+                    <button type="button" aria-pressed={calendarMode==='day'} onClick={()=>{setCalendarMode('day');setDayFromMonth(false)}}><Clock3 size={16}/>일</button>
+                  </div>
+                  <button type="button" className="secondary-button" aria-label="오늘로 이동" onClick={() => setCalendarDate(TODAY)}>오늘</button>
+                </div>
+                <div className="section-title calendar-period">
                   <h2>
                     {calendarDate.slice(0, 4)}년 {Number(calendarDate.slice(5, 7))}월
                   </h2>
                   <div className="calendar-controls">
                     <button
+                      type="button"
                       className="icon-button"
-                      aria-label="이전 주"
-                      onClick={() => setCalendarDate(addDays(calendarDate, -7))}
+                      aria-label={calendarMode==='month'?'이전 달':'이전 주'}
+                      onClick={() => setCalendarDate(calendarMode==='month'?shiftMonth(calendarDate,-1):addDays(calendarDate, -7))}
                     >
                       <ChevronLeft size={16} />
                     </button>
-                    <button className="secondary-button" onClick={() => setCalendarDate(TODAY)}>
-                      오늘
-                    </button>
                     <button
+                      type="button"
                       className="icon-button"
-                      aria-label="다음 주"
-                      onClick={() => setCalendarDate(addDays(calendarDate, 7))}
+                      aria-label={calendarMode==='month'?'다음 달':'다음 주'}
+                      onClick={() => setCalendarDate(calendarMode==='month'?shiftMonth(calendarDate,1):addDays(calendarDate, 7))}
                     >
                       <ChevronRight size={16} />
                     </button>
                   </div>
                 </div>
-                <CalendarDateStrip onStep={days=>setCalendarDate(date=>addDays(date,days))}><div className="calendar-days">
+                {calendarMode==='month'?<>
+                <CalendarMonth date={calendarDate} today={TODAY} tasks={tasks} events={events} preferences={preferences} onStep={months=>setCalendarDate(date=>shiftMonth(date,months))} onSelect={date=>{setCalendarDate(date);setCalendarMode('day');setDayFromMonth(true);setCalendarTab(tab=>tab==='list'?tab:'timeline');requestAnimationFrame(()=>{const card=document.querySelector('.calendar-main');if(card&&card.getBoundingClientRect().top<0)card.scrollIntoView({block:'start',behavior:'instant'})})}}/>
+                <p className="calendar-month-hint">날짜를 누르면 시간별 타임라인이 열립니다.</p>
+                </>:<CalendarDateStrip onStep={days=>setCalendarDate(date=>addDays(date,days))}><div className="calendar-days">
                   {currentWeek.map((date) => (
                     <button
                       key={date}
@@ -1320,30 +1346,27 @@ function WorkspaceContent({
                     </button>
                   ))}
                 </div>
-                </CalendarDateStrip>
+                </CalendarDateStrip>}
+                {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
                 <CalendarColors preferences={preferences} disabled={busy||hasPending||demo} onSave={p=>void perform({type:'preferences.update',preferences:p},'일정·할 일 색상을 저장했습니다.')}/>
-                <Tabs value={calendarTab} onValueChange={setCalendarTab} className="calendar-content-tabs">
+                {calendarMode==='day'&&<Tabs value={calendarTab} onValueChange={setCalendarTab} className="calendar-content-tabs">
                 <TabsList aria-label="날짜별 할 일과 일정" className="calendar-tab-list">
                   <TabsTrigger value="timeline">타임라인 <span>{selectedTimeline.length}</span></TabsTrigger>
+                  <TabsTrigger value="list">목록</TabsTrigger>
                   <TabsTrigger value="tasks">할 일 <span>{selectedCalendarTasks.filter(t=>t.status!=='done').length}</span></TabsTrigger>
-                  <TabsTrigger value="events">일정 <span>{selectedEvents.length}</span></TabsTrigger>
                   <TabsTrigger value="waiting">대기함 <span>{calendarInbox.length}</span></TabsTrigger>
                 </TabsList>
-                {hasPending&&unconfirmedCalendarMove&&<div className="calendar-move-pending" role="status"><strong>시간 변경 결과를 확인하고 있어요</strong><p>{unconfirmedCalendarMove.title} · {formatTime(unconfirmedCalendarMove.start)}–{formatTime(unconfirmedCalendarMove.end)}로 변경 요청</p><p>현재는 마지막으로 확인한 시간을 표시합니다. 연결되면 저장 결과를 다시 확인합니다.</p><button className="text-button" disabled={busy} onClick={()=>void retry()}>저장 결과 확인</button></div>}
                 <TabsContent value="tasks"><CalendarTasks tasks={selectedCalendarTasks} projects={projects} preferences={preferences} date={calendarDate} today={TODAY} disabled={busy||hasPending} onOpen={id=>selectedCalendarTasks.find(t=>t.id===id)?.status!=='done'&&selectedTimeline.some(e=>e.id==='task-due:'+id)?openTaskSchedule(id):setDetail({kind:'task',id})} onToggle={id=>void toggleTask(id)}/></TabsContent>
                 <TabsContent value="waiting"><CalendarTasks tasks={calendarInbox} projects={projects} preferences={preferences} date={calendarDate} today={TODAY} disabled={busy||hasPending} inbox onOpen={id=>openTaskSchedule(id)} onToggle={id=>void toggleTask(id)} onResume={id=>void perform({type:'task.status',id,status:'todo'},'할 일 목록으로 복귀했습니다.')}/></TabsContent>
                 <TabsContent value="timeline">
-                  <div className="section-title"><h2>{Number(calendarDate.slice(-2))}일 타임라인</h2><span className="muted">{selectedTimeline.length}개</span></div>
-                  <CalendarAgenda key={'timeline:'+calendarDate} events={selectedTimeline} timelineTasks={tasks} date={calendarDate} onToggleTask={id=>void toggleTask(id)} onScheduleTask={id=>openTaskSchedule(id)} onDeleteTask={id=>perform({type:'task.delete',id},'할 일을 삭제했습니다.')} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/>
+                  <div className="section-title"><h2>{Number(calendarDate.slice(5,7))}월 {Number(calendarDate.slice(-2))}일 {weekdayLabels[mondayIndex(calendarDate)]}요일</h2><span className="muted">{selectedTimeline.length}개</span></div>
+                  <CalendarDayGrid key={'grid:'+calendarDate} date={calendarDate} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} events={selectedTimeline} tasks={tasks} projects={projects} preferences={preferences} disabled={busy||hasPending} onToggleTask={id=>void toggleTask(id)} onScheduleTask={id=>openTaskSchedule(id)} onCreateAt={minute=>openCreate('event',undefined,{date:calendarDate,time:formatTime(minute)})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/>
                 </TabsContent>
-                <TabsContent value="events">
-                <div className="section-title">
-                  <h2>{Number(calendarDate.slice(-2))}일 일정</h2>
-                  <span className="muted">{selectedEvents.length}개</span>
-                </div>
-
-                <div className="calendar-full-events"><CalendarAgenda key={calendarDate} events={selectedEvents} colorTasks={tasks} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/></div>
-                </TabsContent></Tabs>
+                <TabsContent value="list">
+                  <div className="section-title"><h2>{Number(calendarDate.slice(-2))}일 목록</h2><span className="muted">{selectedTimeline.length}개</span></div>
+                  <p className="calendar-task-guidance">길게 눌러 위아래로 옮기면 시간이 바뀌고, 왼쪽으로 밀면 수정·삭제할 수 있어요.</p>
+                  <CalendarAgenda key={'timeline:'+calendarDate} events={selectedTimeline} timelineTasks={tasks} date={calendarDate} onToggleTask={id=>void toggleTask(id)} onScheduleTask={id=>openTaskSchedule(id)} onDeleteTask={id=>perform({type:'task.delete',id},'할 일을 삭제했습니다.')} preferences={preferences} projects={projects} disabled={busy||hasPending} onInteractionChange={setCalendarInteracting} onMove={moveCalendarEvent} onEdit={id=>openEdit('event',id)} onDelete={event=>setDeleteTarget({kind:'event',id:event.id,title:event.title})} onOpen={e=>e.id.startsWith('protected:')?navigate('portfolio'):e.taskId?setDetail({kind:'task',id:e.taskId}):setDetail({kind:'event',id:e.id})}/>
+                </TabsContent></Tabs>}
               </section>
               <aside className="review-summary">
                 <h2>시간을 비워두는 것도 계획</h2>
@@ -1799,7 +1822,7 @@ function WorkspaceContent({
           </div>
         </SheetContent>
       </Sheet>
-      {scheduleTask&&<QuickTaskSchedule key={scheduleTask.id+':'+scheduleTask.date} data={data} taskId={scheduleTask.id} initialDate={scheduleTask.date} now={clock} busy={busy} pending={hasPending} demo={demo} onSave={action=>perform(action,'시간을 배정했습니다.')} onRetry={()=>void retry()} onClose={()=>closeTaskSchedule()} onHold={()=>perform({type:'task.hold',id:scheduleTask.id},'할 일 대기함으로 옮겼습니다.')} onHeld={()=>closeTaskSchedule(()=>{setCalendarTab('waiting');navigate('calendar')})} onDetails={()=>{const id=scheduleTask.id;closeTaskSchedule(()=>setDetail({kind:'task',id}))}} onSaved={(date,eventId)=>closeTaskSchedule(()=>{setCalendarDate(date);setCalendarTab('timeline');navigate('calendar');window.dispatchEvent(new Event('orbit:calendar-changed'));requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById('agenda-row-'+eventId)?.scrollIntoView({block:'center',behavior:'instant'})))})}/>}
+      {scheduleTask&&<QuickTaskSchedule key={scheduleTask.id+':'+scheduleTask.date} data={data} taskId={scheduleTask.id} initialDate={scheduleTask.date} now={clock} busy={busy} pending={hasPending} demo={demo} onSave={action=>perform(action,'시간을 배정했습니다.')} onRetry={()=>void retry()} onClose={()=>closeTaskSchedule()} onHold={()=>perform({type:'task.hold',id:scheduleTask.id},'할 일 대기함으로 옮겼습니다.')} onHeld={()=>closeTaskSchedule(()=>openCalendarDay(calendarDate,'waiting'))} onDetails={()=>{const id=scheduleTask.id;closeTaskSchedule(()=>setDetail({kind:'task',id}))}} onSaved={(date,eventId)=>closeTaskSchedule(()=>{openCalendarDay(date);window.dispatchEvent(new Event('orbit:calendar-changed'));requestAnimationFrame(()=>requestAnimationFrame(()=>(document.getElementById('day-block-'+eventId)??document.getElementById('agenda-row-'+eventId))?.scrollIntoView({block:'center',behavior:'instant'})))})}/>}
       <Dialog
         open={!!create}
         onOpenChange={(open) => {

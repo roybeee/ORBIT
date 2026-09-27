@@ -12,6 +12,8 @@ export const CAPTURES = {
   "project-form-invalid": { route: "/", description: "New project dialog blocked by an empty title" },
   "project-created": { route: "/", description: "Project detail opened right after saving" },
   "project-after-reload": { route: "/", description: "Project list after a full page reload" },
+  "calendar-month": { route: "/demo#calendar", description: "일정 opens on the month grid with day titles" },
+  "calendar-day": { route: "/demo#calendar", description: "A tapped day as an hourly timeline" },
 } as const;
 
 export type CaptureName = keyof typeof CAPTURES;
