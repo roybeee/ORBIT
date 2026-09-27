@@ -301,13 +301,14 @@ def receipts():
     """Saves every Slack request in ORBIT before the model runs; see receipts.py."""
     return Receipts(hermes_home() / 'plugin-state' / 'orbit-commands' / 'requests.sqlite3',
                     post=lambda body: orbit('POST', body, path='requests'), origin=lambda: current_origin(),
-                    provider=setting('ORBIT_SLACK_MODEL_PROVIDER') or 'openai-codex')
+                    provider=setting('ORBIT_SLACK_MODEL_PROVIDER') or 'openai-codex', time_zone=setting('ORBIT_SLACK_TIME_ZONE') or 'Asia/Seoul')
 
 
 def register(ctx):
     saved = receipts()
     ctx.register_hook('pre_gateway_dispatch', saved.on_dispatch)
     ctx.register_hook('api_request_error', saved.on_api_error)
+    ctx.register_hook('post_api_request', saved.on_api_success)
     ctx.register_hook('post_llm_call', saved.on_llm_done)
     saved.resume()
     for name, handler, description, parameters in TOOLS:

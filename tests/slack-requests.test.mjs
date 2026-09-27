@@ -66,9 +66,27 @@ test('a spent quota keeps the request waiting, joins the shared hold, and is nev
  assert.match(item.statusLabel,/사용량 한도/);assert.doesNotMatch(item.statusLabel,/인증/);
  assert.ok(item.summary.length<=60);assert.equal(item.text,undefined);
  assert.match(item.permalink,/C0B31KPEB61\/p1790313921880000$/);
- // A late "answered" (the turn's error reply) must not hide the waiting request.
+ // Hermes reports "answered" only for a turn that ended with an answer: the turn recovered after all.
  await call(db,{action:'outcome',source,outcome:'answered'});
- assert.equal((await rowOf(db)).status,'waiting_quota');
+ assert.equal((await rowOf(db)).status,'answered');
+}finally{db.close()}});
+
+test('once a resume has started, a late answer or limit report changes nothing and opens no hold',async()=>{const db=await setup();try{
+ await receive(db);await call(db,{action:'outcome',source,outcome:'limit',kind:'quota',detail:'quota exhausted',retryAfterSeconds:0});
+ await clearHold(db,owner,'hermes','test');
+ await advanceSlackRequests(db,owner,env);
+ assert.equal((await rowOf(db)).status,'processing');
+ await call(db,{action:'outcome',source,outcome:'answered'});
+ await call(db,{action:'outcome',source,outcome:'limit',kind:'quota',detail:'quota exhausted',retryAfterSeconds:3600});
+ assert.equal((await rowOf(db)).status,'processing');
+ assert.equal(await activeHold(db,owner,'hermes'),null);
+}finally{db.close()}});
+
+test('a request claimed by a worker that died before creating its turn waits again instead of blocking resumes',async()=>{const db=await setup();try{
+ await receive(db);await call(db,{action:'outcome',source,outcome:'limit',kind:'quota',detail:'quota exhausted',retryAfterSeconds:0});
+ await db.prepare("UPDATE orbit_slack_requests SET status='processing',turn_id='lost-turn',attempts=1,updated_at=?").bind(new Date(Date.now()-11*60000).toISOString()).run();
+ await advanceSlackRequests(db,owner);
+ const row=await rowOf(db);assert.equal(row.status,'waiting_quota');assert.equal(row.attempts,0);
 }finally{db.close()}});
 
 test('a short request-rate limit and an authentication failure get their own causes',async()=>{const db=await setup();try{
@@ -128,6 +146,20 @@ test('a draft whose time already passed is not registered as is; a new time can 
  assert.deepEqual([event.date,event.start,event.end],[future,900,960]);
 }finally{db.close()}});
 
+test('a direct Google Calendar draft whose time passed is not created either',async()=>{const db=await setup();try{
+ await receive(db);await call(db,{action:'outcome',source,outcome:'limit',kind:'quota',detail:'quota exhausted',retryAfterSeconds:0});
+ await advanceSlackRequests(db,owner,env);
+ const yesterday=addDays(todayInZone('Asia/Seoul'),-1);
+ await answer(db,[meeting('past',840,yesterday)]);
+ // The runner only proposes Google events with Google connected; the stored card is switched to one here.
+ const action=await db.prepare('SELECT id FROM orbit_agent_actions WHERE owner_id=?').bind(owner).first();
+ await db.prepare('UPDATE orbit_agent_actions SET action_json=? WHERE id=?').bind(JSON.stringify({type:'google.event.create',event:{title:'2시 미팅',date:yesterday,start:840,end:900,timeZone:'Asia/Seoul',description:''}}),action.id).run();
+ const [item]=await listSlackRequests(db,owner);assert.equal(item.counts.expired,1);
+ const real=globalThis.fetch;let google=0;globalThis.fetch=async()=>{google++;return new Response('{}',{status:500})};
+ try{await assert.rejects(()=>decide(db,owner,{id:action.id,decision:'approve'},env),e=>e.code==='SLACK_EXPIRED')}finally{globalThis.fetch=real}
+ assert.equal(google,0,'Google is never called for an expired draft');
+}finally{db.close()}});
+
 test('a resumed turn stopped by the limit again goes back to waiting without spending an attempt',async()=>{const db=await setup();try{
  await receive(db);await call(db,{action:'outcome',source,outcome:'limit',kind:'quota',detail:'quota exhausted',retryAfterSeconds:0});
  await advanceSlackRequests(db,owner,env);
@@ -146,6 +178,11 @@ test('the owner can process a request again now or cancel it; cancelling closes 
  assert.equal((await rowOf(db)).status,'queued');
  await advanceSlackRequests(db,owner,env);
  await answer(db,[meeting('m14',840)]);
+ // Processing again after something was registered would propose it twice.
+ const action=await db.prepare('SELECT id FROM orbit_agent_actions WHERE owner_id=?').bind(owner).first();
+ await db.prepare("UPDATE orbit_agent_actions SET state='approved' WHERE id=?").bind(action.id).run();
+ await assert.rejects(()=>changeSlackRequest(db,owner,{id:item.id,action:'retry'}),/이미 등록한 초안/);
+ await db.prepare("UPDATE orbit_agent_actions SET state='pending' WHERE id=?").bind(action.id).run();
  await changeSlackRequest(db,owner,{id:item.id,action:'cancel'});
  assert.equal((await rowOf(db)).status,'cancelled');
  assert.equal((await db.prepare("SELECT state FROM orbit_agent_actions WHERE owner_id=?").bind(owner).first()).state,'rejected');

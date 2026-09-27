@@ -183,7 +183,7 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(sorted(ctx.tools), ['orbit_slack_choose', 'orbit_slack_directive_sync', 'orbit_slack_note', 'orbit_slack_task', 'orbit_slack_today'])
         self.assertLessEqual(len(self.plugin.GUIDANCE), 1200)
         self.assertIn('needs_confirmation', self.plugin.GUIDANCE)
-        self.assertEqual(sorted(ctx.hooks), ['api_request_error', 'post_llm_call', 'pre_gateway_dispatch'])
+        self.assertEqual(sorted(ctx.hooks), ['api_request_error', 'post_api_request', 'post_llm_call', 'pre_gateway_dispatch'])
 
     def test_title_is_the_to_do_itself_without_instruction_words(self):
         self.assertIn("'추가'", self.plugin.GUIDANCE)

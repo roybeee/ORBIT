@@ -30,6 +30,8 @@ export function statusLabel(status:RequestStatus,reasonKind:ReasonKind,nextCheck
 }
 
 type Card={state:string;action:{type?:string;event?:{date?:string;start?:number}}};
+// Event proposals that carry a start time: ORBIT events and direct Google Calendar events.
+export const TIMED_ACTIONS=['event.upsert','google.event.create'];
 // A proposed event whose start time has passed cannot be registered as proposed.
 export function eventStarted(event:{date?:string;start?:number}|undefined,timeZone:string,now=new Date()){
  if(!event?.date||typeof event.start!=='number')return false;
@@ -37,7 +39,7 @@ export function eventStarted(event:{date?:string;start?:number}|undefined,timeZo
  return event.date<today||event.date===today&&event.start<=minuteInZone(timeZone,now);
 }
 export function countCards(cards:Card[],timeZone:string,now=new Date()):RequestCounts{
- const open=cards.filter(c=>c.state==='pending'||c.state==='applying'),expired=open.filter(c=>c.action.type==='event.upsert'&&eventStarted(c.action.event,timeZone,now)).length;
+ const open=cards.filter(c=>c.state==='pending'||c.state==='applying'),expired=open.filter(c=>TIMED_ACTIONS.includes(c.action.type??'')&&eventStarted(c.action.event,timeZone,now)).length;
  return {total:cards.length,pending:open.length-expired,approved:cards.filter(c=>c.state==='approved').length,rejected:cards.filter(c=>c.state==='rejected').length,expired};
 }
 const STORED:Record<string,RequestStatus>={received:'received',waiting_quota:'waiting',queued:'waiting',processing:'processing',failed:'failed',unconfirmed:'unconfirmed'};

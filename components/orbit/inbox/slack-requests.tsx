@@ -34,7 +34,7 @@ export function SlackRequests({timeZone,onOpenDrafts}:{timeZone:string;onOpenDra
    <p className="slack-request-status" role="status">{item.statusLabel}</p>
    <div className="inbox-card-actions">
     {item.conversationId&&item.counts.total>0&&<button className="secondary-button" onClick={()=>onOpenDrafts(item.conversationId)}><FileText size={15}/>초안 열기</button>}
-    {RETRYABLE.has(item.status)&&<button className="secondary-button" disabled={!!busy} onClick={()=>void change(item,'retry')}><RotateCcw size={15}/>다시 처리</button>}
+    {RETRYABLE.has(item.status)&&!item.counts.approved&&<button className="secondary-button" disabled={!!busy} onClick={()=>void change(item,'retry')}><RotateCcw size={15}/>다시 처리</button>}
     {CANCELABLE.has(item.status)&&<button className="text-button" disabled={!!busy} onClick={()=>void change(item,'cancel')}><X size={15}/>취소</button>}
     <a className="text-button" href={item.permalink} target="_blank" rel="noreferrer">원본 보기<ExternalLink size={14}/></a>
    </div>

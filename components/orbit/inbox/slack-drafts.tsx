@@ -24,9 +24,11 @@ function TimeEditor({item,timeZone,expired,onApprove,busy}:{item:AgentAction;tim
  const event=eventOf(item)!;
  const [open,setOpen]=useState(expired);
  const [date,setDate]=useState(expired?todayInZone(timeZone):event.date),[start,setStart]=useState(clock(event.start)),[end,setEnd]=useState(clock(event.end));
- const valid=!!date&&toMinutes(end)>toMinutes(start);
+ // A time input cannot show 24:00: an unchanged end at midnight keeps its minute instead of losing one.
+ const endMinute=event.end===1440&&end===clock(1440)?1440:toMinutes(end);
+ const valid=!!date&&endMinute>toMinutes(start);
  if(!open)return <button className="text-button" disabled={busy} onClick={()=>setOpen(true)}>시간 수정 후 등록</button>;
- return <form className="slack-draft-time" onSubmit={e=>{e.preventDefault();if(valid)onApprove({date,start:toMinutes(start),end:toMinutes(end)})}}>
+ return <form className="slack-draft-time" onSubmit={e=>{e.preventDefault();if(valid)onApprove({date,start:toMinutes(start),end:endMinute})}}>
   {expired&&<p className="inbox-card-late" role="note">예정 시간({event.date} {clock(event.start)})이 지나 그대로 등록하지 않습니다. 새 시간을 정해 주세요.</p>}
   <label>날짜<input className="form-field" type="date" required min={todayInZone(timeZone)} value={date} onChange={e=>setDate(e.target.value)}/></label>
   <label>시작<input className="form-field" type="time" required step={300} value={start} onChange={e=>setStart(e.target.value)}/></label>
@@ -39,17 +41,19 @@ function TimeEditor({item,timeZone,expired,onApprove,busy}:{item:AgentAction;tim
 // Drafts recovered from one saved Slack request: reviewed and registered together, one card each.
 export function SlackDrafts({id,title,items,snapshot,review,onOpenConversation}:{id:string;title:string;items:readonly AgentAction[];snapshot:WorkspaceSnapshot;review:ActionReview;onOpenConversation:()=>void}){
  const timeZone=snapshot.data.preferences.timeZone;
- const [running,setRunning]=useState(false),[failures,setFailures]=useState<Record<string,string>>({});
+ type Failure={message:string;overlap?:{slot?:Slot;confirmation:string}};
+ const [running,setRunning]=useState(false),[failures,setFailures]=useState<Record<string,Failure>>({});
  const pending=items.filter(i=>i.state==='pending');
- const expired=(item:AgentAction)=>item.action.type==='event.upsert'&&eventStarted(item.action.event,timeZone);
+ const expired=(item:AgentAction)=>(item.action.type==='event.upsert'||item.action.type==='google.event.create')&&eventStarted(item.action.event,timeZone);
  const ready=pending.filter(i=>!expired(i));
  const request=scopedRequest(agentRequest);
- async function approve(list:readonly AgentAction[],slot?:Slot){
-  setRunning(true);const failed:Record<string,string>={};let done=0;
+ // An overlap is confirmed with the same slot the owner chose, so the edited time is what gets registered.
+ async function approve(list:readonly AgentAction[],slot?:Slot,overlapConfirmation?:string){
+  setRunning(true);const failed:Record<string,Failure>={};let done=0;
   try{
    for(const item of list){
-    try{await sendDecision(item,'approve',slot?{overrides:slot}:{},request);done++}
-    catch(error){failed[item.id]=error instanceof AgentRequestError&&error.code==='CALENDAR_OVERLAP'?'다른 일정과 겹칩니다. 이 카드의 승인 버튼으로 겹침을 확인한 뒤 등록해 주세요.':error instanceof Error?error.message:'등록하지 못했습니다.'}
+    try{await sendDecision(item,'approve',{...(slot?{overrides:slot}:{}),...(overlapConfirmation?{overlapConfirmation}:{})},request);done++}
+    catch(error){failed[item.id]=error instanceof AgentRequestError&&error.code==='CALENDAR_OVERLAP'&&error.details?.overlapConfirmation?{message:'다른 일정과 겹칩니다. 겹침을 확인하고 등록하거나 시간을 바꿔 주세요.',overlap:{slot,confirmation:error.details.overlapConfirmation}}:{message:error instanceof Error?error.message:'등록하지 못했습니다.'}}
    }
   }finally{
    setFailures(failed);
@@ -60,7 +64,7 @@ export function SlackDrafts({id,title,items,snapshot,review,onOpenConversation}:
   }
  }
  const extra=(item:AgentAction)=><>
-  {failures[item.id]&&<p role="alert" className="agent-error">{failures[item.id]}</p>}
+  {failures[item.id]&&<div role="alert" className="agent-error"><p>{failures[item.id].message}</p>{failures[item.id].overlap&&<button className="primary-button" disabled={running||!!review.acting} onClick={()=>void approve([item],failures[item.id].overlap!.slot,failures[item.id].overlap!.confirmation)}>겹침을 확인하고 등록</button>}</div>}
   {item.state==='pending'&&eventOf(item)&&<TimeEditor item={item} timeZone={timeZone} expired={expired(item)} busy={running||!!review.acting} onApprove={slot=>void approve([item],slot)}/>}
  </>;
  return <section className="inbox-group slack-drafts" data-slack-drafts={id} aria-label={`Slack 보관 요청 · ${title}`}>

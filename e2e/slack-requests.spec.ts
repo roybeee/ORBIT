@@ -40,6 +40,10 @@ test.describe("대기 중인 Slack 요청", () => {
       if (request.method() === "PATCH") {
         const body = request.postDataJSON();
         decisions.push(body);
+        // The edited slot overlaps once; the owner confirms the overlap for that same slot.
+        if (body.overrides && !body.overlapConfirmation) {
+          return route.fulfill({ status: 409, json: { error: "겹치는 일정을 확인하고 등록 여부를 선택해 주세요.", code: "CALENDAR_OVERLAP", details: { overlapConfirmation: "a".repeat(64), conflicts: [{ title: "기존 회의", date: dayFromToday(0), start: 900, end: 960 }], total: 1 } } });
+        }
         pending = pending.filter((a) => a.id !== body.id);
         return route.fulfill({ json: { ok: true } });
       }
@@ -72,6 +76,9 @@ test.describe("대기 중인 Slack 요청", () => {
     await drafts.getByRole("button", { name: "이 시간으로 등록" }).click();
     await expect.poll(() => decisions.length).toBe(2);
     expect(decisions[1]).toMatchObject({ id: "a0000000-0000-4000-8000-000000000002", decision: "approve", overrides: { date: dayFromToday(0), start: 900, end: 960 } });
+    await drafts.getByRole("button", { name: "겹침을 확인하고 등록" }).click();
+    await expect.poll(() => decisions.length).toBe(3);
+    expect(decisions[2]).toMatchObject({ overrides: { date: dayFromToday(0), start: 900, end: 960 }, overlapConfirmation: "a".repeat(64) });
 
     await kept.getByRole("button", { name: "다시 처리" }).click();
     await expect.poll(() => changes.length).toBe(1);

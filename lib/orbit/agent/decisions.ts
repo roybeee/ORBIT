@@ -16,6 +16,7 @@ import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
 import {rehomeOrphanCards} from '../meetings/orphan-cards.ts';
 import {SLACK_REQUEST_CONVERSATION,eventStarted} from '../slack/request-view.ts';
+const SLACK_EXPIRED_MESSAGE='예정 시간이 지나 만료된 초안입니다. 새 시간을 정해 수정 후 등록하거나 닫아 주세요.';
 // An approval may rename the registration, recolor it or move it to another project,
 // either an existing one or one created from a typed name. Only these fields, and only
 // on the proposals that actually carry them.
@@ -89,9 +90,10 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
  const lease=await claimAction(db,owner,input.id);
  try{
   const parsed=parseAction(action.action);let revision=action.expectedRevision,result:unknown={};
+  const fromSlackRequest=!!action.conversationId?.startsWith(SLACK_REQUEST_CONVERSATION);
   if(parsed.type==='agent.dispatch'){const order=await dispatchOrder(db,owner,action.id,parsed,env,action.conversationId);result={orderId:order.id};}
   else if(parsed.type==='google.event.deleteSeries'){result=await deleteCalendarSeries(db,owner,env,action.id,lease,parsed);}
-  else if(parsed.type==='google.event.create'){result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
+  else if(parsed.type==='google.event.create'){if(fromSlackRequest&&eventStarted(parsed.event,(await readWorkspace(db,owner)).data.preferences.timeZone))throw new AgentError(SLACK_EXPIRED_MESSAGE,'SLACK_EXPIRED',409);result=await createGoogleEvent(db,owner,env,action.id,parsed,input.overlapConfirmation);}
   else if(parsed.type==='proposal.generate'||parsed.type==='review.saveGenerate'){const current=await readWorkspace(db,owner);if(parsed.type==='review.saveGenerate'&&current.revision!==action.expectedRevision&&!await db.prepare('SELECT operation_id FROM orbit_mutations WHERE owner_id=? AND operation_id=?').bind(owner,action.id).first()&&(!action.guard||!await guardMatches(action.guard,parsed,current.data)))throw new AgentError('관련 기록이 변경되어 최신 내용으로 제안을 다시 확인합니다.','ACTION_CHANGED',409);const planning=await startPlanningAction(db,owner,{operationId:action.id,expectedRevision:current.revision,action:parsed},env);revision=planning.snapshot.revision;result={briefDate:planning.date};}
   else{
    for(let attempt=0;attempt<3;attempt++){
@@ -100,7 +102,7 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
     if(!receipt&&((guard&&!await guardMatches(guard,parsed,current.data))||(!action.guard&&current.revision!==action.expectedRevision)))throw new AgentError('이 제안의 대상 또는 근거가 변경되어 최신 내용으로 다시 확인합니다.','ACTION_CHANGED',409);
     let command=withOverrides(parsed,input.overrides,context);
     // A recovered Slack draft whose time has passed is never registered as proposed: pick a new time.
-    if(!receipt&&command.type==='event.upsert'&&action.conversationId?.startsWith(SLACK_REQUEST_CONVERSATION)&&eventStarted(command.event,current.data.preferences.timeZone))throw new AgentError('예정 시간이 지나 만료된 초안입니다. 새 시간을 정해 수정 후 등록하거나 닫아 주세요.','SLACK_EXPIRED',409);
+    if(!receipt&&command.type==='event.upsert'&&fromSlackRequest&&eventStarted(command.event,current.data.preferences.timeZone))throw new AgentError(SLACK_EXPIRED_MESSAGE,'SLACK_EXPIRED',409);
     if(!receipt){
      // The reducer checks the command it applies, so the confirmation covers the edited registration.
      const review=registrationOverlap(current.data,command);

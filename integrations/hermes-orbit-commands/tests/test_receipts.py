@@ -88,14 +88,27 @@ class ReceiptsTest(unittest.TestCase):
         self.assertEqual([p['action'] for p in self.posts], ['receive', 'outcome'], 'the receipt is delivered before its outcome')
         self.assertEqual((self.posts[1]['outcome'], self.posts[1]['kind'], self.posts[1]['retryAfterSeconds']), ('limit', 'quota', 79663))
 
-    def test_a_requester_orbit_refuses_is_not_told_the_request_was_kept(self):
-        self.r.quota_state = lambda: {'kind': 'rate_limit', 'retry_after': 40}
+    def test_a_requester_orbit_refuses_is_not_told_the_request_was_kept_and_their_text_stays_in_hermes(self):
+        self.r.quota_state = lambda: None
         self.replies = [(403, {'error': 'source_scope_mismatch'})]
+        self.dispatch()
+        self.r.flush()
+        self.assertIs(self.r.accepted(receipts.slack_source(event())), False)
+        self.r.quota_state = lambda: {'kind': 'rate_limit', 'retry_after': 40}
         self.assertEqual(self.dispatch()['action'], 'skip')
         reply = self.adapter.sent[0][1]
         self.assertIn('일시적 요청 제한', reply)
         self.assertNotIn('보관', reply)
         self.assertIn('다시 보내 주세요', reply)
+        self.assertEqual(self.outbox(), [], 'nothing about a refused requester is sent to ORBIT again')
+
+    def test_an_unknown_requester_is_not_asked_to_resend(self):
+        self.r.quota_state = lambda: {'kind': 'quota', 'retry_after': None}
+        self.dispatch()
+        reply = self.adapter.sent[0][1]
+        self.assertIn('보관하고 있습니다', reply)
+        self.assertIn('다시 보내지 않아도 됩니다', reply)
+        self.assertEqual(self.posts, [], 'no delivery happens on the gateway loop')
 
     def test_without_a_way_to_reply_the_agent_still_runs(self):
         self.r.quota_state = lambda: {'kind': 'quota', 'retry_after': None}
@@ -117,17 +130,28 @@ class ReceiptsTest(unittest.TestCase):
         self.assertEqual([p['action'] for p in self.posts], ['receive', 'receive', 'outcome'])
         self.assertEqual(self.outbox(), [])
 
-    def test_only_the_call_that_ends_the_turn_reports_a_limit_and_the_error_reply_is_not_an_answer(self):
-        self.r.on_api_error(status_code=429, retryable=True, retry_count=0, max_retries=3, error={'message': 'rate limited'})
-        self.assertEqual(self.outbox(), [], 'a retried call is not an outcome')
+    def test_a_failure_the_turn_recovers_from_is_not_reported(self):
+        # Hermes marks a usage-limit 429 non-retryable but then rotates credentials or falls back.
+        self.r.on_api_error(status_code=429, retryable=False, error={'message': 'You exceeded your current quota'})
+        self.r.on_api_success()
+        self.r.on_llm_done()
+        self.r.flush()
+        self.assertEqual([p['outcome'] for p in self.posts], ['answered'])
+        self.assertEqual(self.r.pending, {})
+
+    def test_a_failure_without_any_later_success_is_reported_once_the_turn_is_over(self):
+        self.r.on_api_error(status_code=429, retryable=True, error={'message': 'rate limited'})
         self.r.on_api_error(status_code=429, retryable=False, error={'message': 'You exceeded your current quota; retry after 3600s'})
-        self.r.on_llm_done(assistant_response='⚠️ The model provider failed after retries.')
+        self.assertEqual(self.outbox(), [], 'nothing is reported while Hermes may still recover')
+        self.r.settle(receipts.receipt_key(receipts.build_source('T1', 'C0B31KPEB61', 'U1', '1790313921.880000')))
         self.r.flush()
         self.assertEqual([p['outcome'] for p in self.posts], ['limit'])
         self.assertEqual((self.posts[0]['kind'], self.posts[0]['retryAfterSeconds']), ('quota', 3600))
 
     def test_authentication_failure_and_normal_answer(self):
         self.r.on_api_error(status_code=401, retryable=False, error={'message': 'invalid token'})
+        for key in list(self.r.pending):
+            self.r.settle(key)
         other = dict(ORIGIN, message_ts='1790313999.000100')
         self.r.origin = lambda: other
         self.r.on_llm_done(assistant_response='등록했습니다.')
@@ -139,6 +163,13 @@ class ReceiptsTest(unittest.TestCase):
         for ev in (event(platform=Platform('telegram')), event(text='/stop'), event(is_bot=True), event(text='  ')):
             self.assertIsNone(self.dispatch(ev))
         self.assertEqual(self.outbox(), [])
+
+    def test_long_korean_text_fits_what_orbit_accepts(self):
+        text = receipts.clip('가' * 5000 + '😀' * 10)
+        self.assertLessEqual(len(text.encode('utf-8')), receipts.TEXT_BYTES)
+        self.assertLessEqual(len(text.encode('utf-16-le')) // 2, receipts.TEXT_UNITS)
+        emoji = receipts.clip('😀' * 3000)
+        self.assertLessEqual(len(emoji.encode('utf-16-le')) // 2, receipts.TEXT_UNITS)
 
     def test_ledger_event_id_and_workspace_are_used(self):
         ledger = types.ModuleType('gateway.slack_event_ledger')

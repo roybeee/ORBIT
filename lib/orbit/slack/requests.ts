@@ -43,11 +43,14 @@ async function outcome(db:Database,p:Principal,raw:unknown){
  const row=await find(db,p.owner_id,receiptKey(input.source));if(!row)throw new Failure(404,'receive_first');
  const now=new Date().toISOString();
  if(input.outcome==='answered'){
-  // Only a request still waiting for its first result: a reported limit is not undone by the error reply.
-  await db.prepare("UPDATE orbit_slack_requests SET status='answered',updated_at=? WHERE owner_id=? AND id=? AND status IN ('received','unconfirmed')").bind(now,p.owner_id,row.id).run();
+  // Hermes sends this only for a turn that finished with an answer, so it also closes a limit or failure
+  // reported earlier for the same turn — unless ORBIT already started resuming the request.
+  await db.prepare("UPDATE orbit_slack_requests SET status='answered',updated_at=? WHERE owner_id=? AND id=? AND (status IN ('received','unconfirmed') OR status IN ('waiting_quota','failed') AND turn_id='')").bind(now,p.owner_id,row.id).run();
  }else if(input.outcome==='limit'){
   const detail=limitDetail(input.kind,input.detail,input.retryAfterSeconds);
   const kind=input.kind==='rate_limit'||input.kind==='quota'?input.kind:classifyLimit(detail)?.kind??'quota';
+  // A late report for a request that is already answered, resumed or cancelled must not pause other work.
+  if(!['received','unconfirmed','waiting_quota'].includes(row.status))return {id:row.id,status:row.status,hold:await holdView(db,p.owner_id)};
   const hold=await recordLimit(db,p.owner_id,HERMES,detail,{id:'slack:'+row.id,automatic:false});
   await db.prepare("UPDATE orbit_slack_requests SET status='waiting_quota',reason_kind=?,reason=?,hold_id=?,next_check_at=?,updated_at=? WHERE owner_id=? AND id=? AND status IN ('received','unconfirmed','waiting_quota')")
    .bind(kind,detail.slice(0,300),hold?.id??'',hold?.nextCheckAt??0,now,p.owner_id,row.id).run();
@@ -92,6 +95,8 @@ export async function changeSlackRequest(db:Database,owner:string,raw:unknown){
  const row=await db.prepare('SELECT * FROM orbit_slack_requests WHERE owner_id=? AND id=?').bind(owner,input.id).first<Row>();
  if(!row||['answered','cancelled'].includes(row.status))throw new AgentError('요청을 찾지 못했습니다.','NOT_FOUND',404);
  if(row.status==='processing')throw new AgentError('지금 처리 중입니다. 끝난 뒤 다시 시도해 주세요.','BUSY',409);
+ // Processing again would propose what is already registered a second time.
+ if(input.action==='retry'&&row.turn_id&&await db.prepare("SELECT 1 FROM orbit_agent_actions WHERE owner_id=? AND turn_id=? AND state IN ('approved','applying') LIMIT 1").bind(owner,row.turn_id).first())throw new AgentError('이미 등록한 초안이 있어 다시 처리하지 않습니다. 남은 초안을 결재함에서 처리해 주세요.','CONFLICT',409);
  const now=new Date().toISOString(),note=input.action==='retry'?'새 처리로 대체':'Slack 요청 취소';
  const next=input.action==='retry'?"status='queued',turn_id='',conversation_id='',attempts=0":"status='cancelled'";
  const changed=await db.batch([

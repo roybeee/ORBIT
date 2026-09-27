@@ -38,7 +38,7 @@ hooks=$(ssh "$HOST" 'cd ~/.hermes/hermes-agent && timeout 90 venv/bin/python -c 
 from hermes_cli.plugins import get_plugin_manager
 from hermes_cli.lifecycle import has_hook
 get_plugin_manager().discover_and_load()
-print(\" \".join(h for h in (\"pre_gateway_dispatch\",\"api_request_error\",\"post_llm_call\") if has_hook(h)))" 2>/dev/null')
+print(\" \".join(h for h in (\"pre_gateway_dispatch\",\"api_request_error\",\"post_api_request\",\"post_llm_call\") if has_hook(h)))" 2>/dev/null')
 echo "hooks: $hooks"
 echo "orbit tools: $tools"
 for required in orbit_slack_task orbit_slack_today; do
@@ -46,7 +46,7 @@ for required in orbit_slack_task orbit_slack_today; do
     echo "the gateway does not register $required; restoring the backup"; restore; exit 1
   fi
 done
-for required in pre_gateway_dispatch api_request_error post_llm_call; do
+for required in pre_gateway_dispatch api_request_error post_api_request post_llm_call; do
   if [[ " $hooks " != *" $required "* ]]; then
     echo "the gateway does not register the $required hook; restoring the backup"; restore; exit 1
   fi

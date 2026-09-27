@@ -3,13 +3,14 @@ import type {Runtime} from '../agent/integrations.ts';
 import {runAgent} from '../agent/runner.ts';
 import {driveAgent} from '../agent/driver.ts';
 import {directChatConfigured} from '../agent/direct-model.ts';
-import {activeHold,waitsForLimit} from '../agent/provider-hold.ts';
+import {activeHold,classifyLimit,waitsForLimit} from '../agent/provider-hold.ts';
 import {notify} from '../notifications/store.ts';
 import {SLACK_REQUEST_CONVERSATION,summarize} from './request-view.ts';
 
 // Resumes Slack requests that a provider limit stopped: one at a time, each exactly once per claim.
 // The resume is an Orbit turn that may only propose approval cards; nothing is registered unapproved.
 const UNCONFIRMED_AFTER_MS=30*60000;
+const CLAIM_LEASE_MS=10*60000;
 // Same provider choice runAgent makes for a turn without planning or attachments.
 const resumeProvider=(env:Runtime)=>directChatConfigured(env)?'openai' as const:'hermes' as const;
 type Row={id:string;text:string;channel_id:string;created_at:string;status:string;turn_id:string;conversation_id:string};
@@ -35,13 +36,16 @@ async function reconcile(db:Database,owner:string){
  for(const r of done.results){
   const limited=r.turn_status==='failed'&&waitsForLimit(r.error);
   // A resume stopped by a limit waits again without spending an attempt.
-  const next=r.turn_status==='completed'?"status='done'":limited?"status='waiting_quota',attempts=MAX(0,attempts-1),reason_kind='quota'":"status='failed',reason_kind='other'";
+  const next=r.turn_status==='completed'?"status='done'":limited?`status='waiting_quota',attempts=MAX(0,attempts-1),reason_kind='${classifyLimit(r.error)?.kind==='rate_limit'?'rate_limit':'quota'}'`:"status='failed',reason_kind='other'";
   const changed=await db.prepare(`UPDATE orbit_slack_requests SET ${next},reason=?,updated_at=? WHERE owner_id=? AND id=? AND turn_id=? AND status='processing'`).bind(r.turn_status==='completed'?'':r.error.slice(0,300),now,owner,r.id,r.turn_id).run();
   if(changed.meta?.changes!==1||r.turn_status!=='completed')continue;
   const cards=await db.prepare("SELECT count(*) AS n FROM orbit_agent_actions WHERE owner_id=? AND turn_id=? AND state='pending'").bind(owner,r.turn_id).first<{n:number}>();
   if(cards?.n)await notify(db,owner,{id:'slack-request:'+r.id+':'+r.turn_id,kind:'approval',title:`Slack 보관 요청 초안 ${cards.n}건`,body:summarize(r.text)+' · 결재함에서 확인 후 등록하세요.',href:'/?conversation='+encodeURIComponent(r.conversation_id),createdAt:now}).catch(()=>{});
  }
  await db.prepare("UPDATE orbit_slack_requests SET status='unconfirmed',updated_at=? WHERE owner_id=? AND status='received' AND created_at<?").bind(now,owner,new Date(Date.now()-UNCONFIRMED_AFTER_MS).toISOString()).run();
+ // A worker that died between claiming a request and creating its turn must not block every resume:
+ // with no turn after the lease, the request waits again (nothing was sent for it).
+ await db.prepare("UPDATE orbit_slack_requests SET status='waiting_quota',attempts=MAX(0,attempts-1),updated_at=? WHERE owner_id=? AND status='processing' AND updated_at<? AND NOT EXISTS(SELECT 1 FROM orbit_agent_turns t WHERE t.owner_id=orbit_slack_requests.owner_id AND t.id=orbit_slack_requests.turn_id)").bind(now,owner,new Date(Date.now()-CLAIM_LEASE_MS).toISOString()).run();
 }
 
 export async function advanceSlackRequests(db:Database,owner:string,env?:Runtime){
