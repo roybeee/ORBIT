@@ -247,3 +247,8 @@ html[data-orbit-theme=light] .calendar-month-weekdays .is-sun,html[data-orbit-th
 @media(min-width:768px){.calendar-month-cell{min-height:128px;padding:6px 4px}.calendar-month-chip,.calendar-month-more{font-size:.75rem}}
 @media(max-width:767px){.calendar-main.is-month .calendar-month{margin-inline:-8px}.calendar-month-grid{gap:2px}}
 @media(max-width:380px){.calendar-mode-toggle button{min-width:56px;padding-inline:10px}.calendar-month-cell{min-height:104px}}
+
+.day-grid-move-hint{position:sticky;top:0;z-index:5;margin:0 0 8px;padding:8px 10px;background:var(--card);color:var(--muted-foreground);font-size:.75rem;border-radius:8px;min-height:34px}
+.day-grid-event{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.day-grid-event.is-moving{z-index:4;cursor:grabbing;box-shadow:0 4px 18px #0004;outline:2px solid var(--ring)}
+.day-grid-event.is-conflicting{outline-color:var(--destructive)}

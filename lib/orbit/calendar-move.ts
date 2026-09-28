@@ -32,9 +32,9 @@ export function moveRestriction(event: CalendarEvent): string | null {
   return null;
 }
 
-export function shiftedEvent(event: CalendarEvent, deltaY: number): CalendarEvent {
+export function shiftedEvent(event: CalendarEvent, deltaY: number, pixelsPerStep = PIXELS_PER_STEP): CalendarEvent {
   const duration = event.end - event.start;
-  const delta = Math.round(deltaY / PIXELS_PER_STEP) * STEP_MINUTES;
+  const delta = Math.round(deltaY / pixelsPerStep) * STEP_MINUTES;
   const start = Math.max(0, Math.min(1440 - duration, event.start + delta));
   return { ...event, start, end: start + duration };
 }

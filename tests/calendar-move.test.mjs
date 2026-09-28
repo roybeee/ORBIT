@@ -87,3 +87,13 @@ test('postponing a Google edit preserves the full duration across dates and unre
  const edit={operationId:'00000000-0000-4000-8000-000000000000',id:'google:one',calendarId:'primary',eventId:'one',etag:'"v1"',timeZone:'Asia/Seoul',title:'출장',startDate:'2026-09-21',endDate:'2026-09-22',start:1380,end:60,allDay:false,description:'준비',scope:'work'};
  assert.deepEqual(postponedCalendarEdit(edit,'2026-09-25',600,{date:'2026-09-21',minute:700}),{...edit,startDate:'2026-09-25',endDate:'2026-09-25',start:600,end:720});
 });
+
+test('hour grid uses its real pixel scale and retains event duration at boundaries',()=>{
+ const pixelsPerStep=60/4;
+ assert.deepEqual(shiftedEvent(event,60,pixelsPerStep),{...event,start:660,end:705});
+ assert.deepEqual(shiftedEvent(event,-30,pixelsPerStep),{...event,start:570,end:615});
+ assert.equal(shiftedEvent(event,6,pixelsPerStep).start,600);
+ assert.equal(shiftedEvent(event,9,pixelsPerStep).start,615);
+ assert.deepEqual(shiftedEvent(event,10000,pixelsPerStep),{...event,start:1395,end:1440});
+ assert.deepEqual(shiftedEvent(event,-10000,pixelsPerStep),{...event,start:0,end:45});
+});

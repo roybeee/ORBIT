@@ -146,7 +146,9 @@ test('deleting a task also removes its scheduled block from Google',()=>fixture(
  assert.equal(blocks().length,0);
 }));
 
-test('revoking an approved focus block and approving it again keeps its Google copy working',()=>fixture(async db=>{
+test('revoking an approved focus block and approving it again keeps its Google copy working',t=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-27T00:00:00Z')});
+ return fixture(async db=>{
  await connect(db);const g=google();
  const date='2026-09-28';
  await act(db,{type:'project.upsert',project:{id:'project',name:'Release',color:'#5558e8',symbol:'O',goal:'Ship',due:'2026-10-13',priority:5}});
@@ -160,4 +162,5 @@ test('revoking an approved focus block and approving it again keeps its Google c
  await act(db,{type:'proposal.approve',date,itemId:item.id});await flushCalendarOutbox(db,'a',env,id);
  assert.equal(copies(),1);
  assert.equal((await calendarExports(db,'a')).find(r=>r.eventId===id).status,'verified');
-}));
+ });
+});
