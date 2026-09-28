@@ -13,7 +13,7 @@ TS=$(date +%Y%m%d-%H%M%S)
 
 ssh "$HOST" "mkdir -p $BACKUPS && for old in ~/.hermes/plugins/orbit-slack-directive-sync.bak-*; do [ -e \"\$old\" ] && mv \"\$old\" $BACKUPS/; done; cp -a $LIVE $BACKUPS/orbit-slack-directive-sync.bak-$TS"
 echo "backup: ~/$BACKUPS/orbit-slack-directive-sync.bak-$TS"
-scp -q "$HERE/__init__.py" "$HERE/receipts.py" "$HERE/plugin.yaml" "$HOST:$LIVE/"
+scp -q "$HERE/__init__.py" "$HERE/receipts.py" "$HERE/release_health.py" "$HERE/plugin.yaml" "$HOST:$LIVE/"
 ssh "$HOST" "rm -f $LIVE/tests/test_plugin.py $LIVE/tests/test_receipts.py && mkdir -p $LIVE/tests"
 scp -q "$HERE/tests/test_plugin.py" "$HERE/tests/test_receipts.py" "$HOST:$LIVE/tests/"
 
@@ -23,7 +23,7 @@ restore() {
 if ! ssh "$HOST" "cd $LIVE && python3 -W error::ResourceWarning -m unittest discover -s tests"; then
   echo "server tests failed; restoring the backup"; restore; exit 1
 fi
-for file in __init__.py receipts.py; do
+for file in __init__.py receipts.py release_health.py; do
   echo "$file local:  $(shasum -a 256 "$HERE/$file" | cut -c1-16)  server: $(ssh "$HOST" "sha256sum $LIVE/$file" | cut -c1-16)"
 done
 ssh "$HOST" "systemctl --user restart hermes-gateway.service && sleep 5 && systemctl --user is-active hermes-gateway.service"

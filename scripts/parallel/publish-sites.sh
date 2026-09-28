@@ -28,6 +28,15 @@ tree="$(tree_of "${sha}")"
 ci="$(ci_conclusion_for "${sha}")"
 [[ "${ci}" == "success" ]] || die "Validate Orbit for ${sha} is '${ci}', not success"
 
+# Run the candidate revision's schema contract against the active database before publishing.
+# Missing endpoint is a blocked bootstrap, never an implicit pass.
+if [[ ${print_only} == 0 ]]; then
+  contract_file="$(mktemp)"
+  git show "${sha}:lib/orbit/release/contract.json" > "${contract_file}"
+  export ORBIT_RELEASE_CONTRACT_FILE="${contract_file}"
+  node --experimental-strip-types "$(dirname "${BASH_SOURCE[0]}")/../release-contract-check.mjs" preflight "${tree}" || die "production DB contract preflight blocked; apply forward migrations / inspect bootstrap procedure"
+fi
+
 # Codex and Hermes may be signed into one OpenAI account; then this run spends the
 # quota Hermes needs for planning (2026-09-23: Hermes 429, "retry after 393141s").
 # Check before anything is cloned or started. --print only shows the verdict.
@@ -81,6 +90,8 @@ SITES_COMMIT: <sha>
 SITES_VERSION: <id or number>
 DEPLOYMENT_ID: <appgdep_...>
 DEPLOYMENT_STATUS: <succeeded|failed|unknown>
+PUBLISHED_AT: <native deployment updated_at ISO timestamp>
+CONTRACT_STATUS: pending (must run verify-deploy.sh; publication alone never completes the release)
 NOTES: <build/test result and anything that failed>
 PROMPT
 )"

@@ -5,6 +5,7 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@
 import {Checkbox} from '@/components/ui/checkbox';
 import {InstallSettings} from './install-app';
 import {Choice} from './choice';
+import {ReleaseHealth} from './release-health';
 import {AppearanceSettings} from './appearance';
 import {CosmicMotionToggle} from './cosmic-skin';
 import type {View,Preferences} from '@/lib/orbit/model';
@@ -26,6 +27,7 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
           </DialogHeader>
           <div className="dialog-form">
             <AppearanceSettings/>
+            {settingsOpen&&<ReleaseHealth demo={demo}/>}
             <div className="settings-connection-links"><button type="button" className="secondary-button" disabled={demo} onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:connections'))}}>계정·연결 관리</button><button type="button" className="secondary-button" disabled={demo} onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('orbit:runtime'))}}>자동 실행 설정</button></div>
             <details className="workspace-more"><summary>업무 시간·계획 기준</summary><div className="dialog-form">
             <label className="form-label">시간대</label>

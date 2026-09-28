@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- ORBIT-20260928-01 운영 릴리스 계약 개발: `feat/release-contract`, 기준 main `959612be0bf5062d4bcf86a51f628e9b7e72ec4f`. DB 실제 테이블·컬럼·적용 이력, 인증된 읽기 API, Hermes 버전·훅·최근 증거를 분리 검사한다. R2 검증 증거와 설정의 운영 건강 화면, 게시 전 검사/검증 완료 승격 차단 구현. [설계·운영 절차](Release_Contract.ko.md). 운영 DB 개요는 50개에서 끝나 전체성 미확정: 제안서의 두 테이블 누락은 아직 확정하지 않는다. 신규 DDL/역마이그레이션 없음.
+
 - 2026-09-28 이동 후 이전 일정 잔상: `fix/calendar-move-duplicate`, 검증 기준 main `5477a903c2923de499feaa22a0ed5cd7067a59d6`. Google 캐시가 이전 시간을 보유하면 연결 ID가 같은 이벤트를 별도 일정으로 반환하는 경로 재현(추가 회귀 2건 수정 전 failed). 읽기 병합을 ID 기준으로 수정, 이동·실행 취소·다른 날짜 이동·관련 없는 일정 보존 회귀 passed (SQLite real, Google HTTP mocked). PR #145/#146은 merged; 해당 tree는 Sites published, 인증된 `/api/version` 확인은 소유자 세션 부재로 blocked · real. [게시 기록](releases/2026-09-28-5477a90.md).
 
 - 2026-09-28 Render 실패: `fix/runtime-transient-http`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 운영 9/27 HTTP 503·9/28 HTTP 502 직후 exit 1, 다음 실행 성공 확인. main 스크립트에서 동일 종료 경로 재현(HTTP mocked, Node 실행 real). 제한된 502/503/504 재시도 및 회귀 검사 추가. 운영은 archived branch + inline start command이므로 main 변경만으로 반영되지 않음. 원인 범위 및 운영 조치는 [실패 추적](Runtime_Failures_2026-09-28.ko.md) 참조. PR #146 merged `5477a90`; Render branch main + 파일 명령 변경, deploy `dep-dat4ahp7lnhs73bjpri0` live, 10:47:21Z 실행 성공 passed · real.
@@ -70,19 +72,16 @@
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-09-28T10:46:19Z
-- `origin/main`: `5477a903c2923de499feaa22a0ed5cd7067a59d6` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `37cf9479b822eb472d84872d7a09139eccc3d0a6`
+- 생성 시각(UTC): 2026-09-28T23:54:25Z
+- `origin/main`: `959612be0bf5062d4bcf86a51f628e9b7e72ec4f` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `75552709cac8010cf89b3ccf9db1621add9e0bfe`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| ORBIT | main | `be0098b` | 5 / 0 | no |
-| ORBIT-calendar | fix/day-grid-long-press | `cd80316` | 5 / 1 | no |
-| ORBIT-duplicate | fix/calendar-move-duplicate | `5477a90` | 0 / 0 | yes |
-| ORBIT-release | docs/release-5477a90 | `5477a90` | 0 / 0 | yes |
-| ORBIT-runtime | fix/runtime-transient-http | `691b101` | 3 / 2 | no |
+| ORBIT | main | `959612b` | 0 / 0 | no |
+| ORBIT-contract | feat/release-contract | `959612b` | 0 / 0 | yes |
 
 ### 열린 PR
 
