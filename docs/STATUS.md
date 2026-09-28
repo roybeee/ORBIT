@@ -6,9 +6,11 @@
 
 ## 현재 단계
 
-- 2026-09-28 Render 실패: `fix/runtime-transient-http`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 운영 9/27 HTTP 503·9/28 HTTP 502 직후 exit 1, 다음 실행 성공 확인. main 스크립트에서 동일 종료 경로 재현(HTTP mocked, Node 실행 real). 제한된 502/503/504 재시도 및 회귀 검사 추가. 운영은 archived branch + inline start command이므로 main 변경만으로 반영되지 않음. 원인 범위 및 운영 조치는 [실패 추적](Runtime_Failures_2026-09-28.ko.md) 참조. 브랜치/start command 수정·재배포는 not_run.
+- 2026-09-28 이동 후 이전 일정 잔상: `fix/calendar-move-duplicate`, 검증 기준 main `5477a903c2923de499feaa22a0ed5cd7067a59d6`. Google 캐시가 이전 시간을 보유하면 연결 ID가 같은 이벤트를 별도 일정으로 반환하는 경로 재현(추가 회귀 2건 수정 전 failed). 읽기 병합을 ID 기준으로 수정, 이동·실행 취소·다른 날짜 이동·관련 없는 일정 보존 회귀 passed (SQLite real, Google HTTP mocked). PR #145/#146은 merged; 해당 tree는 Sites published, 인증된 `/api/version` 확인은 소유자 세션 부재로 blocked · real. [게시 기록](releases/2026-09-28-5477a90.md).
 
-- 2026-09-28 시간표 길게 누르기: `fix/day-grid-long-press`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 일 보기에서 420ms 길게 누른 뒤 15분 단위 이동, 기존 일정 길이 유지, 겹침 표시, 가장자리 스크롤, 놓아서 저장 및 기존 실행 취소 연결. 일반 스크롤·짧은 탭·Esc·멀티터치·포커스 해제는 저장하지 않는다. Google에서 가져온 일정·보호 시간·승인된 제안은 기존 수정 경로를 유지한다. 관련 회귀 25건 passed (외부 Calendar mocked), 타입 검사 passed · real. GitHub CI 브라우저 E2E 28건 passed (run 36408709278), PR #145 merged `4aa4933`. 실기기 확인 및 Sites published/runtime-verified는 not_run. 기존 날짜 의존 테스트 실패는 수정 전 main에서도 재현했고 테스트 시계만 고정했다. 열린 PR #89, #144는 별도 문서 작업으로 확인했다.
+- 2026-09-28 Render 실패: `fix/runtime-transient-http`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 운영 9/27 HTTP 503·9/28 HTTP 502 직후 exit 1, 다음 실행 성공 확인. main 스크립트에서 동일 종료 경로 재현(HTTP mocked, Node 실행 real). 제한된 502/503/504 재시도 및 회귀 검사 추가. 운영은 archived branch + inline start command이므로 main 변경만으로 반영되지 않음. 원인 범위 및 운영 조치는 [실패 추적](Runtime_Failures_2026-09-28.ko.md) 참조. PR #146 merged `5477a90`; Render branch main + 파일 명령 변경, deploy `dep-dat4ahp7lnhs73bjpri0` live, 10:47:21Z 실행 성공 passed · real.
+
+- 2026-09-28 시간표 길게 누르기: `fix/day-grid-long-press`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 일 보기에서 420ms 길게 누른 뒤 15분 단위 이동, 기존 일정 길이 유지, 겹침 표시, 가장자리 스크롤, 놓아서 저장 및 기존 실행 취소 연결. 일반 스크롤·짧은 탭·Esc·멀티터치·포커스 해제는 저장하지 않는다. Google에서 가져온 일정·보호 시간·승인된 제안은 기존 수정 경로를 유지한다. 관련 회귀 25건 passed (외부 Calendar mocked), 타입 검사 passed · real. GitHub CI 브라우저 E2E 28건 passed (run 36408709278), PR #145 merged `4aa4933`. Sites published (기록 참조); runtime-verified는 소유자 세션 부재로 blocked · real. 실기기 재현 검증 not_run. 기존 날짜 의존 테스트 실패는 수정 전 main에서도 재현했고 테스트 시계만 고정했다. 열린 PR #89, #144는 별도 문서 작업으로 확인했다.
 
 - 2026-09-28 저장 지연·일괄 반려 수정: `fix/responsive-save-selection`, 검증 기준 main `8f56f8e8bb077e6a1ebc890262cbc93b184d2725`. 일정·할 일·프로젝트 입력을 기기에 먼저 보관하고 즉시 표시, 순차 전송·동일 요청 재생·필드 단위 충돌 병합을 적용한다. 실제 충돌 입력은 보관·복사 가능하며 관계없는 새 저장을 막지 않는다. 회의 일괄 반려는 **선택한 pending 항목만** 처리한다. typecheck 및 최종 전체 회귀 938건, Python-less 검사 5건씩 cold/warm 모두 passed (외부 네트워크 지연/유실은 mocked, SQLite 저장은 real). source/배포 상태는 PR merge 및 Sites 성공·운영 tree 관측으로 각각 갱신한다.
 
@@ -68,17 +70,19 @@
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-09-28T10:19:42Z
-- `origin/main`: `be0098ba000608eb77f7cee246102e605b0643cb` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `f568f5d9ed04a78e017f0cc8af0c5969fea1d0b2`
+- 생성 시각(UTC): 2026-09-28T10:46:19Z
+- `origin/main`: `5477a903c2923de499feaa22a0ed5cd7067a59d6` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `37cf9479b822eb472d84872d7a09139eccc3d0a6`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| ORBIT | main | `be0098b` | 0 / 0 | no |
-| ORBIT-calendar | fix/day-grid-long-press | `cd80316` | 0 / 1 | no |
-| ORBIT-runtime | fix/runtime-transient-http | `3612498` | 0 / 1 | no |
+| ORBIT | main | `be0098b` | 5 / 0 | no |
+| ORBIT-calendar | fix/day-grid-long-press | `cd80316` | 5 / 1 | no |
+| ORBIT-duplicate | fix/calendar-move-duplicate | `5477a90` | 0 / 0 | yes |
+| ORBIT-release | docs/release-5477a90 | `5477a90` | 0 / 0 | yes |
+| ORBIT-runtime | fix/runtime-transient-http | `691b101` | 3 / 2 | no |
 
 ### 열린 PR
 

@@ -164,3 +164,36 @@ test('revoking an approved focus block and approving it again keeps its Google c
  assert.equal((await calendarExports(db,'a')).find(r=>r.eventId===id).status,'verified');
  });
 });
+
+test('moving and undoing an exported event show one block while the Google cache is stale',()=>fixture(async db=>{
+ const g=await published(db);
+ await syncCalendar(db,'a',env,day);
+ const remoteId=g.only().id;
+ const one=async(start)=>{const rows=await shown(db);assert.equal(rows.length,1,'linked stale mirror must not appear as another schedule');assert.equal(rows[0].id,event.id);assert.equal(rows[0].start,start);};
+ await one(600);
+ await act(db,{type:'event.upsert',event:{...event,start:780,end:840}});
+ await one(780); // save response and subsequent refresh use this same repository read
+ await syncCalendar(db,'a',env,day); // Google still has the old time; local delivery is pending
+ await one(780);
+ await flushCalendarOutbox(db,'a',env,event.id);
+ await one(780); // outbox success precedes cache refresh
+ await syncCalendar(db,'a',env,day);
+ await one(780);assert.equal(g.only().id,remoteId);
+ await act(db,{type:'event.upsert',event});
+ await one(600); // undo must also hide the now-stale moved mirror
+ await flushCalendarOutbox(db,'a',env,event.id);
+ await syncCalendar(db,'a',env,day);
+ await one(600);assert.equal(g.only().id,remoteId);
+}));
+
+test('moving to another day hides the old linked copy but preserves unrelated and orphan imports',()=>fixture(async db=>{
+ await published(db);await syncCalendar(db,'a',env,day);
+ const cache=await db.prepare('SELECT events_json FROM orbit_calendar_cache WHERE owner_id=?').bind('a').first();
+ const [mirror]=JSON.parse(cache.events_json);
+ const unrelated={...mirror,id:'google:unrelated',google:{calendarId:'primary',eventId:'unrelated'}};
+ const orphan={...mirror,id:'google:orphan',google:{calendarId:'primary',eventId:'orphan',orbitEventId:'missing'}};
+ await db.prepare('UPDATE orbit_calendar_cache SET events_json=? WHERE owner_id=?').bind(JSON.stringify([mirror,unrelated,orphan]),'a').run();
+ await act(db,{type:'event.upsert',event:{...event,date:'2026-10-09',start:720,end:780}});
+ const rows=await shown(db);assert.deepEqual(rows.map(e=>e.id).sort(),[event.id,unrelated.id,orphan.id].sort());
+ assert.equal(rows.find(e=>e.id===event.id).date,'2026-10-09');
+}));
