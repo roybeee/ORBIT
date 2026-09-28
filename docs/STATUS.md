@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-09-28 Render 실패: `fix/runtime-transient-http`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 운영 9/27 HTTP 503·9/28 HTTP 502 직후 exit 1, 다음 실행 성공 확인. main 스크립트에서 동일 종료 경로 재현(HTTP mocked, Node 실행 real). 제한된 502/503/504 재시도 및 회귀 검사 추가. 운영은 archived branch + inline start command이므로 main 변경만으로 반영되지 않음. 원인 범위 및 운영 조치는 [실패 추적](Runtime_Failures_2026-09-28.ko.md) 참조. 브랜치/start command 수정·재배포는 not_run.
+
 - 2026-09-28 저장 지연·일괄 반려 수정: `fix/responsive-save-selection`, 검증 기준 main `8f56f8e8bb077e6a1ebc890262cbc93b184d2725`. 일정·할 일·프로젝트 입력을 기기에 먼저 보관하고 즉시 표시, 순차 전송·동일 요청 재생·필드 단위 충돌 병합을 적용한다. 실제 충돌 입력은 보관·복사 가능하며 관계없는 새 저장을 막지 않는다. 회의 일괄 반려는 **선택한 pending 항목만** 처리한다. typecheck 및 최종 전체 회귀 938건, Python-less 검사 5건씩 cold/warm 모두 passed (외부 네트워크 지연/유실은 mocked, SQLite 저장은 real). source/배포 상태는 PR merge 및 Sites 성공·운영 tree 관측으로 각각 갱신한다.
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
@@ -64,15 +66,17 @@
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-09-27T15:33:59Z
-- `origin/main`: `8f56f8e8bb077e6a1ebc890262cbc93b184d2725` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `6fe6a2f136b47c29e1e8da661fc20967da245f68`
+- 생성 시각(UTC): 2026-09-28T10:19:42Z
+- `origin/main`: `be0098ba000608eb77f7cee246102e605b0643cb` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `f568f5d9ed04a78e017f0cc8af0c5969fea1d0b2`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| orbit | fix/responsive-save-selection | `8f56f8e` | 0 / 0 | yes |
+| ORBIT | main | `be0098b` | 0 / 0 | no |
+| ORBIT-calendar | fix/day-grid-long-press | `cd80316` | 0 / 1 | no |
+| ORBIT-runtime | fix/runtime-transient-http | `3612498` | 0 / 1 | no |
 
 ### 열린 PR
 
