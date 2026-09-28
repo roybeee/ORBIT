@@ -59,10 +59,12 @@ export async function readWorkspace(db: Database, ownerId: string): Promise<Work
   const row = headers.results?.[0] as Row | undefined;
   const data = row ? decodeWorkspace(row.state_json,(chunks.results??[]) as WorkspaceChunk[]) : emptyWorkspace();
   const external = cache.results?.[0] as {events_json:string;time_zone:string} | undefined;
+  // A linked Google cache record is the same event even while an ORBIT edit is
+  // waiting for delivery. Reconciliation reads the raw cache to adopt remote edits.
   if (external?.time_zone === data.preferences.timeZone)
     data.events = [
       ...data.events.filter((e) => !e.id.startsWith('google:')),
-      ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>local.id===e.google?.orbitEventId&&local.title===e.title&&local.date===e.date&&local.start===e.start&&local.end===e.end)),
+      ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>!local.id.startsWith('google:')&&local.id===e.google?.orbitEventId)),
     ];
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   data.events=data.events.map(event=>linkEventProject(event,data));
