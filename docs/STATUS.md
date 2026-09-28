@@ -8,6 +8,8 @@
 
 - 2026-09-28 Render 실패: `fix/runtime-transient-http`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 운영 9/27 HTTP 503·9/28 HTTP 502 직후 exit 1, 다음 실행 성공 확인. main 스크립트에서 동일 종료 경로 재현(HTTP mocked, Node 실행 real). 제한된 502/503/504 재시도 및 회귀 검사 추가. 운영은 archived branch + inline start command이므로 main 변경만으로 반영되지 않음. 원인 범위 및 운영 조치는 [실패 추적](Runtime_Failures_2026-09-28.ko.md) 참조. 브랜치/start command 수정·재배포는 not_run.
 
+- 2026-09-28 시간표 길게 누르기: `fix/day-grid-long-press`, 기준 main `be0098ba000608eb77f7cee246102e605b0643cb`. 일 보기에서 420ms 길게 누른 뒤 15분 단위 이동, 기존 일정 길이 유지, 겹침 표시, 가장자리 스크롤, 놓아서 저장 및 기존 실행 취소 연결. 일반 스크롤·짧은 탭·Esc·멀티터치·포커스 해제는 저장하지 않는다. Google에서 가져온 일정·보호 시간·승인된 제안은 기존 수정 경로를 유지한다. 관련 회귀 25건 passed (외부 Calendar mocked), 타입 검사 passed · real. GitHub CI 브라우저 E2E 28건 passed (run 36408709278), PR #145 merged `4aa4933`. 실기기 확인 및 Sites published/runtime-verified는 not_run. 기존 날짜 의존 테스트 실패는 수정 전 main에서도 재현했고 테스트 시계만 고정했다. 열린 PR #89, #144는 별도 문서 작업으로 확인했다.
+
 - 2026-09-28 저장 지연·일괄 반려 수정: `fix/responsive-save-selection`, 검증 기준 main `8f56f8e8bb077e6a1ebc890262cbc93b184d2725`. 일정·할 일·프로젝트 입력을 기기에 먼저 보관하고 즉시 표시, 순차 전송·동일 요청 재생·필드 단위 충돌 병합을 적용한다. 실제 충돌 입력은 보관·복사 가능하며 관계없는 새 저장을 막지 않는다. 회의 일괄 반려는 **선택한 pending 항목만** 처리한다. typecheck 및 최종 전체 회귀 938건, Python-less 검사 5건씩 cold/warm 모두 passed (외부 네트워크 지연/유실은 mocked, SQLite 저장은 real). source/배포 상태는 PR merge 및 Sites 성공·운영 tree 관측으로 각각 갱신한다.
 
 - GitHub `main`은 병렬 작업 루프(`scripts/parallel/`, `main-integration` 룰셋) 아래에서 PR 단위로만 바뀐다.
