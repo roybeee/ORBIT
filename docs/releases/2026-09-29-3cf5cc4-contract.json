@@ -1,0 +1,324 @@
+{
+  "tree": "8320e8f390ec723534da0421ec24490c22f87aba",
+  "deploymentId": "appgdep_6abb07466c1c819195212f39b5e7700e",
+  "publishedAt": "2026-09-29T00:33:31.357117+00:00",
+  "checkedAt": "2026-09-29T00:34:01.175Z",
+  "status": "pending",
+  "checks": [
+    {
+      "id": "table:orbit_activity_messages",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_activity_sessions",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_activity_sync",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_agent_actions",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_agent_orders",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_agent_turns",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_analysis_cache",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_answer_feedback",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_aside_jobs",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_attachments",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_automation_connections",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_brief_parts",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_brief_runs",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_calendar_cache",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_calendar_edits",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_calendar_exports",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_calendar_settings",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_chief_jobs",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_conversations",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_daily_runs",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_daily_runtime",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_data_trash",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_discord_commands",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_discord_outbox",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_discord_state",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_google_task_links",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_gotem_sends",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_hermes_jobs",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_identity_links",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_integrations",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_meeting_reviews",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_mutations",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_note_revisions",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_notification_state",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_notifications",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_oauth_states",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_order_reads",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_order_reviews",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_plaud_imports",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_plaud_sync",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_provider_holds",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_push_deliveries",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_push_subscriptions",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_reviews",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_slack_commands",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_slack_credentials",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_slack_directives",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_slack_requests",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_sound_state",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_source_status",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_task_starts",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_workspace_chunks",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_workspace_projects",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "table:orbit_workspaces",
+      "status": "passed",
+      "reason": "필수 컬럼 확인"
+    },
+    {
+      "id": "migrations",
+      "status": "passed",
+      "reason": "모든 마이그레이션 적용 기록 확인"
+    },
+    {
+      "id": "service-owner",
+      "status": "passed",
+      "reason": "기존 소유자 작업공간 확인"
+    },
+    {
+      "id": "tree",
+      "status": "passed",
+      "reason": "실행 소스 일치"
+    },
+    {
+      "id": "publication",
+      "status": "passed",
+      "reason": "게시 증거 연결"
+    },
+    {
+      "id": "hermes",
+      "status": "blocked",
+      "reason": "Hermes 실행 증거 없음 또는 24시간 경과"
+    },
+    {
+      "id": "api:/api/version",
+      "status": "passed",
+      "reason": "인증된 외부 읽기 검사 영수증 확인 (5분 이내)"
+    },
+    {
+      "id": "api:/api/slack-requests",
+      "status": "passed",
+      "reason": "인증된 외부 읽기 검사 영수증 확인 (5분 이내)"
+    },
+    {
+      "id": "api:/api/gotem/metrics",
+      "status": "passed",
+      "reason": "인증된 외부 읽기 검사 영수증 확인 (5분 이내)"
+    }
+  ],
+  "elapsedSeconds": 30,
+  "features": {
+    "slackRequests": false,
+    "gotem": true
+  }
+}
