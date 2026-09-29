@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- PR #149 merged `af62ccd`, Sites v172 published/runtime-verified: 실제 필수 54개 테이블·컬럼과 인증 읽기 3개 통과. 적용 원장은 운영에서 `__appgarden_migrations(id,name,applied_at)`로 확인되어 표준 원장만 읽던 계약 검사기에 호환 추가 중. Hermes 실행 증거 미확인으로 전체 완료 승격은 pending.
+
 - PR #148 merged `b192f3a`: 운영 계약 최초 게시 후 DB metadata 검사가 blocked, 내부 API 읽기도 blocked로 기록되어 완료 승격되지 않음. 외부 인증 읽기 3개 HTTP 200 확인(두 테이블 조회 포함), 내부 자기 호출만 blocked. 성공한 API가 서버에 직접 기록하는 5분 유효 증거로 제한된 자기 호출 환경을 지원한다. 후속 수정은 메타데이터 쿼리 수를 최대 3회로 제한하고 provider 내부 테이블을 제외한다. ZIP 생성의 현지 시간대 의존성으로 tree가 dirty가 되는 원인은 파일 내용 동일·ZIP 시각 차이로 확인하여 재현 가능한 시각으로 고정한다.
 
 - ORBIT-20260928-01 운영 릴리스 계약 개발: `feat/release-contract`, 기준 main `959612be0bf5062d4bcf86a51f628e9b7e72ec4f`. DB 실제 테이블·컬럼·적용 이력, 인증된 읽기 API, Hermes 버전·훅·최근 증거를 분리 검사한다. R2 검증 증거와 설정의 운영 건강 화면, 게시 전 검사/검증 완료 승격 차단 구현. [설계·운영 절차](Release_Contract.ko.md). 운영 DB 개요는 50개에서 끝나 전체성 미확정: 제안서의 두 테이블 누락은 아직 확정하지 않는다. 신규 DDL/역마이그레이션 없음.

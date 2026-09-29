@@ -10,7 +10,7 @@ export async function schemaInventory(db:Database):Promise<SchemaInventory>{
  const tables:Record<string,string[]>={};
  for(const row of results)(tables[row.table_name]??=[]).push(row.column_name);
  let migrationNames:string[]=[],migrationHashes:string[]=[],ledgerReadable=false;
- if(tables.d1_migrations?.includes('name')){migrationNames=(await db.prepare('SELECT name FROM d1_migrations').all<{name:string}>()).results.map(r=>r.name);ledgerReadable=true;}
+ for(const ledger of ['__appgarden_migrations','d1_migrations'])if(tables[ledger]?.includes('name')){migrationNames=(await db.prepare(`SELECT name FROM ${ledger}`).all<{name:string}>()).results.map(r=>r.name);ledgerReadable=true;break;}
  if(tables.__drizzle_migrations?.includes('hash')){migrationHashes=(await db.prepare('SELECT hash FROM __drizzle_migrations').all<{hash:string}>()).results.map(r=>r.hash);ledgerReadable=true;}
  return {tables,migrationNames,migrationHashes,ledgerReadable};
 }
@@ -22,8 +22,8 @@ export function schemaChecks(inventory:SchemaInventory,required=contract):Check[
   const missing=columns.filter(c=>!actual.includes(c));
   checks.push({id:'table:'+table,status:missing.length?'failed':'passed',reason:missing.length?`필수 컬럼 없음: ${table}.${missing.join(', ')}`:'필수 컬럼 확인'});
  }
- const missing=required.migrations.filter(m=>!inventory.migrationNames.includes(m.name)&&!inventory.migrationHashes.includes(m.hash));
- checks.push({id:'migrations',status:!inventory.ledgerReadable?'blocked':missing.length?'failed':'passed',reason:!inventory.ledgerReadable?'적용 기록을 읽을 수 없음: d1_migrations / __drizzle_migrations':missing.length?'미적용 마이그레이션: '+missing.map(m=>m.name).join(', '):'모든 마이그레이션 적용 기록 확인'});
+ const missing=required.migrations.filter(m=>!inventory.migrationNames.some(name=>name===m.name||name===m.name.replace(/\.sql$/,''))&&!inventory.migrationHashes.includes(m.hash));
+ checks.push({id:'migrations',status:!inventory.ledgerReadable?'blocked':missing.length?'failed':'passed',reason:!inventory.ledgerReadable?'적용 기록을 읽을 수 없음: __appgarden_migrations / d1_migrations / __drizzle_migrations':missing.length?'미적용 마이그레이션: '+missing.map(m=>m.name).join(', '):'모든 마이그레이션 적용 기록 확인'});
  return checks;
 }
 export type HermesEvidence={version:string;hooks:string[];checkedAt:string};

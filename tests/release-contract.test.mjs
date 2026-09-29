@@ -89,3 +89,13 @@ test('read probe records only a successful authenticated read',async()=>{
  assert.equal((await releaseProbe(req,env,tree,async()=>{throw new Error('unavailable')},record)).status,503);assert.equal(recorded,0);
  assert.equal((await releaseProbe(req,env,tree,async()=>({}),record)).status,200);assert.equal(recorded,1);
 });
+
+test('observed Sites migration ledger is read without writing or assuming schema equals history',()=>fixture(async(db)=>{
+ await db.prepare('DROP TABLE d1_migrations').run();await db.prepare('CREATE TABLE __appgarden_migrations (id INTEGER PRIMARY KEY,name TEXT,applied_at TEXT)').run();
+ for(const m of contract.migrations)await db.prepare('INSERT INTO __appgarden_migrations(name,applied_at) VALUES(?,?)').bind(m.name,new Date(now).toISOString()).run();
+ assert.equal(readiness(schemaChecks(await schemaInventory(db))),'verified');
+ await db.prepare("DELETE FROM __appgarden_migrations WHERE name='0039_slack_requests.sql'").run();
+ assert.equal(schemaChecks(await schemaInventory(db)).find(c=>c.id==='migrations').status,'failed');
+ await db.prepare("INSERT INTO __appgarden_migrations(name) VALUES('0039_slack_requests')").run();
+ assert.equal(readiness(schemaChecks(await schemaInventory(db))),'verified');
+}));
