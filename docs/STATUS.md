@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- PR #148 merged `b192f3a`: 운영 계약 최초 게시 후 DB metadata 검사가 blocked, 내부 API 읽기도 blocked로 기록되어 완료 승격되지 않음. 외부 인증 읽기 3개 HTTP 200 확인(두 테이블 조회 포함), 내부 자기 호출만 blocked. 성공한 API가 서버에 직접 기록하는 5분 유효 증거로 제한된 자기 호출 환경을 지원한다. 후속 수정은 메타데이터 쿼리 수를 최대 3회로 제한하고 provider 내부 테이블을 제외한다. ZIP 생성의 현지 시간대 의존성으로 tree가 dirty가 되는 원인은 파일 내용 동일·ZIP 시각 차이로 확인하여 재현 가능한 시각으로 고정한다.
+
 - ORBIT-20260928-01 운영 릴리스 계약 개발: `feat/release-contract`, 기준 main `959612be0bf5062d4bcf86a51f628e9b7e72ec4f`. DB 실제 테이블·컬럼·적용 이력, 인증된 읽기 API, Hermes 버전·훅·최근 증거를 분리 검사한다. R2 검증 증거와 설정의 운영 건강 화면, 게시 전 검사/검증 완료 승격 차단 구현. [설계·운영 절차](Release_Contract.ko.md). 운영 DB 개요는 50개에서 끝나 전체성 미확정: 제안서의 두 테이블 누락은 아직 확정하지 않는다. 신규 DDL/역마이그레이션 없음.
 
 - 2026-09-28 이동 후 이전 일정 잔상: `fix/calendar-move-duplicate`, 검증 기준 main `5477a903c2923de499feaa22a0ed5cd7067a59d6`. Google 캐시가 이전 시간을 보유하면 연결 ID가 같은 이벤트를 별도 일정으로 반환하는 경로 재현(추가 회귀 2건 수정 전 failed). 읽기 병합을 ID 기준으로 수정, 이동·실행 취소·다른 날짜 이동·관련 없는 일정 보존 회귀 passed (SQLite real, Google HTTP mocked). PR #145/#146은 merged; 해당 tree는 Sites published, 인증된 `/api/version` 확인은 소유자 세션 부재로 blocked · real. [게시 기록](releases/2026-09-28-5477a90.md).

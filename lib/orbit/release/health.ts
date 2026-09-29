@@ -7,6 +7,7 @@ export type Report=Evidence&{checkedAt:string;status:'verified'|'failed'|'pendin
 const key=(owner:string,name:string)=>`release-health/${encodeURIComponent(owner)}/${name}.json`;
 export async function readEvidence<T>(bucket:Bucket,owner:string,name:string):Promise<T|null>{const obj=await bucket.get(key(owner,name));return obj?JSON.parse(new TextDecoder().decode(await obj.arrayBuffer())) as T:null;}
 export async function writeEvidence(bucket:Bucket,owner:string,name:string,data:unknown){await bucket.put(key(owner,name),new TextEncoder().encode(JSON.stringify(data)),{httpMetadata:{contentType:'application/json'}});}
+export async function recordReadProbe(bucket:Bucket,owner:string,path:string,tree:string,now=Date.now()){await writeEvidence(bucket,owner,'probes/'+encodeURIComponent(path),{tree,path,checkedAt:new Date(now).toISOString()});}
 export async function runHealth(db:Database,bucket:Bucket,owner:string,env:ReleaseEnv,tree:string,evidence:Evidence,origin:string,fetcher:typeof fetch=fetch,now=Date.now()):Promise<Report>{
  let checks:Check[]=[];
  try{checks=schemaChecks(await schemaInventory(db));}catch{checks.push({id:'database',status:'blocked',reason:'DB 구조 조회 실패'});}
@@ -20,7 +21,11 @@ export async function runHealth(db:Database,bucket:Bucket,owner:string,env:Relea
   const check:Check={id:'api:'+path,status:'blocked',reason:'검사용 서비스 자격 증명 미설정'};
   if(env.ORBIT_RELEASE_CONTRACT_TOKEN&&env.ORBIT_RELEASE_CONTRACT_OWNER===owner&&env.ORBIT_SITES_BEARER){
    try{
+    const receipt=await readEvidence<{tree:string;path:string;checkedAt:string}>(bucket,owner,'probes/'+encodeURIComponent(path));
+    const stamp=Date.parse(receipt?.checkedAt??'');
+    if(receipt?.tree===tree&&receipt.path===path&&stamp<=now&&now-stamp<=300000&&stamp>=Date.parse(evidence.publishedAt)){checks.push({...check,status:'passed',reason:'인증된 외부 읽기 검사 영수증 확인 (5분 이내)'});continue;}
     const response=await fetcher(origin+path+'?release_probe=1',{redirect:'error',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+env.ORBIT_RELEASE_CONTRACT_TOKEN,'OAI-Sites-Authorization':'Bearer '+env.ORBIT_SITES_BEARER}});
+    if(!response.ok){check.status='failed';check.reason=`읽기 검사 실패 (HTTP ${response.status})`;checks.push(check);continue;}
     const data=await response.json() as {status?:string;probe?:string;tree?:string};
     const ok=response.ok&&data.status==='ok'&&data.probe===path&&data.tree===tree;
     check.status=ok?'passed':'failed';check.reason=ok?'인증된 읽기 검사 통과':`읽기 검사 실패 (HTTP ${response.status})`;

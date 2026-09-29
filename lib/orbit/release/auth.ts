@@ -6,11 +6,11 @@ export async function machineOwner(request:Request,env:ReleaseEnv):Promise<strin
 }
 // A scoped machine probe executes the same read function, returns no user data,
 // and is never accepted by a write route or normal data request.
-export async function releaseProbe(request:Request,env:ReleaseEnv,tree:string,read:(owner:string)=>Promise<unknown>):Promise<Response|null>{
+export async function releaseProbe(request:Request,env:ReleaseEnv,tree:string,read:(owner:string)=>Promise<unknown>,record?:(owner:string,path:string)=>Promise<void>):Promise<Response|null>{
  if(new URL(request.url).searchParams.get('release_probe')!=='1')return null;
  const headers={'Cache-Control':'private, no-store','Vary':'Authorization, OAI-Sites-Authorization'};
  const principal=await machineOwner(request,env);
  if(!principal||request.method!=='GET')return Response.json({error:'Unauthorized'},{status:401,headers});
- try{await read(principal);return Response.json({status:'ok',probe:new URL(request.url).pathname,tree},{headers});}
+ try{await read(principal);await record?.(principal,new URL(request.url).pathname);return Response.json({status:'ok',probe:new URL(request.url).pathname,tree},{headers});}
  catch{return Response.json({error:'Read probe failed'},{status:503,headers});}
 }

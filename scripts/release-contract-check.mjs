@@ -6,6 +6,10 @@ export async function checkRelease({phase,tree,deploymentId,publishedAt,env=proc
  const url=new URL(base);if(url.origin!==base||url.protocol!=='https:'||!url.hostname.endsWith('.chatgpt.site'))throw new Error('Invalid release origin');
  if(!/^[a-f0-9]{64}$/.test(env.ORBIT_RELEASE_CONTRACT_TOKEN??'')||!env.ORBIT_SITES_BEARER)throw new Error('Release probe credentials required');
  const headers={Authorization:'Bearer '+env.ORBIT_RELEASE_CONTRACT_TOKEN,'OAI-Sites-Authorization':'Bearer '+env.ORBIT_SITES_BEARER,'Content-Type':'application/json'};
+ if(phase==='verify')for(const path of required.probes){
+  const probe=await fetcher(base+path+'?release_probe=1',{headers,redirect:'error',signal:AbortSignal.timeout(15000)});
+  const receipt=await probe.json();if(!probe.ok||receipt.status!=='ok'||receipt.probe!==path||receipt.tree!==tree)throw new Error('Authenticated external read probe failed');
+ }
  const response=await fetcher(base+'/api/release-health',{redirect:'error',signal:AbortSignal.timeout(60000),headers,...(phase==='verify'?{method:'POST',body:JSON.stringify({tree,deploymentId,publishedAt})}:{})});
  let data;try{data=await response.json()}catch{throw new Error('Release endpoint returned non-JSON')}
  if(phase==='preflight'){

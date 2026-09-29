@@ -44,3 +44,7 @@ R2 `release-health/<owner>/checks/<id>.json`에는 deployment ID, publishedAt, c
 실패 시 정확한 테이블/컬럼·미적용 파일 또는 API 상태를 확인 → 올바른 운영 DB에 forward migration → 인증/서비스 principal/플러그인 수정 → 같은 release 재검사. DB 원복을 자동 시도하지 않는다. 업무 기능 자동 비활성화 대신 **완료 승격을 차단**하는 최소 범위 구현이다.
 
 근거: [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)의 적용 이력 방식. 테이블 존재와 마이그레이션 완료를 별도로 검증한다.
+
+## 제한된 Worker 자기 호출 환경
+
+검증 CLI는 세 핵심 API를 서비스 자격 증명으로 직접 읽은 다음 전체 검증을 요청한다. 각 API는 실제 읽기가 성공한 뒤에만 소유자·경로·tree·시각으로 된 서버 기록을 R2에 저장한다. 계약 검사는 같은 소유자·tree이며 게시 이후 생성됐고 5분 이내인 기록만 허용한다. 외부 호출이 실패하면 CLI는 승격 요청을 보내지 않는다. 기록이 없으면 기존 내부 HTTP 검사를 시도하고 차단 시 검증 대기로 남는다. 클라이언트가 제출한 passed 값은 받지 않는다. 정상 데이터 API는 계속 기존 사용자 인증을 요구한다.
