@@ -21,6 +21,7 @@ export async function runHealth(db:Database,bucket:Bucket,owner:string,env:Relea
   if(env.ORBIT_RELEASE_CONTRACT_TOKEN&&env.ORBIT_RELEASE_CONTRACT_OWNER===owner&&env.ORBIT_SITES_BEARER){
    try{
     const response=await fetcher(origin+path+'?release_probe=1',{redirect:'error',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+env.ORBIT_RELEASE_CONTRACT_TOKEN,'OAI-Sites-Authorization':'Bearer '+env.ORBIT_SITES_BEARER}});
+    if(!response.ok){check.status='failed';check.reason=`읽기 검사 실패 (HTTP ${response.status})`;checks.push(check);continue;}
     const data=await response.json() as {status?:string;probe?:string;tree?:string};
     const ok=response.ok&&data.status==='ok'&&data.probe===path&&data.tree===tree;
     check.status=ok?'passed':'failed';check.reason=ok?'인증된 읽기 검사 통과':`읽기 검사 실패 (HTTP ${response.status})`;

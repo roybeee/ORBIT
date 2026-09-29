@@ -63,3 +63,13 @@ test('verification does not alter user data or roll back schema, even on failure
  assert.deepEqual(await db.prepare('SELECT state_json FROM orbit_workspaces WHERE owner_id=?').bind('a').first(),before);
  assert.equal(readiness(schemaChecks(await schemaInventory(db))),'verified');
 }));
+
+test('inventory stays under D1 subrequest budget and does not inspect provider tables',()=>fixture(async(db)=>{
+ await db.prepare('CREATE TABLE _cf_METADATA (key TEXT)').run();let count=0;
+ const bounded={...db,prepare(sql){count++;assert.ok(count<=3,'inventory must use at most three queries');return db.prepare(sql)}};
+ const inventory=await schemaInventory(bounded);assert.ok(!inventory.tables._cf_METADATA);assert.equal(readiness(schemaChecks(inventory)),'verified');assert.ok(count<=3);
+}));
+test('non JSON HTTP rejection remains an exact HTTP failure',()=>fixture(async(db,b)=>{
+ const result=await runHealth(db,b,'a',env,tree,publication,'https://fixture.chatgpt.site',async()=>new Response('upstream denied',{status:403}),now);
+ assert.ok(result.checks.filter(c=>c.id.startsWith('api:')).every(c=>c.status==='failed'&&c.reason.includes('HTTP 403')));
+}));

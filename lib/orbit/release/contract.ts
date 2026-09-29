@@ -4,9 +4,11 @@ export {contract};
 export type Check={id:string;status:'passed'|'failed'|'blocked';reason:string};
 export type SchemaInventory={tables:Record<string,string[]>;migrationNames:string[];migrationHashes:string[];ledgerReadable:boolean};
 export async function schemaInventory(db:Database):Promise<SchemaInventory>{
- const {results}=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all<{name:string}>();
+ // One metadata query keeps a >50-table contract below D1 subrequest limits.
+ // Provider-owned tables are not part of the application contract.
+ const {results}=await db.prepare("SELECT m.name AS table_name,p.name AS column_name FROM sqlite_master AS m JOIN pragma_table_info(m.name) AS p WHERE m.type='table' AND m.name NOT GLOB '_cf_*' AND m.name NOT GLOB 'sqlite_*' ORDER BY m.name,p.cid").all<{table_name:string;column_name:string}>();
  const tables:Record<string,string[]>={};
- for(const {name} of results){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))continue;const rows=await db.prepare(`PRAGMA table_info("${name}")`).all<{name:string}>();tables[name]=rows.results.map(r=>r.name);}
+ for(const row of results)(tables[row.table_name]??=[]).push(row.column_name);
  let migrationNames:string[]=[],migrationHashes:string[]=[],ledgerReadable=false;
  if(tables.d1_migrations?.includes('name')){migrationNames=(await db.prepare('SELECT name FROM d1_migrations').all<{name:string}>()).results.map(r=>r.name);ledgerReadable=true;}
  if(tables.__drizzle_migrations?.includes('hash')){migrationHashes=(await db.prepare('SELECT hash FROM __drizzle_migrations').all<{hash:string}>()).results.map(r=>r.hash);ledgerReadable=true;}

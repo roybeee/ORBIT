@@ -1,3 +1,7 @@
+## 2026-09-29 — Release contract runtime
+
+- Bound schema inventory to three read queries, exclude provider tables, preserve HTTP failure status, and make connector ZIP timestamps timezone-independent.
+
 ## 2026-09-29 — 운영 릴리스 계약
 
 - 게시됨과 운영 검증 완료 분리: 실제 스키마·마이그레이션·읽기 API·Hermes 호환성 검사와 소유자 운영 건강 화면.
