@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-09-29 일간 시간표 날짜 스와이프: `fix/day-grid-date-swipe`, 기준 main `3cf5cc468eacdce799048bac9d79c30117a1f5a7`. 빈 시간대·일정·종일 카드에서 왼쪽은 다음 날, 오른쪽은 전날. 세로 스크롤·멀티터치·터치 취소와 활성 롱프레스는 날짜를 바꾸지 않는다. typecheck/build passed · real, 전체 회귀 970개 passed(외부 서비스 mocked 포함), 모바일 브라우저 9개 passed(Chromium 실제 터치 입력, demo/인증 mocked). Python-less 검사는 macOS에서 not_run이며 Linux CI에서 확인한다. Sites published/runtime-verified는 아직 not_run.
+
 - PR #149 merged `af62ccd`, Sites v172 published/runtime-verified: 실제 필수 54개 테이블·컬럼과 인증 읽기 3개 통과. 적용 원장은 운영에서 `__appgarden_migrations(id,name,applied_at)`로 확인되어 표준 원장만 읽던 계약 검사기에 호환 추가 중. Hermes 실행 증거 미확인으로 전체 완료 승격은 pending.
 
 - PR #148 merged `b192f3a`: 운영 계약 최초 게시 후 DB metadata 검사가 blocked, 내부 API 읽기도 blocked로 기록되어 완료 승격되지 않음. 외부 인증 읽기 3개 HTTP 200 확인(두 테이블 조회 포함), 내부 자기 호출만 blocked. 성공한 API가 서버에 직접 기록하는 5분 유효 증거로 제한된 자기 호출 환경을 지원한다. 후속 수정은 메타데이터 쿼리 수를 최대 3회로 제한하고 provider 내부 테이블을 제외한다. ZIP 생성의 현지 시간대 의존성으로 tree가 dirty가 되는 원인은 파일 내용 동일·ZIP 시각 차이로 확인하여 재현 가능한 시각으로 고정한다.
