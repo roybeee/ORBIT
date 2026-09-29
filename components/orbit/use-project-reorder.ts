@@ -1,4 +1,5 @@
 'use client';
+import {haptic} from '@/lib/orbit/haptics';
 import {useEffect,useRef,useState} from 'react';
 import {PROJECT_HOLD_MS,PROJECT_PRESS_SLOP} from '@/lib/orbit/project-press';
 import {moveProjectInOrder} from '@/lib/orbit/project-order';
@@ -47,7 +48,7 @@ export function useProjectReorder(options:Options){
     s.active=true;suppress.current=Date.now()+800;
     if(!orderRef.current)update(latest.current.ids.filter(key=>key!==latest.current.coreId));
     setDrag({id,x:s.x,y:s.y});setMessage('순서 편집 중 · 카드를 끌어 놓은 뒤 저장하세요.');
-    if(typeof navigator.vibrate==='function')navigator.vibrate(20);
+    haptic('hold');
     frame=requestAnimationFrame(autoScroll);
    };
    if(orderRef.current&&id!==latest.current.coreId)activate();else s.timer=setTimeout(activate,PROJECT_HOLD_MS);

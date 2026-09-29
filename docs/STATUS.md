@@ -6,7 +6,9 @@
 
 ## 현재 단계
 
-- 2026-09-29 일간 시간표 날짜 스와이프: `fix/day-grid-date-swipe`, 기준 main `3cf5cc468eacdce799048bac9d79c30117a1f5a7`. 빈 시간대·일정·종일 카드에서 왼쪽은 다음 날, 오른쪽은 전날. 세로 스크롤·멀티터치·터치 취소와 활성 롱프레스는 날짜를 바꾸지 않는다. typecheck/build passed · real, 전체 회귀 970개 passed(외부 서비스 mocked 포함), 모바일 브라우저 9개 passed(Chromium 실제 터치 입력, demo/인증 mocked). Python-less 검사는 macOS에서 not_run이며 Linux CI에서 확인한다. Sites published/runtime-verified는 아직 not_run.
+- 2026-09-29 인터랙션 햅틱: `feat/interaction-haptics`, 기준 main `0ef42ce45ae4d8b8ce5846e41364c236d94a34b7`. 버튼·탭·확인 창 10ms, 확정 날짜 스와이프·롱프레스 18ms; 80ms 중복 제한. 미지원·거부·예외·숨김·동작 줄이기는 무음으로 처리한다. typecheck/build passed · real, 전체 회귀 981개 passed(외부 서비스 mocked 포함), 모바일 햅틱 브라우저 7개 passed(실제 Chromium 입력, 진동 API·demo 인증 mocked). Python-less 검사는 macOS에서 not_run, Linux CI에서 확인한다. 이 변경의 Sites published/runtime-verified는 아직 not_run.
+
+- 2026-09-29 일간 시간표 날짜 스와이프: `fix/day-grid-date-swipe`, 기준 main `3cf5cc468eacdce799048bac9d79c30117a1f5a7`. 빈 시간대·일정·종일 카드에서 왼쪽은 다음 날, 오른쪽은 전날. 세로 스크롤·멀티터치·터치 취소와 활성 롱프레스는 날짜를 바꾸지 않는다. typecheck/build passed · real, 전체 회귀 970개 passed(외부 서비스 mocked 포함), 모바일 브라우저 9개 passed(Chromium 실제 터치 입력, demo/인증 mocked). Python-less 검사는 macOS에서 not_run이며 Linux CI에서 확인한다. PR #151 merged `0ef42ce`; Sites published `appgdep_6abb2befedd4819193f51a00fea2d014` (tree `bcae61cf2eda7d1a5e2eaa621cecf387038e629e`). 인증 브라우저 새 시간표 안내 확인 passed · real. 운영 `/api/version` tree 읽기는 브라우저 API 탐색 차단으로 blocked · real이므로 runtime-verified는 아님.
 
 - PR #149 merged `af62ccd`, Sites v172 published/runtime-verified: 실제 필수 54개 테이블·컬럼과 인증 읽기 3개 통과. 적용 원장은 운영에서 `__appgarden_migrations(id,name,applied_at)`로 확인되어 표준 원장만 읽던 계약 검사기에 호환 추가 중. Hermes 실행 증거 미확인으로 전체 완료 승격은 pending.
 

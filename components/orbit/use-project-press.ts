@@ -1,4 +1,5 @@
 'use client';
+import {haptic} from '@/lib/orbit/haptics';
 import {useEffect,useRef,useState} from 'react';
 import {createProjectPressController} from '@/lib/orbit/project-press';
 
@@ -9,7 +10,7 @@ export function useProjectPress({disabled,onManage}:{disabled:boolean;onManage:(
   useEffect(()=>{
     const element=root.current;if(!element)return;
     let lastTouch=0;
-    const controller=createProjectPressController({disabled:()=>latest.current.disabled,onOpen:id=>latest.current.onManage(id),onArm:id=>{setHolding(id);if(id&&typeof navigator.vibrate==='function')navigator.vibrate(18)}});
+    const controller=createProjectPressController({disabled:()=>latest.current.disabled,onOpen:id=>latest.current.onManage(id),onArm:id=>{setHolding(id);if(id)haptic('hold')}});
     const cancel=controller.cancel;
     const down=(e:PointerEvent)=>{
       if(e.pointerType==='touch')lastTouch=Date.now();

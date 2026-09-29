@@ -3,6 +3,7 @@
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
 import {detectInstallEnvironment,type InstallPlatform,type InstallBrowser} from '@/lib/orbit/installation';
 import {APP_BUILD,availableUpdate} from '@/lib/orbit/app-version';
+import {useInteractionHaptics} from './use-interaction-haptics';
 import {trackMobileViewport} from '@/lib/orbit/mobile-viewport';
 
 interface InstallPrompt extends Event {
@@ -23,6 +24,7 @@ interface PwaState {
 const PwaContext=createContext<PwaState|null>(null);
 
 export function PwaProvider({children}:{children:ReactNode}){
+  useInteractionHaptics();
   const [ready,setReady]=useState(false),[standalone,setStandalone]=useState(false);
   const [installed,setInstalled]=useState(false),[canInstall,setCanInstall]=useState(false),[installing,setInstalling]=useState(false);
   const [platform,setPlatform]=useState<InstallPlatform>('other'),[browser,setBrowser]=useState<InstallBrowser>('other');

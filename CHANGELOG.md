@@ -1,3 +1,8 @@
+## 2026-09-29 · 버튼과 화면 이동에 짧은 햅틱을 제공합니다
+
+- 진동을 지원하는 기기에서 버튼·탭·확인 창을 누르면 짧게 반응하고, 날짜를 넘기거나 길게 누르기가 시작되면 조금 더 분명하게 반응합니다.
+- 세로 스크롤·취소된 터치·프로그램에 의한 화면 변경에는 진동하지 않으며, 중복 진동을 제한합니다. 동작 줄이기 설정을 존중하고 진동 미지원 환경에서도 그대로 사용할 수 있습니다.
+
 ## 2026-09-29 — Release contract runtime
 
 - Bound schema inventory to three read queries, exclude provider tables, preserve HTTP failure status, and make connector ZIP timestamps timezone-independent.

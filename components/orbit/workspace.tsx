@@ -2183,7 +2183,7 @@ function WorkspaceContent({
       <AlertDialog open={discardProjectConfirm} onOpenChange={setDiscardProjectConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>저장하지 않고 나가시겠습니까?</AlertDialogTitle><AlertDialogDescription>작성 중인 프로젝트 설정은 저장되지 않습니다.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>계속 작성</AlertDialogCancel><AlertDialogAction disabled={busy||hasPending} onClick={e=>{e.preventDefault();if(busy||hasPending)return;setDiscardProjectConfirm(false);setDetail(null);setDataEditing(false);}}>나가기</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel>계속 작성</AlertDialogCancel><AlertDialogAction data-haptic="tap" disabled={busy||hasPending} onClick={e=>{e.preventDefault();if(busy||hasPending)return;setDiscardProjectConfirm(false);setDetail(null);setDataEditing(false);}}>나가기</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog open={discardCreateConfirm} onOpenChange={setDiscardCreateConfirm}>
@@ -2194,7 +2194,7 @@ function WorkspaceContent({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={()=>setDiscardCreateConfirm(false)}>계속 작성</AlertDialogCancel>
-            <AlertDialogAction disabled={busy||hasPending} onClick={event=>{event.preventDefault();if(busy||hasPending)return;if(!editingId&&create)clearDraft(ownerId,'form',create);setDiscardCreateConfirm(false);setCreate(null);setNewTitle('');setNewBody('');setFormDraftError('');}}>나가기</AlertDialogAction>
+            <AlertDialogAction data-haptic="tap" disabled={busy||hasPending} onClick={event=>{event.preventDefault();if(busy||hasPending)return;if(!editingId&&create)clearDraft(ownerId,'form',create);setDiscardCreateConfirm(false);setCreate(null);setNewTitle('');setNewBody('');setFormDraftError('');}}>나가기</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
