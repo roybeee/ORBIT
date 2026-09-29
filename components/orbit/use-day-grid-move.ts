@@ -1,4 +1,5 @@
 'use client';
+import {haptic} from '@/lib/orbit/haptics';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {toast} from 'sonner';
 import type {CalendarEvent} from '@/lib/orbit/model';
@@ -47,7 +48,7 @@ export function useDayGridMove(props:Props){
    s.timer=setTimeout(()=>{
     if(session.current!==s||latest.current.disabled){cancel();return;}
     swipe=null;s.active=true;suppressUntil.current=Date.now()+700;
-    navigator.vibrate?.(18);changed();
+    haptic('hold');changed();
    },HOLD_MS);
   };
   const move=(x:number,y:number,e:Event)=>{
@@ -92,7 +93,7 @@ export function useDayGridMove(props:Props){
     const t=Array.from(e.changedTouches).find(t=>t.identifier===g.id);
     const step=t&&g.horizontal?dateSwipeDirection(t.clientX-g.x,t.clientY-g.y):0;
     if(step&&!latest.current.disabled&&!saving.current&&e.cancelable){
-     e.preventDefault();suppressUntil.current=Date.now()+700;clear();latest.current.onStep?.(step);return;
+     e.preventDefault();suppressUntil.current=Date.now()+700;clear();haptic('selection');latest.current.onStep?.(step);return;
     }
    }
    const s=session.current;if(s?.input!=='touch')return;

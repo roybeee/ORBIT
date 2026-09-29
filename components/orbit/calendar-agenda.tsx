@@ -1,4 +1,5 @@
 'use client';
+import {haptic} from '@/lib/orbit/haptics';
 import {eventScope,eventScopeLabels} from '@/lib/orbit/event-details';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownUp, Clock3, MoreHorizontal, Pencil, Trash2, LockKeyhole, CalendarPlus, ArrowRight } from 'lucide-react';
@@ -101,7 +102,7 @@ export function CalendarAgenda(props: Props) {
         s.active = true;
         showActions(null);
         suppressClickUntil.current = Date.now() + 700;
-        if (typeof navigator.vibrate === 'function') navigator.vibrate(18);
+        haptic('hold');
         changed();
       }, HOLD_MS);
     };
