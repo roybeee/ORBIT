@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createDatabase} from './sqlite-d1.mjs';
 import {contract,schemaInventory,schemaChecks,hermesCheck,readiness} from '../lib/orbit/release/contract.ts';
 import {releaseProbe} from '../lib/orbit/release/auth.ts';
-import {runHealth,readEvidence,writeEvidence,currentReport} from '../lib/orbit/release/health.ts';
+import {runHealth,recordReadProbe,readEvidence,writeEvidence,currentReport} from '../lib/orbit/release/health.ts';
 import {writeCommand} from '../db/repository.ts';
 import {checkRelease} from '../scripts/release-contract-check.mjs';
 const tree='a'.repeat(40),token='a'.repeat(64),now=Date.parse('2026-09-29T01:00:00Z');
@@ -55,7 +55,7 @@ test('CLI preflight refuses a missing migration and does not request a deploymen
  const inventory=await schemaInventory(db);inventory.migrationNames.pop();let calls=0;const result=await checkRelease({phase:'preflight',tree,env,fetcher:async(u,i)=>{calls++;assert.equal(i.method,undefined);return Response.json({inventory})}});assert.equal(result.status,'blocked');assert.equal(calls,1);
 }));
 test('CLI cannot promote a partial fabricated green report',async()=>{
- const result=await checkRelease({phase:'verify',...publication,env,fetcher:async()=>Response.json({...publication,status:'verified',checks:[{id:'tree',status:'passed'}]})});assert.equal(result.status,'pending');
+ const result=await checkRelease({phase:'verify',...publication,env,fetcher:async url=>new URL(url).pathname==='/api/release-health'?Response.json({...publication,status:'verified',checks:[{id:'tree',status:'passed'}]}):Response.json({status:'ok',probe:new URL(url).pathname,tree})});assert.equal(result.status,'pending');
 });
 test('verification does not alter user data or roll back schema, even on failure',()=>fixture(async(db,b)=>{
  const before=await db.prepare('SELECT state_json FROM orbit_workspaces WHERE owner_id=?').bind('a').first();
@@ -73,3 +73,19 @@ test('non JSON HTTP rejection remains an exact HTTP failure',()=>fixture(async(d
  const result=await runHealth(db,b,'a',env,tree,publication,'https://fixture.chatgpt.site',async()=>new Response('upstream denied',{status:403}),now);
  assert.ok(result.checks.filter(c=>c.id.startsWith('api:')).every(c=>c.status==='failed'&&c.reason.includes('HTTP 403')));
 }));
+
+test('server-recorded external reads permit verification when worker self-fetch is unavailable',()=>fixture(async(db,b)=>{
+ for(const path of contract.probes)await recordReadProbe(b,'a',path,tree,now-1000);
+ const blocked=async()=>{throw new Error('self fetch unavailable')};
+ const report=await runHealth(db,b,'a',env,tree,publication,'https://fixture.chatgpt.site',blocked,now);assert.equal(report.status,'verified');
+ for(const path of contract.probes)await recordReadProbe(b,'a',path,tree,now-300001);
+ assert.equal((await runHealth(db,b,'a',env,tree,publication,'https://fixture.chatgpt.site',blocked,now)).status,'pending');
+ for(const path of contract.probes)await recordReadProbe(b,'a',path,'b'.repeat(40),now-1000);
+ assert.equal((await runHealth(db,b,'a',env,tree,publication,'https://fixture.chatgpt.site',blocked,now)).status,'pending');
+}));
+test('read probe records only a successful authenticated read',async()=>{
+ let recorded=0;const req=new Request('https://fixture.chatgpt.site/api/version?release_probe=1',{headers:{Authorization:'Bearer '+token}});
+ const record=async()=>{recorded++};
+ assert.equal((await releaseProbe(req,env,tree,async()=>{throw new Error('unavailable')},record)).status,503);assert.equal(recorded,0);
+ assert.equal((await releaseProbe(req,env,tree,async()=>({}),record)).status,200);assert.equal(recorded,1);
+});
