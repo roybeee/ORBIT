@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib import error, parse, request
 
 from .receipts import Receipts
+from .release_health import heartbeat, HOOKS
 
 GUIDANCE = (
     "Slack에서 할 일 등록을 지시받으면 orbit_slack_task 하나로 Google Tasks와 ORBIT에 동시에 등록하세요. Google Tasks API를 따로 호출하지 마세요. "
@@ -306,10 +307,14 @@ def receipts():
 
 def register(ctx):
     saved = receipts()
-    ctx.register_hook('pre_gateway_dispatch', saved.on_dispatch)
+    def dispatch(*args, **kwargs):
+        heartbeat(orbit, HOOKS)
+        return saved.on_dispatch(*args, **kwargs)
+    ctx.register_hook('pre_gateway_dispatch', dispatch)
     ctx.register_hook('api_request_error', saved.on_api_error)
     ctx.register_hook('post_api_request', saved.on_api_success)
     ctx.register_hook('post_llm_call', saved.on_llm_done)
+    heartbeat(orbit, HOOKS)
     saved.resume()
     for name, handler, description, parameters in TOOLS:
         ctx.register_tool(name=name, toolset='orbit', schema={'name': name, 'description': description, 'parameters': parameters}, handler=handler)

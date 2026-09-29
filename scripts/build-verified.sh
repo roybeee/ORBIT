@@ -13,6 +13,7 @@ if [[ ! -x "${vinext}" ]]; then
   exit 69
 fi
 
+node scripts/release-contract-manifest.mjs --check
 node scripts/port-sound.mjs
 node scripts/package-aside.mjs
 

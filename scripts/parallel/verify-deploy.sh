@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Confirm the running deployment was built from the given GitHub revision by
-# comparing the tree hash reported by /api/deployment-health.
+# checking the authenticated runtime schema, APIs and integration evidence.
 # usage: scripts/parallel/verify-deploy.sh <github-sha> [--url https://host]
-#   ORBIT_RELEASE_HEALTH_TOKEN (64 hex) is read from the environment or a hidden prompt.
+#   ORBIT_RELEASE_CONTRACT_TOKEN, ORBIT_SITES_BEARER, ORBIT_DEPLOYMENT_ID and ORBIT_PUBLISHED_AT are required.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 need curl; need node
 
@@ -18,28 +18,13 @@ done
 git cat-file -e "${sha}^{commit}" 2>/dev/null || { git fetch --quiet "${ORBIT_REMOTE}" "${sha}" 2>/dev/null || die "commit ${sha} is not available locally or on ${ORBIT_REMOTE}"; }
 expected="$(tree_of "${sha}")"
 
-token="${ORBIT_RELEASE_HEALTH_TOKEN:-}"
-if [[ -z "${token}" ]]; then
-  IFS= read -rs -p "ORBIT_RELEASE_HEALTH_TOKEN (input hidden): " token </dev/tty; printf '\n' >&2
-fi
-[[ "${token}" =~ ^[0-9a-f]{64}$ ]] || die "the release health token must be 64 lowercase hex characters"
-
-response="$(curl -sS --max-time 20 -H "Authorization: Bearer ${token}" -H 'Accept: application/json' "${url%/}/api/deployment-health")" \
-  || die "deployment-health request failed"
-unset token
-
-read -r status build tree <<<"$(node -e '
-  let value = {};
-  try { value = JSON.parse(process.argv[1]); } catch {}
-  console.log([value.status ?? "invalid", value.build ?? "-", value.tree ?? "-"].join(" "));
-' "${response}")"
-
-printf 'deployment  %s\n  status %s\n  build  %s\n  tree   %s\nexpected tree %s (GitHub %s)\n' "${url}" "${status}" "${build}" "${tree}" "${expected}" "${sha}"
-[[ "${status}" == "ok" ]] || die "deployment-health did not answer ok (check the token and the deployed version)"
-if [[ "${tree}" == "${expected}" ]]; then
-  log "VERIFIED: the running app was built from GitHub ${sha}"
-elif [[ "${tree}" == "unknown" ]]; then
-  die "the deployment does not report a source tree yet (built before this change, or without git); compare Sites version manually"
-else
-  die "MISMATCH: running tree ${tree} is not GitHub ${sha}; production is on a different revision"
-fi
+# Full readiness supersedes tree-only health. The machine principal is read-only
+# for business APIs; POST writes release evidence only, never workspace records.
+contract_file="$(mktemp)"
+git show "${sha}:lib/orbit/release/contract.json" > "${contract_file}"
+export ORBIT_RELEASE_CONTRACT_FILE="${contract_file}"
+export ORBIT_APP_URL="${url}"
+export ORBIT_RELEASE_REPORT_PATH="${ORBIT_RELEASE_REPORT_PATH:-$(repo_root)/docs/releases/$(date -u +%F)-$(short "${sha}")-contract.json}"
+node --experimental-strip-types "$(dirname "${BASH_SOURCE[0]}")/../release-contract-check.mjs" verify "${expected}" \
+  || die "published but operational contract not verified; report retained. No DB rollback."
+log "VERIFIED: operational release contract passed for ${sha}"

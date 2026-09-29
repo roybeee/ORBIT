@@ -46,6 +46,7 @@ class PluginTest(unittest.TestCase):
         self.saved_env = {k: os.environ.get(k) for k in self.env}
         os.environ.update(self.env)
         self.plugin = load()
+        self.plugin.heartbeat = lambda *a: None
         self.plugin.current_origin = lambda: dict(ORIGIN)
         self.calls, self.orbit_replies, self.google_fails = [], [], False
         self.plugin.send = self.fake_send
@@ -176,6 +177,16 @@ class PluginTest(unittest.TestCase):
             sys.modules.pop('gateway', None)
         self.assertEqual((origin['workspace'], origin['user'], origin['message_ts'], origin['event_id']), ('TLEDGER', 'ULEDGER', '1790000000.000001', 'Ev1'))
         self.assertIsNone(contextvars.Context().run(plugin.current_origin), 'outside a Slack turn there is no origin')
+
+    def test_release_report_contains_only_actual_hooks_and_version(self):
+        from orbit_commands_plugin.release_health import report
+        sent = []
+        def send(method, body, path):
+            sent.append((method, body, path))
+            return 200, {'status': 'recorded'}
+        self.assertTrue(report(send, ['pre_gateway_dispatch']))
+        self.assertEqual(sent, [('POST', {'version': '2.2.1', 'hooks': ['pre_gateway_dispatch']}, 'release-health')])
+        self.assertFalse(report(lambda *a, **kw: (503, {}), []))
 
     def test_registers_five_tools_and_short_guidance(self):
         ctx = Context()

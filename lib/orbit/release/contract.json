@@ -1,0 +1,666 @@
+{
+  "version": 1,
+  "lastMigration": "0039_slack_requests",
+  "migrations": [
+    {
+      "name": "0000_deep_scrambler.sql",
+      "hash": "e3b1bf03e6d1f6898680327b9be120390a169b0954de12e32ce2d212a23cfa49"
+    },
+    {
+      "name": "0001_pale_charles_xavier.sql",
+      "hash": "1f99bdf04e2b6b5da6a1fa7ebd04955a71642c6745c624e37e06cde6dcb7b5aa"
+    },
+    {
+      "name": "0002_organic_rockslide.sql",
+      "hash": "68de72dc8f66d6c7525cde4f347331d684d57f69a78acaf17032714490efc730"
+    },
+    {
+      "name": "0003_outstanding_rockslide.sql",
+      "hash": "74514bd41113d90edd13aa12699673a430f505db33272f0fc270c370adf8eaaf"
+    },
+    {
+      "name": "0004_uneven_shiver_man.sql",
+      "hash": "60b2299b9e5dd2ff76b4ed42982526e4d3438cf61978d89a969f1b1232c8ff6a"
+    },
+    {
+      "name": "0005_wise_ozymandias.sql",
+      "hash": "2801b6168e012e80f6a45a4d64ea2d138d016949a7a04a046473d0c0233fb8e8"
+    },
+    {
+      "name": "0006_hot_brood.sql",
+      "hash": "90711436f6634da93c27d230b5dfbcf1bb8a0378255f147afba6606475482305"
+    },
+    {
+      "name": "0007_awesome_jazinda.sql",
+      "hash": "adf1744e75cc4fead44819cac994847ea47b27f7cc31b205f17c8277b705b339"
+    },
+    {
+      "name": "0008_clean_ogun.sql",
+      "hash": "8c79346a9b221c67cb59993d2d4c0c90ba4bc07b76cedadaf2626e66646651b5"
+    },
+    {
+      "name": "0009_heavy_blackheart.sql",
+      "hash": "919d551e0e5acdc54b750a42f4e37808f26a07e4cac7cf93c3f81bf6ce063105"
+    },
+    {
+      "name": "0010_robust_lyja.sql",
+      "hash": "741f355775a722d1bb64602d6eba2d9bff32cff359c5ac228d30433c1bdf20ac"
+    },
+    {
+      "name": "0011_aromatic_toro.sql",
+      "hash": "a57a4344d420726ccea2f24424d7965401dec5e0d33213a9d6ee8d273decf7f0"
+    },
+    {
+      "name": "0012_equal_grandmaster.sql",
+      "hash": "420b2854d4f54aee9f9d4cb922fa5232e0437a3c23985ba919a88eb6b97b8c07"
+    },
+    {
+      "name": "0013_massive_the_professor.sql",
+      "hash": "38fdbe00309e12619acb4fa856218b7b040754bbdd84e2a455bb2a03348f7011"
+    },
+    {
+      "name": "0014_nappy_screwball.sql",
+      "hash": "8598b02bc00507db465fe8f5638af357c44ba0b7ae2ec5ed0bb850cce425b902"
+    },
+    {
+      "name": "0015_silky_hex.sql",
+      "hash": "737fc9081c32e42eae5c85ec0bc64f91a8c5b656f018e2e5f68bebad81a24821"
+    },
+    {
+      "name": "0016_common_maverick.sql",
+      "hash": "3c3afe92549654c4085ca81ef834693c1cebafa5b7d85dc20d6079b318b86804"
+    },
+    {
+      "name": "0017_good_giant_girl.sql",
+      "hash": "63bdfe386fbaa8a1ad2a764214faeea9376f7f8d00b336c4f650b4912185d455"
+    },
+    {
+      "name": "0018_jazzy_hawkeye.sql",
+      "hash": "d15c7e01bc52d707e8203f29c48842de98e12b36ae2a5e936c98c238b69e7cae"
+    },
+    {
+      "name": "0019_productive_vulture.sql",
+      "hash": "c16ace79baf971e15a25f692d386f1d5064cea90a80e9e6c969e5ee86fee8e6c"
+    },
+    {
+      "name": "0020_lowly_green_goblin.sql",
+      "hash": "98b232d458c18e1a9ad4cca5147943c0f3007f172b14dcc57a4720bc9700026c"
+    },
+    {
+      "name": "0021_noisy_slipstream.sql",
+      "hash": "8ace4096ae2f8ffc730781fe1e5f1f6676593f352e2ad6b3449b45ee27bc8fc2"
+    },
+    {
+      "name": "0022_red_baron_strucker.sql",
+      "hash": "6954ffda5d2e6bce669800e3815a9d1e8d744a7494beb3e704bf102149b505f2"
+    },
+    {
+      "name": "0023_happy_daimon_hellstrom.sql",
+      "hash": "05b6a69b6d9a58409bdc952d2ab50f3d1f69d94e926eb619b0f31bdad67077b7"
+    },
+    {
+      "name": "0024_little_mauler.sql",
+      "hash": "9b5cf436dbc34b3bd7ea977b7c87d9246b429fb88cc9ec9cfc0b505aa8edddfb"
+    },
+    {
+      "name": "0025_lame_cyclops.sql",
+      "hash": "a89c366a9be588356bfd8a61f27710ebe2e5358db80dea86c567e0eee01edc38"
+    },
+    {
+      "name": "0026_public_jack_flag.sql",
+      "hash": "1111d63d0057d04ee4590ce5f0d923bfd4f49316381fca97b97f407f8376424a"
+    },
+    {
+      "name": "0027_yummy_callisto.sql",
+      "hash": "06b5e5fe6a76499303aae987acdc5408468c7989f42b6a6520f7a8e0f80f0879"
+    },
+    {
+      "name": "0028_flowery_queen_noir.sql",
+      "hash": "ce069458a16b996f579665d85bc2a3a02f45990170ce028dd29f5565eb3d4bab"
+    },
+    {
+      "name": "0029_woozy_mikhail_rasputin.sql",
+      "hash": "210512bc5ca3d5d10d36699dfe997fd7df4007117abf112a126c61a432a9393c"
+    },
+    {
+      "name": "0030_slack_credential_seed.sql",
+      "hash": "777e22721c5eda32500f250745371769689d16a99081695882b194a605af823b"
+    },
+    {
+      "name": "0031_incremental_analysis.sql",
+      "hash": "d0b142b7184c57d41aea541dd83df0c1d3760459c563a5628d8fd754346e5770"
+    },
+    {
+      "name": "0032_notification_dismissal.sql",
+      "hash": "7c2739e8efbadac9b805d471baf2885445df1ccd900002e33e0f57e110a48d83"
+    },
+    {
+      "name": "0033_provider_holds.sql",
+      "hash": "7dc699295b6e3f87d20aab3adb2d9ff9b88ec4bc566f4999cc6f12f352f2a266"
+    },
+    {
+      "name": "0034_gotem_sends.sql",
+      "hash": "35661c04f350632748e8062ae806077aa881f8572ede50f60c24bd2b7f34f767"
+    },
+    {
+      "name": "0035_task_starts.sql",
+      "hash": "f392566310c8b76e561f8aaa4c8caf7773626f2c700fc8c939c8aa3476809c35"
+    },
+    {
+      "name": "0036_slack_commands.sql",
+      "hash": "c71d676e067d8b3ac36a63576c0a2edf1a2ce5f0641b910768fab54d6889a6eb"
+    },
+    {
+      "name": "0037_google_task_links.sql",
+      "hash": "b245403fa9d313e7f31d21380088f93a8629458082609e16d47363d4589433f1"
+    },
+    {
+      "name": "0038_meeting_review_manual.sql",
+      "hash": "47694682c6da568ae8db2213d6653d2bb5c46eaa1501cf7bdcbbec3e8da622a1"
+    },
+    {
+      "name": "0039_slack_requests.sql",
+      "hash": "dbd807f429ca6973b0baa38757bc455d0245437df0854f40d949faf04c216417"
+    }
+  ],
+  "tables": {
+    "orbit_activity_messages": [
+      "owner_id",
+      "connection_id",
+      "session_id",
+      "id",
+      "record_id",
+      "role",
+      "content",
+      "tool_name",
+      "tool_calls",
+      "timestamp"
+    ],
+    "orbit_activity_sessions": [
+      "owner_id",
+      "id",
+      "connection_id",
+      "session_id",
+      "source",
+      "title",
+      "project_id",
+      "category",
+      "manual",
+      "summary",
+      "metadata_json",
+      "message_offset",
+      "signature",
+      "updated_at"
+    ],
+    "orbit_activity_sync": [
+      "owner_id",
+      "state_json",
+      "lease_until"
+    ],
+    "orbit_agent_actions": [
+      "guard_json",
+      "owner_id",
+      "id",
+      "turn_id",
+      "title",
+      "reason",
+      "action_json",
+      "expected_revision",
+      "state",
+      "note",
+      "revisit_date",
+      "result_json",
+      "created_at",
+      "updated_at"
+    ],
+    "orbit_agent_orders": [
+      "owner_id",
+      "id",
+      "connection_id",
+      "request_json",
+      "state_json",
+      "lease_until",
+      "stop_requested",
+      "created_at"
+    ],
+    "orbit_agent_turns": [
+      "conversation_id",
+      "owner_id",
+      "id",
+      "input",
+      "attachment_ids",
+      "status",
+      "response_json",
+      "created_at",
+      "updated_at"
+    ],
+    "orbit_analysis_cache": [
+      "owner_id",
+      "cache_key",
+      "version",
+      "stage",
+      "unit",
+      "content",
+      "created_at",
+      "last_used_at"
+    ],
+    "orbit_answer_feedback": [
+      "owner_id",
+      "turn_id",
+      "kind",
+      "text",
+      "question",
+      "project_id",
+      "sources_json",
+      "updated_at"
+    ],
+    "orbit_aside_jobs": [
+      "owner_id",
+      "id",
+      "status",
+      "job_json",
+      "version",
+      "created_at"
+    ],
+    "orbit_attachments": [
+      "owner_id",
+      "id",
+      "name",
+      "mime",
+      "size",
+      "prepared",
+      "state",
+      "object_key",
+      "lease",
+      "lease_until",
+      "preview_key",
+      "context_text",
+      "context_label",
+      "target_type",
+      "target_id",
+      "created_at",
+      "updated_at"
+    ],
+    "orbit_automation_connections": [
+      "owner_id",
+      "secret_json",
+      "updated_at"
+    ],
+    "orbit_brief_parts": [
+      "owner_id",
+      "turn_id",
+      "generation",
+      "stage",
+      "part",
+      "content"
+    ],
+    "orbit_brief_runs": [
+      "owner_id",
+      "turn_id",
+      "date",
+      "started_at",
+      "basis_at",
+      "ready_at",
+      "source_revision",
+      "metrics_json",
+      "manifest_json",
+      "updated_at"
+    ],
+    "orbit_calendar_cache": [
+      "owner_id",
+      "events_json",
+      "time_zone",
+      "range_start",
+      "range_end",
+      "updated_at"
+    ],
+    "orbit_calendar_edits": [
+      "owner_id",
+      "operation_id",
+      "payload_json",
+      "source_calendar_id",
+      "result_json",
+      "lease_until"
+    ],
+    "orbit_calendar_exports": [
+      "owner_id",
+      "event_id",
+      "state_json"
+    ],
+    "orbit_calendar_settings": [
+      "owner_id",
+      "selected_json",
+      "updated_at"
+    ],
+    "orbit_chief_jobs": [
+      "owner_id",
+      "lease_until",
+      "config_json"
+    ],
+    "orbit_conversations": [
+      "owner_id",
+      "id",
+      "title",
+      "project_id",
+      "revision",
+      "created_at",
+      "updated_at"
+    ],
+    "orbit_daily_runs": [
+      "owner_id",
+      "date",
+      "state_json",
+      "updated_at"
+    ],
+    "orbit_daily_runtime": [
+      "owner_id",
+      "config_json",
+      "lease_until",
+      "last_tick"
+    ],
+    "orbit_data_trash": [
+      "owner_id",
+      "id",
+      "category",
+      "record_id",
+      "title",
+      "payload_json",
+      "deleted_at"
+    ],
+    "orbit_discord_commands": [
+      "owner_id",
+      "message_id",
+      "command_json",
+      "status",
+      "response",
+      "created_at"
+    ],
+    "orbit_discord_outbox": [
+      "owner_id",
+      "id",
+      "channel_id",
+      "content",
+      "status",
+      "message_id",
+      "attempts",
+      "next_at",
+      "created_at"
+    ],
+    "orbit_discord_state": [
+      "owner_id",
+      "state_json",
+      "lease_until"
+    ],
+    "orbit_google_task_links": [
+      "owner_id",
+      "task_id",
+      "task_list_id",
+      "google_task_id",
+      "state_json",
+      "updated_at"
+    ],
+    "orbit_gotem_sends": [
+      "owner_id",
+      "date",
+      "slot",
+      "status",
+      "reason",
+      "payload_json",
+      "created_at"
+    ],
+    "orbit_hermes_jobs": [
+      "owner_id",
+      "turn_id",
+      "turn_lease",
+      "job_json",
+      "lease_until",
+      "cancel_requested"
+    ],
+    "orbit_identity_links": [
+      "email_hash",
+      "owner_id",
+      "conflicted"
+    ],
+    "orbit_integrations": [
+      "refresh_until",
+      "owner_id",
+      "provider",
+      "secret_json",
+      "public_json",
+      "updated_at"
+    ],
+    "orbit_meeting_reviews": [
+      "summary",
+      "engine_version",
+      "attempts",
+      "owner_id",
+      "note_id",
+      "revision",
+      "turn_id",
+      "conversation_id",
+      "status",
+      "error",
+      "created_at",
+      "updated_at",
+      "hold_id",
+      "manual"
+    ],
+    "orbit_mutations": [
+      "owner_id",
+      "operation_id",
+      "action_hash",
+      "revision",
+      "created_at"
+    ],
+    "orbit_note_revisions": [
+      "owner_id",
+      "note_id",
+      "revision",
+      "title",
+      "note_json",
+      "updated_at"
+    ],
+    "orbit_notification_state": [
+      "owner_id",
+      "started_at",
+      "public_key",
+      "private_key"
+    ],
+    "orbit_notifications": [
+      "owner_id",
+      "id",
+      "kind",
+      "title",
+      "body",
+      "href",
+      "created_at",
+      "read_at",
+      "dismissed_at"
+    ],
+    "orbit_oauth_states": [
+      "state",
+      "owner_id",
+      "provider",
+      "secret_json",
+      "expires_at"
+    ],
+    "orbit_order_reads": [
+      "owner_id",
+      "order_id",
+      "id",
+      "tool",
+      "args_json",
+      "object_key",
+      "chars",
+      "read_until",
+      "error",
+      "created_at"
+    ],
+    "orbit_order_reviews": [
+      "owner_id",
+      "order_id",
+      "review_json",
+      "updated_at"
+    ],
+    "orbit_plaud_imports": [
+      "owner_id",
+      "external_id",
+      "hash",
+      "state_json",
+      "updated_at"
+    ],
+    "orbit_plaud_sync": [
+      "owner_id",
+      "state_json",
+      "lease_until"
+    ],
+    "orbit_provider_holds": [
+      "owner_id",
+      "id",
+      "provider",
+      "kind",
+      "reason",
+      "opened_at",
+      "next_check_at",
+      "retry_known",
+      "failures",
+      "probe_turn_id",
+      "probe_until",
+      "probes",
+      "leaked",
+      "manual",
+      "cleared_at",
+      "cleared_by"
+    ],
+    "orbit_push_deliveries": [
+      "owner_id",
+      "notification_id",
+      "subscription_id",
+      "status",
+      "attempts",
+      "next_at",
+      "lease_until",
+      "error"
+    ],
+    "orbit_push_subscriptions": [
+      "owner_id",
+      "id",
+      "subscription_json",
+      "created_at",
+      "last_error"
+    ],
+    "orbit_reviews": [
+      "owner_id",
+      "date",
+      "review_json",
+      "updated_at"
+    ],
+    "orbit_slack_commands": [
+      "owner_id",
+      "workspace_id",
+      "requester_id",
+      "operation_key",
+      "id",
+      "payload_hash",
+      "payload_json",
+      "status",
+      "target_id",
+      "candidates_json",
+      "created_at",
+      "updated_at"
+    ],
+    "orbit_slack_credentials": [
+      "token_hash",
+      "owner_id",
+      "workspace_id",
+      "requester_id",
+      "scope",
+      "expires_at",
+      "revoked"
+    ],
+    "orbit_slack_directives": [
+      "owner_id",
+      "workspace_id",
+      "requester_id",
+      "operation_key",
+      "id",
+      "payload_hash",
+      "payload_json",
+      "status",
+      "target_id",
+      "candidates_json",
+      "created_at"
+    ],
+    "orbit_slack_requests": [
+      "owner_id",
+      "id",
+      "workspace_id",
+      "requester_id",
+      "receipt_key",
+      "channel_id",
+      "message_ts",
+      "thread_ts",
+      "event_id",
+      "text",
+      "status",
+      "reason_kind",
+      "reason",
+      "hold_id",
+      "next_check_at",
+      "turn_id",
+      "conversation_id",
+      "attempts",
+      "deliveries",
+      "created_at",
+      "updated_at"
+    ],
+    "orbit_sound_state": [
+      "owner_id",
+      "revision",
+      "state_json",
+      "updated_at"
+    ],
+    "orbit_source_status": [
+      "owner_id",
+      "provider",
+      "state_json"
+    ],
+    "orbit_task_starts": [
+      "owner_id",
+      "task_id",
+      "started_at",
+      "date"
+    ],
+    "orbit_workspace_chunks": [
+      "owner_id",
+      "generation",
+      "part",
+      "content"
+    ],
+    "orbit_workspace_projects": [
+      "owner_id",
+      "project_id"
+    ],
+    "orbit_workspaces": [
+      "owner_id",
+      "revision",
+      "state_json",
+      "mutation_id",
+      "updated_at"
+    ]
+  },
+  "probes": [
+    "/api/version",
+    "/api/slack-requests",
+    "/api/gotem/metrics"
+  ],
+  "hermes": {
+    "minimumVersion": "2.2.0",
+    "requiredHooks": [
+      "pre_gateway_dispatch",
+      "api_request_error",
+      "post_api_request",
+      "post_llm_call"
+    ]
+  }
+}
