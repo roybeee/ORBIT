@@ -16,6 +16,7 @@ const TOP_PAD=10;
 const ALL_DAY_ROWS=4;
 
 type Props={
+ onStep?:(days:number)=>void;
  date:string;today:string;nowMinute:number|null;events:CalendarEvent[];tasks:Task[];projects:Project[];preferences:Preferences;disabled:boolean;
  onMove:(before:CalendarEvent,after:CalendarEvent)=>Promise<boolean>;onInteractionChange:(active:boolean)=>void;
  onOpen:(event:CalendarEvent)=>void;onScheduleTask:(id:string)=>void;onToggleTask:(id:string)=>void;onCreateAt?:(minute:number)=>void;
@@ -34,7 +35,7 @@ export function CalendarDayGrid(props:Props){
  const now=props.date===props.today&&props.nowMinute!==null&&props.nowMinute>=from*60?props.nowMinute:null;
  const slot=(hour:number,e:MouseEvent<HTMLButtonElement>)=>props.onCreateAt?.(hour*60+(e.nativeEvent.offsetY>=HOUR_PX/2?30:0));
  return <div ref={root} className="day-grid" onClickCapture={e=>{if(suppressClick()){e.preventDefault();e.stopPropagation();}}}>
-  <p className="day-grid-move-hint" role="status">{preview?`${formatTime(preview.event.start)}–${formatTime(preview.event.end)} · ${preview.saving?'저장 중':conflict?'다른 일정과 겹칩니다':'놓으면 시간 변경 · Esc로 취소'}`:'일정을 길게 눌러 원하는 시간으로 옮기세요'}</p>
+  <p className="day-grid-move-hint" role="status">{preview?`${formatTime(preview.event.start)}–${formatTime(preview.event.end)} · ${preview.saving?'저장 중':conflict?'다른 일정과 겹칩니다':'놓으면 시간 변경 · Esc로 취소'}`:'좌우로 밀어 날짜 이동 · 일정을 길게 눌러 시간 변경'}</p>
   {allDay.length>0&&<section className="day-grid-allday" aria-label="종일 일정과 시간 미정 할 일">
    <h3>종일 · 시간 미정 <span>{allDay.length}개</span></h3>
    {shownAllDay.map(event=>{

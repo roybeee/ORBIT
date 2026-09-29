@@ -2,6 +2,11 @@
 
 - Bound schema inventory to three read queries, exclude provider tables, preserve HTTP failure status, and make connector ZIP timestamps timezone-independent.
 
+## 2026-09-29 · 일간 시간표에서 좌우로 날짜를 넘깁니다
+
+- 시간표의 빈 칸, 일정 카드, 종일 일정 영역에서 왼쪽으로 밀면 다음 날, 오른쪽으로 밀면 전날로 이동합니다.
+- 세로 스크롤, 일정 길게 누르기와 시간 변경, 두 손가락 터치는 날짜 이동과 구분합니다. 스와이프 직후 상세·일정 추가 창이 열리지 않습니다.
+
 ## 2026-09-29 — 운영 릴리스 계약
 
 - 게시됨과 운영 검증 완료 분리: 실제 스키마·마이그레이션·읽기 API·Hermes 호환성 검사와 소유자 운영 건강 화면.
