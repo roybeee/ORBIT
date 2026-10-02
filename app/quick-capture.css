@@ -33,8 +33,8 @@ html[data-keyboard=open] .quick-capture-dialog{top:calc(var(--phone-viewport-top
 .quick-capture-bar-entry kbd{font-size:.75rem;padding:2px 7px;border:1px solid var(--border);border-radius:6px;color:var(--muted-foreground)}
 @media(max-width:767px){.quick-capture-bar-entry kbd{display:none}}
 @media(min-width:768px){.galaxy-workspace .content{padding-bottom:96px}}
-.quick-capture-entry-row{display:flex;gap:8px;margin-bottom:14px}
-.quick-capture-entry-row .quick-capture-bar-entry{margin-bottom:0;flex:1;min-width:0}
+.quick-capture-entry-row{display:flex;gap:8px;margin-bottom:14px;min-width:0;max-width:100%}
+.quick-capture-entry-row .quick-capture-bar-entry{margin-bottom:0;flex:1 1 0;width:auto;min-width:0}
 .quick-capture-voice-entry{flex:none;width:52px;min-height:52px;border-radius:16px;border:1px dashed color-mix(in srgb,var(--galaxy-violet) 55%,var(--border));background:color-mix(in srgb,var(--galaxy-violet) 7%,var(--card));color:var(--galaxy-violet);display:grid;place-items:center;cursor:pointer}
 /* Today: one-tap completion beside each task row */
 .today-row-check{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}

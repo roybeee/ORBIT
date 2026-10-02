@@ -140,3 +140,44 @@ export function goalMomentumSummary(data: WorkspaceData, today: string) {
     })),
   };
 }
+
+const INBOXES = new Set(['capture-inbox', 'plaud-inbox']);
+const words = (text: string) => new Set(text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length >= 2));
+// Projects with recent activity that no goal claims yet, each with the goal whose words overlap
+// most (a suggestion only; the owner links with one tap).
+export function unlinkedProjects(data: WorkspaceData, today: string, days = 14) {
+  const from = addDays(today, -(days - 1));
+  const active = (data.goals ?? []).filter(g => (g.status ?? 'active') === 'active');
+  if (!active.length) return [];
+  const recent = activity(data, today).filter(i => i.date >= from && i.projectId);
+  return data.projects
+    .filter(p => !p.goalId && !INBOXES.has(p.id) && p.status !== 'completed')
+    .map(p => {
+      const items = recent.filter(i => i.projectId === p.id);
+      const text = words([p.name, p.goal, ...(p.keywords ?? []), ...items.map(i => i.title)].join(' '));
+      const ranked = active.map(g => ({ goal: g, score: [...words(g.sentence)].filter(w => [...text].some(t => t.includes(w) || w.includes(t))).length }))
+        .sort((a, b) => b.score - a.score);
+      return { project: p, count: items.length, minutes: items.reduce((s, i) => s + (i.minutes ?? 0), 0), suggested: ranked[0]?.score ? ranked[0].goal : undefined };
+    })
+    .filter(r => r.count > 0)
+    .sort((a, b) => b.minutes - a.minutes || b.count - a.count);
+}
+
+// Monday's look back at the previous week (Mon–Sun), for one notice per week.
+export function weeklyOrbitReport(data: WorkspaceData, today: string) {
+  const dow = new Date(today + 'T12:00:00Z').getUTCDay();
+  if (dow !== 1) return null;
+  const lastSunday = addDays(today, -1);
+  const { goals, alignment } = goalTrace(data, lastSunday, 7);
+  const active = goals.filter(g => (g.goal.status ?? 'active') === 'active');
+  if (!active.length && !alignment.done) return null;
+  const quiet = active.filter(g => !g.current.done && !g.current.minutes && !g.current.meetings && !g.current.notes);
+  const best = [...active].sort((a, b) => b.current.done - a.current.done || b.current.minutes - a.current.minutes)[0];
+  const share = alignment.ratio === null ? null : Math.round(alignment.ratio * 100);
+  const lines = [
+    `완료 ${alignment.done}건${share === null ? '' : ` · 목표로 이어진 비율 ${share}%`}`,
+    best && (best.current.done || best.current.minutes) ? `가장 많이 나아간 목표: ‘${best.goal.sentence}’ (완료 ${best.current.done})` : '',
+    quiet.length ? `기록이 없던 목표: ${quiet.slice(0, 2).map(g => `‘${g.goal.sentence}’`).join(', ')}` : '',
+  ].filter(Boolean);
+  return { id: `weekly-orbit:${today}`, kind: 'info' as const, title: '지난주 궤도 리포트', body: lines.join('\n'), href: '/#goals' };
+}

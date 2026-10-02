@@ -1,5 +1,6 @@
 'use client';
 import {FocusCalendarButton} from '../agent/calendar-controls';
+import {ruleEffect} from '@/lib/orbit/rule-effect';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Sparkles,LoaderCircle,Check,Pause,ArrowRight,RefreshCw,Clock3,ChevronDown,FileText} from 'lucide-react';
 import {EvidenceSheet} from '../agent/evidence-sheet';
@@ -60,7 +61,7 @@ export function DailyBriefPanel({snapshot,date,setDate,energy,setEnergy,busy,dem
   </div>
   {historical&&<div className="brief-notice"><Clock3 size={15}/><span>이전 날짜의 제안을 확인하거나 다시 만들 수 있습니다. 새로 생성할 때는 현재 저장된 기록으로 재작성하며, 당시의 업무 상태를 복원하는 것은 아닙니다.</span></div>}
   {notice&&<div className="brief-notice" role="status"><Crosshair size={15}/><span>{notice}</span></div>}
-  {plan?.rules?.length?<div className="brief-notice plan-rules" role="note"><Crosshair size={15}/><span><strong>내 규칙 ★ 반영</strong>{plan.rules.map(r=><span key={r.id+r.kind}>‘{r.rule}’ → {r.note}</span>)}</span></div>:null}
+  {plan?.rules?.length?<div className="brief-notice plan-rules" role="note"><Crosshair size={15}/><span><strong>내 규칙 ★ 반영</strong>{plan.rules.map(r=>{const rule=snapshot.data.improvements?.find(i=>i.id===r.id),effect=rule?ruleEffect(snapshot.data,rule,date):null;return <span key={r.id+r.kind}>‘{r.rule}’ → {r.note}{effect?` · 적용 후 실행률 ${effect.before}% → ${effect.after}%`:''}</span>;})}</span></div>:null}
   {plan?.laser&&plan.laser.status!=='placed'&&plan.laser.status!=='none'&&<div className="brief-notice is-warn" role="status"><Crosshair size={15}/><span>Goal Laser를 놓지 못했습니다 · {plan.laser.note}</span></div>}
   {(error||run?.status==='failed')&&<div className="brief-alert" role="alert"><strong>분석을 완료하지 못했습니다</strong><p>{error||run?.error}</p><button className="text-button" onClick={()=>void start()} disabled={locked}><RefreshCw size={14}/>다시 시도</button><button className="text-button" onClick={()=>navigate('agent')}>헤르메스·연결 확인</button></div>}
   {(running||starting)&&<div className="brief-progress" role="status"><LoaderCircle size={20} className="animate-spin"/><div><strong>{dayLabel}의 실행 제안을 만들고 있습니다</strong><p>{run?.progress??'회의록·일정·완료와 미완료 업무·회고를 모으고 있습니다.'}</p><small>이 화면을 다시 열어도 분석을 이어서 확인할 수 있습니다.</small></div>{run&&<button className="text-button" onClick={async()=>{try{await agentRequest('/api/agent/run','POST',{id:run.id,action:'cancel'})}catch(e){setError(e instanceof Error?e.message:'중지 상태 확인 실패')}}}>중지</button>}</div>}

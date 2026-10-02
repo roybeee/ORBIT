@@ -88,3 +88,11 @@ test('a task captured from Today is closed with one tap and can be undone',async
  const back=await page.evaluate(async()=>(await (await fetch('/api/workspace',{cache:'no-store'})).json()));
  expect(back.data.tasks.find((t:{title:string})=>t.title==='견적서 회신하기')?.status).toBe('todo');
 });
+
+test('the Today entry row never widens the page',async({page})=>{
+ await page.goto('/');
+ await expect(page.getByRole('button',{name:/무엇이든 적어 두세요/})).toBeVisible();
+ await expect(page.getByRole('button',{name:'말로 기록'})).toBeVisible();
+ const [scroll,client]=await page.evaluate(()=>[document.documentElement.scrollWidth,document.documentElement.clientWidth]);
+ expect(scroll).toBeLessThanOrEqual(client);
+});

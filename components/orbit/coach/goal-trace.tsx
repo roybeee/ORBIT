@@ -1,7 +1,8 @@
 'use client';
-import {useMemo} from 'react';
+import {useMemo,useState} from 'react';
 import {ArrowDownRight,ArrowRight,ArrowUpRight,CheckCheck,Clock3,FileText,Compass,MessagesSquare,Minus,Repeat} from 'lucide-react';
-import {goalTrace,orbitCheck,type GoalTrace,type Momentum,type TraceItem} from '@/lib/orbit/goal-trace';
+import {goalTrace,orbitCheck,unlinkedProjects,type GoalTrace,type Momentum,type TraceItem} from '@/lib/orbit/goal-trace';
+import type {WorkspaceAction} from '@/lib/orbit/validation';
 import {durationText,type WorkspaceData} from '@/lib/orbit/model';
 
 const momentumLabel:Record<Momentum,string>={rising:'가속 중',steady:'유지',falling:'느려짐',idle:'멈춤',new:'첫 기록 대기'};
@@ -44,6 +45,7 @@ export function useGoalTraces(data:WorkspaceData,today:string){
 // Today's 궤도 점검: one line on where this week's effort went, and the goal that went quiet.
 export function OrbitCheckCard({data,today,onGoals}:{data:WorkspaceData;today:string;onGoals:()=>void}){
  const check=useMemo(()=>orbitCheck(data,today),[data,today]);
+ const unlinked=useMemo(()=>unlinkedProjects(data,today).length,[data,today]);
  if(!check)return null;
  const {alignment:a,quiet,falling}=check;
  const percent=a.ratio===null?null:Math.round(a.ratio*100);
@@ -55,9 +57,27 @@ export function OrbitCheckCard({data,today,onGoals}:{data:WorkspaceData;today:st
    <Compass size={20}/>
    <span><strong>{headline}</strong>
     <small>{a.done?`완료 ${a.aligned}/${a.done} · 목표 실행 ${durationText(a.alignedMinutes)}`:'목표에 연결된 일을 하나 끝내면 여기서 바로 반영됩니다'}{a.unlinked[0]&&percent!==null&&percent<60?` · 목표 밖: ${a.unlinked[0].name}`:''}</small>
+    {unlinked>0&&<small>목표에 연결되지 않은 활동 프로젝트 {unlinked}개 · 눌러서 연결</small>}
     {alert&&<small className="orbit-check-alert">{alert.momentum==='new'?`‘${alert.goal.sentence}’에 아직 기록이 없어요. 첫 실행 단계를 정해 보세요.`:alert.momentum==='idle'?`‘${alert.goal.sentence}’ 목표가 ${alert.idleDays}일째 멈춰 있어요.`:`‘${alert.goal.sentence}’ 진행이 지난주보다 느려졌어요.`}</small>}
    </span>
    <ArrowUpRight size={18}/>
   </button>
+ </section>;
+}
+
+// Recent work that no goal claims yet: link its project to a goal in one tap, so its history
+// counts toward that goal from now on (and for the past days shown here).
+export function GoalLinkSuggestions({data,today,disabled,perform}:{data:WorkspaceData;today:string;disabled:boolean;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>}){
+ const rows=useMemo(()=>unlinkedProjects(data,today),[data,today]);
+ const goals=(data.goals??[]).filter(g=>(g.status??'active')==='active');
+ const [picked,setPicked]=useState<Record<string,string>>({});
+ if(!rows.length)return null;
+ return <section className="goal-linker" aria-label="목표에 연결되지 않은 최근 활동">
+  <div className="goal-trace-head"><h3>목표에 연결되지 않은 최근 활동</h3><span className="goal-linker-hint">연결하면 이 기록이 목표 진행으로 모입니다</span></div>
+  <ul>{rows.slice(0,5).map(r=>{const value=picked[r.project.id]??r.suggested?.id??'';return <li key={r.project.id}>
+   <span><strong>{r.project.name}</strong><small>최근 14일 기록 {r.count}{r.minutes?` · ${durationText(r.minutes)}`:''}</small></span>
+   <select className="form-field" aria-label={`${r.project.name} 연결할 목표`} value={value} onChange={e=>setPicked(p=>({...p,[r.project.id]:e.target.value}))}><option value="">목표 선택</option>{goals.map(g=><option key={g.id} value={g.id}>{g.sentence}</option>)}</select>
+   <button type="button" className="secondary-button" disabled={disabled||!value} onClick={()=>void perform({type:'project.upsert',project:{...r.project,goalId:value}},'목표에 연결했습니다. 이 프로젝트의 기록이 목표 진행에 반영됩니다.')}>연결</button>
+  </li>;})}</ul>
  </section>;
 }

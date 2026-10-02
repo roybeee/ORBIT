@@ -58,3 +58,34 @@ test('the AI brief summary is compact and lists active goals only',()=>{
  assert.deepEqual(summary.goals.map(g=>g.goalId),['g-sales','g-child','g-quiet']);
  assert.equal(summary.goals[0].last7.done,3);
 });
+
+import {unlinkedProjects,weeklyOrbitReport} from '../lib/orbit/goal-trace.ts';
+import {ruleEffect} from '../lib/orbit/rule-effect.ts';
+
+test('recent work outside every goal is offered for linking, with the goal whose words match',()=>{
+ const data=workspace();
+ data.projects.push({id:'capture-inbox',name:'빠른 기록함',color:'#8a94a6',symbol:'✎',goal:'',due:'2027-01-01',priority:1});
+ data.tasks.push({id:'x',title:'해외 바이어 샘플 회신',projectId:'capture-inbox',status:'done',duration:20,due:today,impact:3,focus:false,definition:'',completedOn:today});
+ data.projects.find(p=>p.id==='ops').name='해외 파트너 계약 서류';
+ const rows=unlinkedProjects(data,today);
+ assert.deepEqual(rows.map(r=>r.project.id),['ops'],'inbox projects are never offered');
+ assert.equal(rows[0].suggested.id,'g-sales');assert.equal(rows[0].minutes,120);
+ assert.deepEqual(unlinkedProjects({...data,goals:[]},today),[]);
+});
+
+test('Monday brings one look back at last week; other days nothing',()=>{
+ const data=workspace();
+ assert.equal(weeklyOrbitReport(data,'2026-10-02'),null,'Friday');
+ const report=weeklyOrbitReport(data,'2026-10-05');
+ assert.equal(report.id,'weekly-orbit:2026-10-05');assert.equal(report.href,'/#goals');
+ assert.match(report.body,/완료 4건 · 목표로 이어진 비율 75%/);
+ assert.match(report.body,/가장 많이 나아간 목표: ‘해외 파트너 3곳 계약’/);
+ assert.match(report.body,/기록이 없던 목표: ‘책 쓰기’$/,'the sub-goal had its own finished task');
+});
+
+test('a rule\'s effect compares reviewed execution rates before and after it, given enough days',()=>{
+ const review=(date,rate)=>({id:date,date,win:'',block:'',energy:'normal',completedIds:[],updatedAt:'',stats:{planned:4,done:0,partial:0,skipped:0,laserMinutes:0,executionRate:rate}});
+ const data={...workspace(),reviews:[review('2026-09-20',50),review('2026-09-21',60),review('2026-09-22',40),review('2026-09-24',80),review('2026-09-25',90),review('2026-09-26',70)]};
+ assert.deepEqual(ruleEffect(data,{createdOn:'2026-09-23'},today),{before:50,after:80,delta:30,days:{before:3,after:3}});
+ assert.equal(ruleEffect({...data,reviews:data.reviews.slice(0,4)},{createdOn:'2026-09-23'},today),null,'too few days after');
+});

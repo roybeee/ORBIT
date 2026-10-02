@@ -54,7 +54,7 @@ export function historyItems(data: WorkspaceData, through: string): HistoryItem[
     if (e.kind === 'meeting' && !e.taskId)
       push({ kind: 'event', id: 'event:' + e.id, target: { kind: 'event', id: e.id }, date: e.date, minute: e.allDay ? undefined : e.start, title: e.title, minutes: e.allDay ? undefined : e.end - e.start, projectId: e.projectId, source: e.google ? 'Google' : undefined });
   for (const r of data.reviews)
-    push({ kind: 'review', id: 'review:' + r.date, target: { kind: 'review', date: r.date }, date: r.date, title: r.highlight || r.win || '하루 회고', detail: [r.stats ? `실행률 ${Math.round(r.stats.executionRate * 100)}%` : '', r.block ? `막힌 점: ${r.block}` : '', r.carry ? `내일 규칙: ${r.carry}` : ''].filter(Boolean).join(' · ') || undefined });
+    push({ kind: 'review', id: 'review:' + r.date, target: { kind: 'review', date: r.date }, date: r.date, title: r.highlight || r.win || '하루 회고', detail: [r.stats ? `실행률 ${Math.round(r.stats.executionRate)}%` : '', r.block ? `막힌 점: ${r.block}` : '', r.carry ? `내일 규칙: ${r.carry}` : ''].filter(Boolean).join(' · ') || undefined });
   for (const d of data.decisions ?? [])
     push({ kind: 'decision', id: 'decision:' + d.id, date: d.createdAt.slice(0, 10), title: d.title, detail: d.choice, projectId: d.projectId });
   for (const r of data.careRoutines ?? [])

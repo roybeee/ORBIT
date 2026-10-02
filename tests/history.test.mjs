@@ -42,3 +42,8 @@ test('filters by kind, goal, project and text; items carry the goal of their pro
  const wide=historyFeed(d,{through:today,days:45});
  assert.equal(wide.feed.at(-1).items[0].source,'빠른 기록');assert.equal(wide.older,false);
 });
+
+test('a review shows its execution rate as stored (a percentage)',()=>{
+ const d=data();d.reviews[0]={...d.reviews[0],stats:{planned:4,done:3,partial:0,skipped:1,laserMinutes:0,executionRate:75}};
+ assert.match(historyItems(d,today).find(i=>i.kind==='review').detail,/^실행률 75%/);
+});
