@@ -14,6 +14,7 @@ import {dayMode,DEFAULT_EVENING_HOUR,NIGHT_END,type DayMode} from '@/lib/orbit/d
 import {DayModeSwitch} from './today/day-mode-switch';
 import {EveningCard} from './today/evening-card';
 import {QuickCaptureBar} from './quick-capture';
+import {OrbitCheckCard} from './coach/goal-trace';
 import {AiHoldBanner} from './brief/ai-hold-banner';
 import {Progress} from '@/components/ui/progress';
 import {formatTime,type WorkspaceData,type View} from '@/lib/orbit/model';
@@ -76,6 +77,7 @@ export function TodayHome({onCapture,orders=[],onOrder,data,now,busy,demo,evenin
 
   </div>
   <AiHoldBanner demo={demo} timeZone={data.preferences.timeZone} onPlan={()=>onProposal(d.today)} onNote={id=>onOpen({kind:'note',id})}/>
+  <OrbitCheckCard data={data} today={d.today} onGoals={()=>navigate('goals')}/>
   {inboxCount>0&&<section className="today-review" aria-label="결재함"><button className="today-row" onClick={()=>onInbox?.()}><span><strong>결재함 · 정할 일 {inboxCount}건</strong><small>계획·Orbit 제안·업무 지시·확인일을 한곳에서 승인하거나 보류하세요</small></span><ChevronRight size={19}/></button></section>}
   <div className="today-columns">
    <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small></span><ChevronRight size={19}/></button>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>

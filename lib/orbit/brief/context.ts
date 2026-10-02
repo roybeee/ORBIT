@@ -1,4 +1,5 @@
 import {executiveContext,protectedEvents,planningEvents} from '../phase3.ts';
+import {goalMomentumSummary} from '../goal-trace.ts';
 import {sourceStatuses} from '../source-status.ts';
 import {personalContext} from '../pacemaker.ts';
 import {chiefOfStaff,careEvents} from '../chief.ts';
@@ -58,7 +59,7 @@ export async function collectPlanningContext(db:Database,owner:string,snapshot:W
  const previousPlans=[...data.proposals].sort((a,b)=>(a.date===request.date?-1:b.date===request.date?1:b.date.localeCompare(a.date))).map(({brief:_brief,...plan})=>plan);
  // BRAINY/GoTEM frame: the domino project, goal ladder, rules ★, habits, standing risks and the week so far.
  const prefs=withDefaults(data.preferences),domino=data.projects.find(p=>p.id===data.dominoProjectId);
- const brainy={dominoProject:domino?{id:domino.id,name:domino.name,goal:domino.goal}:null,goals:(data.goals??[]),laserMinutes:prefs.laserMinutes,rhythm:prefs.rhythm,rules:(data.improvements??[]).filter(i=>i.active).map(i=>({rule:i.rule,kind:i.kind})),habits:(data.habits??[]).map(h=>({title:h.title,mode:h.mode,streak:habitStreak(h,cutoff)})),risks:(data.risks??[]),week:weeklyStats(data,cutoff),yesterday:data.reviews.filter(r=>r.date<=cutoff).slice(-1).map(r=>({date:r.date,stats:r.stats??null,highlight:r.highlight??null}))[0]??null};
+ const brainy={goalMomentum:goalMomentumSummary(data,cutoff),dominoProject:domino?{id:domino.id,name:domino.name,goal:domino.goal}:null,goals:(data.goals??[]),laserMinutes:prefs.laserMinutes,rhythm:prefs.rhythm,rules:(data.improvements??[]).filter(i=>i.active).map(i=>({rule:i.rule,kind:i.kind})),habits:(data.habits??[]).map(h=>({title:h.title,mode:h.mode,streak:habitStreak(h,cutoff)})),risks:(data.risks??[]),week:weeklyStats(data,cutoff),yesterday:data.reviews.filter(r=>r.date<=cutoff).slice(-1).map(r=>({date:r.date,stats:r.stats??null,highlight:r.highlight??null}))[0]??null};
  const personal=personalContext(data,cutoff);
  const memoryRefs=personal.confirmed.map(m=>({...m,evidence:add('memory',m.id,'내가 확인한 기억',{date:m.updatedOn,excerpt:m.statement})}));
  const goalRefs=brainy.goals.map(g=>({...g,evidence:add('goal',g.id,g.sentence,{date:g.progress?.updatedOn,excerpt:JSON.stringify(g)})}));

@@ -1,0 +1,31 @@
+/* 궤도 추적 — history gathered per goal, and Today's 궤도 점검. */
+.goal-momentum{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:600;background:var(--secondary);color:var(--muted-foreground);white-space:nowrap}
+.goal-momentum.is-rising{background:color-mix(in srgb,var(--galaxy-green) 18%,transparent);color:var(--galaxy-green)}
+.goal-momentum.is-steady{background:color-mix(in srgb,var(--galaxy-cyan) 16%,transparent);color:var(--galaxy-cyan)}
+.goal-momentum.is-falling{background:color-mix(in srgb,var(--galaxy-amber) 18%,transparent);color:var(--galaxy-amber)}
+.goal-momentum.is-idle,.goal-momentum.is-new{background:color-mix(in srgb,var(--galaxy-rose) 16%,transparent);color:var(--galaxy-rose)}
+.goal-card-trace{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.75rem;color:var(--muted-foreground)}
+.goal-trace{margin:16px 0;padding:18px;border:1px solid var(--border);border-radius:18px;background:var(--card)}
+.goal-trace-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.goal-trace-head h3{margin:0;font-size:1rem}
+.goal-trace-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+.goal-trace-stats>div{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:6px;padding:10px 12px;border-radius:12px;background:var(--secondary)}
+.goal-trace-stats svg{grid-row:span 2;color:var(--galaxy-violet)}
+.goal-trace-stats strong{font-size:1.05rem;font-variant-numeric:tabular-nums}
+.goal-trace-stats span{font-size:.75rem;color:var(--muted-foreground)}
+.goal-trace-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:2px}
+.goal-trace-list :is(button,div){display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:var(--foreground);font:inherit;font-size:.875rem;text-align:left}
+.goal-trace-list button{cursor:pointer}.goal-trace-list button:hover{background:var(--secondary)}
+.goal-trace-list span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.goal-trace-list small{color:var(--muted-foreground);font-size:.75rem;white-space:nowrap}
+.goal-trace-list svg{flex:none;color:var(--muted-foreground)}
+.goal-trace-empty{margin:12px 0 0;font-size:.875rem;line-height:1.6;color:var(--muted-foreground)}
+.orbit-check{margin:0 0 16px}
+.orbit-check-main{display:flex;align-items:center;gap:12px;width:100%;padding:16px 18px;border:1px solid var(--border);border-radius:18px;background:var(--card);color:var(--foreground);text-align:left;cursor:pointer}
+.orbit-check-main>svg:first-child{flex:none;color:var(--galaxy-violet)}
+.orbit-check-main>span{flex:1;min-width:0;display:grid;gap:3px}
+.orbit-check-main strong{font-size:.95rem}
+.orbit-check-main small{font-size:.8125rem;color:var(--muted-foreground);line-height:1.5}
+.orbit-check-main .orbit-check-alert{color:var(--galaxy-amber)}
+.orbit-check.is-good .orbit-check-main{border-color:color-mix(in srgb,var(--galaxy-green) 45%,var(--border))}
+.orbit-check.is-low .orbit-check-main{border-color:color-mix(in srgb,var(--galaxy-amber) 50%,var(--border))}

@@ -32,3 +32,4 @@ html[data-keyboard=open] .quick-capture-dialog{top:calc(var(--phone-viewport-top
 .quick-capture-bar-entry svg{color:var(--galaxy-violet);flex:none}
 .quick-capture-bar-entry kbd{font-size:.75rem;padding:2px 7px;border:1px solid var(--border);border-radius:6px;color:var(--muted-foreground)}
 @media(max-width:767px){.quick-capture-bar-entry kbd{display:none}}
+@media(min-width:768px){.galaxy-workspace .content{padding-bottom:96px}}
