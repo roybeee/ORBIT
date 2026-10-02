@@ -10,7 +10,7 @@ export const areas:readonly Area[]=[
  {id:'inbox',label:'결재함',kind:'tab',views:['inbox','followup']},
  {id:'orbit',label:'Orbit',kind:'dock',views:['agent','aside']},
  {id:'projects',label:'프로젝트',kind:'tab',views:['projects','tasks','goals','portfolio','signals','meetings','experiments','contacts']},
- {id:'library',label:'기록',kind:'tab',views:['wiki','knowledge','understanding','monthly','learning']},
+ {id:'library',label:'기록',kind:'tab',views:['history','wiki','knowledge','understanding','monthly','learning']},
  {id:'me',label:'나',kind:'menu',views:['automation','sound','data','backup']},
 ];
 export const tabAreas=areas.filter(a=>a.kind==='tab');
@@ -20,7 +20,7 @@ export const viewLabels:Record<View,string>={
  inbox:'결재함',followup:'결정·위임',
  agent:'대화',aside:'웹 업무',
  projects:'프로젝트',tasks:'할 일',goals:'목표',portfolio:'시간 배분',signals:'운영 신호',meetings:'회의 브리핑',experiments:'사업 실험',contacts:'사람·거래처',
- wiki:'개인 위키',knowledge:'지식창고',understanding:'나에 대한 기억',monthly:'월간 개선',learning:'계획 개선',
+ history:'히스토리',wiki:'개인 위키',knowledge:'지식창고',understanding:'나에 대한 기억',monthly:'월간 개선',learning:'계획 개선',
  automation:'서버 자동화',sound:'사운드스테이션',data:'데이터 관리',backup:'백업·복구',
 };
 
@@ -43,6 +43,7 @@ const aliases:Partial<Record<View,readonly string[]>>={
  meetings:['회의','미팅'],
  experiments:['실험'],
  contacts:['거래처','연락처','사람'],
+ history:['타임라인','지난 기록','활동','로그','일지'],
  wiki:['위키','회의록','기록'],
  knowledge:['자료','지식'],
  understanding:['나를 이해하는 기록','기억'],
