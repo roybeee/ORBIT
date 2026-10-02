@@ -36,3 +36,9 @@ html[data-keyboard=open] .quick-capture-dialog{top:calc(var(--phone-viewport-top
 .quick-capture-entry-row{display:flex;gap:8px;margin-bottom:14px}
 .quick-capture-entry-row .quick-capture-bar-entry{margin-bottom:0;flex:1;min-width:0}
 .quick-capture-voice-entry{flex:none;width:52px;min-height:52px;border-radius:16px;border:1px dashed color-mix(in srgb,var(--galaxy-violet) 55%,var(--border));background:color-mix(in srgb,var(--galaxy-violet) 7%,var(--card));color:var(--galaxy-violet);display:grid;place-items:center;cursor:pointer}
+/* Today: one-tap completion beside each task row */
+.today-row-check{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.today-row-check .today-row{border-bottom:0;flex:1;min-width:0}
+.today-check{flex:none;width:34px;height:34px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--galaxy-green) 60%,var(--border));background:transparent;color:transparent;display:grid;place-items:center;cursor:pointer;transition:background .15s,color .15s}
+.today-check:hover,.today-check:focus-visible{background:color-mix(in srgb,var(--galaxy-green) 18%,transparent);color:var(--galaxy-green)}
+.today-check:disabled{opacity:.4;cursor:default}

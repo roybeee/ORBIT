@@ -7,19 +7,26 @@ type Basis = {revision:number; entity:unknown};
 export type QueuedWrite = {command:Command; basis:Basis; attempted:boolean; blocked?:boolean};
 type Failure = {code:string; message:string};
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+// Everyday check-offs show at once and sync in the background: the server still validates each
+// one, and a record another device changed in between fails closed with the input kept.
+const INSTANT=new Set(['project.upsert','task.upsert','event.upsert','task.status','task.focus','note.upsert','task.start','task.stop','task.record','habit.check','care.check','proposal.approve','proposal.defer']);
 export function instantAction(action:WorkspaceAction) {
-  // A note without a revision check is a new record (빠른 기록, memo, meeting note): it shows
-  // at once like a task. Edits of a loaded note carry expectedNoteRevision and still wait.
-  if(action.type==='note.upsert')return action.expectedNoteRevision===undefined;
-  return ['project.upsert','task.upsert','event.upsert','task.status','task.focus'].includes(action.type);
+  return INSTANT.has(action.type);
 }
+// The part of a task another device could meaningfully change under a check-off.
+const taskState=(t:WorkspaceData['tasks'][number]|undefined)=>t?{id:t.id,projectId:t.projectId,status:t.status,outcome:t.outcome??null,outcomeOn:t.outcomeOn??null,completedOn:t.completedOn??null,duration:t.duration}:null;
 function entity(data:WorkspaceData, action:WorkspaceAction):unknown {
   switch(action.type) {
     case 'project.upsert': return data.projects.find(x=>x.id===action.project.id)??null;
     case 'task.upsert': return data.tasks.find(x=>x.id===action.task.id)??null;
     case 'event.upsert': return data.events.find(x=>x.id===action.event.id)??null;
     case 'task.status': case 'task.focus': return data.tasks.find(x=>x.id===action.id)??null;
-    case 'note.upsert': return data.notes.find(x=>x.id===action.note.id)??null;
+    case 'task.start': case 'task.stop': case 'task.record': return taskState(data.tasks.find(x=>x.id===action.id));
+    // Revision is the note's version; the server re-checks expectedNoteRevision for edits.
+    case 'note.upsert': {const n=data.notes.find(x=>x.id===action.note.id);return n?{id:n.id,revision:n.revision??1}:null;}
+    case 'habit.check': {const h=(data.habits??[]).find(x=>x.id===action.id);return h?{id:h.id,checked:h.log.includes(action.date)}:null;}
+    case 'care.check': {const r=(data.careRoutines??[]).find(x=>x.id===action.id);return r?{id:r.id,active:r.active}:null;}
+    case 'proposal.approve': case 'proposal.defer': {const i=data.proposals.find(p=>p.date===action.date)?.items.find(x=>x.id===action.itemId);return i?{id:i.id,taskId:i.taskId,start:i.start,end:i.end,state:i.state}:null;}
     default:return null;
   }
 }
@@ -29,8 +36,8 @@ export function rebaseWrite(action:WorkspaceAction,basis:Basis,current:Workspace
   if(!instantAction(action))return current.revision===basis.revision?action:null;
   const live=entity(current.data,action);
   if(equal(live,basis.entity))return action;
-  // Note metadata carries server-managed fields; a changed note is never merged field by field.
-  if(action.type==='note.upsert')return null;
+  // Only full-record upserts merge field by field; any other changed record fails closed.
+  if(!['project.upsert','task.upsert','event.upsert'].includes(action.type))return null;
   const field=action.type==='project.upsert'?'project':action.type==='task.upsert'?'task':action.type==='event.upsert'?'event':null;
   if(!field||!basis.entity||!live)return null;
   const before=basis.entity as Record<string,unknown>, next=(action as unknown as Record<string,Record<string,unknown>>)[field], remote=live as Record<string,unknown>;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readCapture,captureAction,findDate,findTime,findMinutes,CAPTURE_INBOX_ID,CAPTURE_TAG} from '../lib/orbit/quick-capture.ts';
+import {readCapture,captureAction,captureInboxProject,findDate,findTime,findMinutes,CAPTURE_INBOX_ID,CAPTURE_TAG} from '../lib/orbit/quick-capture.ts';
 import {applyAction} from '../lib/orbit/reducer.ts';
 import {commandSchema} from '../lib/orbit/validation.ts';
 import {emptyWorkspace} from '../lib/orbit/model.ts';
@@ -125,8 +125,25 @@ test('instant memo: visible before the server answers, committed once, no blocki
  }finally{db.close()}
 });
 
-test('editing a loaded note still waits for the server revision check',()=>{
- assert.equal(instantAction({type:'note.upsert',expectedNoteRevision:2,note:{id:'n',title:'t',kind:'wiki',projectId:'p',summary:'',body:'',tags:[],updated:today}}),false);
+test('editing a note shows at once, and an edit made against an older version is kept, not applied',async()=>{
+ const db=createDatabase();
+ try{
+  const note={id:'n',title:'초안',kind:'wiki',projectId:CAPTURE_INBOX_ID,summary:'',body:'v1',tags:[],updated:today};
+  await writeCommand(db,'owner',{operationId:crypto.randomUUID(),expectedRevision:0,action:{type:'note.upsert',project:captureInboxProject(today),note}});
+  const snapshot=await readWorkspace(db,'owner');
+  const client=new WorkspaceWrites(snapshot,{post:cmd=>writeCommand(db,'owner',cmd).catch(e=>{throw {code:e.name==='RevisionConflict'?'CONFLICT':'INPUT',message:e.message}}),read:()=>readWorkspace(db,'owner'),persist:()=>{},change:()=>{},online:()=>true});
+  const edit={type:'note.upsert',expectedNoteRevision:1,note:{...note,body:'내 수정'}};
+  assert.equal(instantAction(edit),true);
+  // Another device saves version 2 first.
+  await writeCommand(db,'owner',{operationId:crypto.randomUUID(),expectedRevision:snapshot.revision,action:{type:'note.upsert',expectedNoteRevision:1,note:{...note,body:'다른 기기'}}});
+  assert.equal(await client.enqueue(edit),true);
+  assert.equal(client.view.data.notes[0].body,'내 수정','shown immediately');
+  while(client.running)await new Promise(r=>setTimeout(r,1));
+  await client.flush();while(client.running)await new Promise(r=>setTimeout(r,1));
+  assert.equal(client.queue[0]?.blocked,true,'the stale edit is held for review');
+  assert.equal(client.queue[0].command.action.note.body,'내 수정','with the typed text kept');
+  const stored=await readWorkspace(db,'owner');assert.equal(stored.data.notes[0].revision,2);
+ }finally{db.close()}
 });
 
 test('captured tasks file themselves when a project that clearly matches them is created',()=>{
