@@ -617,9 +617,13 @@ export function applyAction(
       }
       break;
     }
-    case 'note.upsert':
+    case 'note.upsert': {
+      const projectId = action.project
+        ? (action.project.id === action.note.projectId ? createProject(action.project) : fail('새 프로젝트와 기록의 연결을 확인해 주세요.'))
+        : action.note.projectId;
       data.notes = replace(data.notes, {
         ...action.note,
+        projectId,
         wiki: action.note.wiki ?? data.notes.find(n=>n.id===action.note.id)?.wiki,
         source: action.note.source ?? data.notes.find(n=>n.id===action.note.id)?.source,
         updated: today,
@@ -634,6 +638,7 @@ export function applyAction(
         if(saved.wiki)saved.wiki={...saved.wiki,links:wikiLinks({...saved,wiki:{...saved.wiki,links:[]}},data.notes)};
       }
       break;
+    }
     case 'note.restore':
       fail('이전 내용은 서버에서 확인한 뒤 복원해 주세요.');
       break;

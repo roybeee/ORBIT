@@ -9,6 +9,7 @@ import Link from 'next/link';
 import {afterPopupClose,replacePopupRoute,pushPopupRoute,ensurePopupHistory,usePopupHistory} from '@/components/ui/use-popup-history';
 import {AppNavigation,AreaSections,SearchTrigger} from './shell/app-navigation';
 import {OrbitSearch,useSearchShortcut,type SearchAction} from './shell/orbit-search';
+import {QuickCapture,QuickCaptureButton,useCaptureShortcut} from './quick-capture';
 import {MeSheet} from './shell/me-sheet';
 import {IaIntro} from './shell/ia-intro';
 import {OrbitDock} from './shell/orbit-dock';
@@ -324,6 +325,9 @@ function WorkspaceContent({
   const [briefLaunch, setBriefLaunch] = useState<{ date: string; id: string }>();
   const [reflection, setReflection] = useState<ReviewReflection | null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
+  // 빠른 기록 opens from the floating button, the Today bar, ⌘K, the N key and the #capture shortcut.
+  const [captureOpen,setCaptureOpen]=useState(false);
+  const captureOnLoad=useRef(false);
   const [meOpen,setMeOpen]=useState(false);
   const [aiActions,setAiActions]=useState<AgentAction[]|null>(null);
   const [news,setNews]=useState<NewsSummary|null>(null);
@@ -441,11 +445,15 @@ function WorkspaceContent({
   useEffect(() => {
     ensurePopupHistory();
     const v = location.hash.slice(1) as View;
+    // The installed app's 빠른 기록 shortcut lands on Today with the capture sheet open.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- same client-only hash read as below
+    if ((v as string) === 'capture') { captureOnLoad.current = true; setView('today'); replacePopupRoute(null, location.pathname + location.search + '#today'); }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial view comes from location.hash, which only exists on the client after mount; the server renders the default view
-    if (navigation.some((n) => n.id === v)) setView(v);
+    else if (navigation.some((n) => n.id === v)) setView(v);
     else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);replacePopupRoute(null,url.pathname+url.search+'#'+initial);}
     const handle = () => {
       const next = location.hash.slice(1) as View;
+      if ((next as string) === 'capture') { replacePopupRoute(null, location.pathname + location.search + '#today'); setView('today'); setCaptureOpen(true); return; }
       setView(navigation.some((n) => n.id === next) ? next : 'today');
       setSearch('');
       setDetail(null);
@@ -1022,7 +1030,12 @@ function WorkspaceContent({
     : detail?.kind === 'note' ? `기록 · ${notes.find(n => n.id === detail.id)?.title ?? '선택한 기록'}`
     : detail?.kind === 'event' ? `일정 · ${events.find(e => e.id === detail.id)?.title ?? '선택한 일정'}`
     : areaOf(view).views[0] === view ? `${areaOf(view).label} 화면` : `${areaOf(view).label} · ${viewLabels[view]}`;
+  const openCapture = () => {
+    if (!loaded) { toast('저장된 내용을 불러오는 중입니다. 잠시 후 다시 눌러 주세요.'); return; }
+    setSearchOpen(false); setMeOpen(false); setCaptureOpen(true);
+  };
   const searchActions: SearchAction[] = [
+    {id:'capture',label:'빠른 기록',hint:'메모·할 일·일정 한 번에 · N',icon:<Pencil/>,keywords:['메모','기록','노트','회의록','적기','캡처','capture'],disabled:!loaded,run:openCapture},
     {id:'task',label:'새 할 일',hint:'제목만 적어도 됩니다',icon:<Plus/>,keywords:['할 일 추가','투두'],disabled:!loaded||busy,run:()=>openCreate(projects.length?'task':'project')},
     {id:'event',label:'새 일정',hint:'Google 일정과 함께 저장',icon:<CalendarDays/>,keywords:['일정 추가','캘린더'],disabled:!loaded||busy,run:()=>openCreate('event')},
     {id:'project',label:'새 프로젝트',hint:'목표 결과물부터',icon:<FolderKanban/>,keywords:['프로젝트 추가'],disabled:!loaded||busy,run:()=>openCreate('project')},
@@ -1031,6 +1044,9 @@ function WorkspaceContent({
     {id:'settings',label:'업무 시간·계획 기준',hint:'설정',icon:<Settings2/>,keywords:['설정','환경','리듬'],run:openSettings},
   ];
   useSearchShortcut(setSearchOpen);
+  useCaptureShortcut(openCapture);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- a #capture launch waits for the workspace to load once
+  useEffect(()=>{if(loaded&&captureOnLoad.current){captureOnLoad.current=false;setCaptureOpen(true);}},[loaded]);
   return (
     <CityThemeProvider preferences={data.preferences} view={view} title={navigation.find(n=>n.id===view)?.label??pageInfo[view].title} busy={busy||hasPending||!loaded} perform={perform} demo={demo}><SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''} ${dockOpen&&view!=='agent'?'has-orbit-dock':''}`} data-illustration-collection={illustrationTheme(screenIllustration(data.preferences,view)).collection} style={{ '--sidebar-width': '248px', '--illustration-accent':illustrationTheme(screenIllustration(data.preferences,view)).accent } as CSSProperties}>
       <CosmicBackdrop/>
@@ -1050,6 +1066,8 @@ function WorkspaceContent({
         onSearch={openSearch}
       />
       <OrbitSearch open={searchOpen} onOpenChange={setSearchOpen} view={view} navigate={navigate} actions={searchActions}/>
+      <QuickCapture open={captureOpen} onOpenChange={setCaptureOpen} data={data} today={TODAY} nowMinute={demo?600:minuteInZone(preferences.timeZone,clock)} demo={demo} ownerId={ownerId} disabled={!loaded} perform={action=>perform(action)} onOpenRecord={target=>{setCaptureOpen(false);afterPopupClose(()=>setDetail(target));}}/>
+      <QuickCaptureButton onOpen={openCapture} hidden={!loaded||view==='agent'||dockOpen||captureOpen||!!create||!!detail}/>
       <MeSheet open={meOpen} onOpenChange={setMeOpen} displayName={displayName} view={view} demo={demo} loaded={loaded} navigate={navigate} onSettings={()=>{setMeOpen(false);afterPopupClose(openSettings)}} onConnections={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:connections')))}} onRuntime={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:runtime')))}} onNews={()=>{setMeOpen(false);afterPopupClose(()=>setNewsOpen(true))}}/>
       <div className="app-main">
         <header className="topbar">
@@ -1207,7 +1225,7 @@ function WorkspaceContent({
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{askOrbit(text)}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{askOrbit(text)}} onConnect={()=>{window.dispatchEvent(new Event('orbit:connections'))}}/>}
           {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} split={proposalSplit} aiLoading={!demo&&aiActions===null} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{askOrbit(text)}} onReviewDeferred={()=>{openOrbit();window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
-          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
+          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onCapture={openCapture} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">

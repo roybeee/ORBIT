@@ -20,7 +20,7 @@ test('manifest launches the standalone agent on desktop and phone with real icon
  for(const icon of manifest.icons){assert.match(icon.src,/^data:image\/png;base64,/);const bytes=Buffer.from(icon.src.split(',')[1],'base64');const name=icon.purpose==='maskable'?'orbit-maskable-512.png':`orbit-${icon.sizes.split('x')[0]}.png`;assert.deepEqual(bytes,await readFile(new URL('../public/icons/'+name,import.meta.url)));assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.equal(`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`,icon.sizes)}
  assert.ok(manifest.icons.some(icon=>icon.purpose==='maskable'&&icon.sizes==='512x512'));
  const apple=await readFile(new URL('../public/icons/apple-touch-icon.png',import.meta.url));assert.equal(apple.readUInt32BE(16),180);assert.equal(apple.readUInt32BE(20),180);
- for(const shortcut of manifest.shortcuts)assert.match(shortcut.url,/^\/#(today|tasks|review|proposal)$/);
+ for(const shortcut of manifest.shortcuts)assert.match(shortcut.url,/^\/#(capture|today|tasks|review|proposal)$/);
 });
 test('desktop detection distinguishes Safari, Chrome and Edge despite shared user-agent tokens',()=>{
  const cases=[

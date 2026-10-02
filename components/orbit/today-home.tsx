@@ -13,13 +13,14 @@ import {TimeBudget} from './time-budget';
 import {dayMode,DEFAULT_EVENING_HOUR,NIGHT_END,type DayMode} from '@/lib/orbit/day-mode';
 import {DayModeSwitch} from './today/day-mode-switch';
 import {EveningCard} from './today/evening-card';
+import {QuickCaptureBar} from './quick-capture';
 import {AiHoldBanner} from './brief/ai-hold-banner';
 import {Progress} from '@/components/ui/progress';
 import {formatTime,type WorkspaceData,type View} from '@/lib/orbit/model';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 
-type Props={orders?:WorkOrder[];onOrder?:(id?:string)=>void;data:WorkspaceData;now:Date;busy:boolean;demo:boolean;pendingAI?:number|null;eveningHour?:number;inboxCount?:number;onInbox?:()=>void;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;navigate:(view:View)=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onReview?:(date:string)=>void;onTimeSettings:()=>void};
-export function TodayHome({orders=[],onOrder,data,now,busy,demo,eveningHour=DEFAULT_EVENING_HOUR,inboxCount=0,onInbox,perform,onOpen,navigate,onCreate,onAsk,onCalendar,onProposal,onReview,onTimeSettings}:Props){
+type Props={onCapture?:()=>void;orders?:WorkOrder[];onOrder?:(id?:string)=>void;data:WorkspaceData;now:Date;busy:boolean;demo:boolean;pendingAI?:number|null;eveningHour?:number;inboxCount?:number;onInbox?:()=>void;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;navigate:(view:View)=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onReview?:(date:string)=>void;onTimeSettings:()=>void};
+export function TodayHome({onCapture,orders=[],onOrder,data,now,busy,demo,eveningHour=DEFAULT_EVENING_HOUR,inboxCount=0,onInbox,perform,onOpen,navigate,onCreate,onAsk,onCalendar,onProposal,onReview,onTimeSettings}:Props){
  const d=useMemo(()=>workspaceDashboard(data,now),[data,now]);
  const primary=d.chief.primary;
  const loadSignal=primary.key===`load:${d.today}`;
@@ -51,6 +52,7 @@ export function TodayHome({orders=[],onOrder,data,now,busy,demo,eveningHour=DEFA
  const progress=registered?Math.round(finished/registered*100):0;
  const weekMax=Math.max(1,...d.week.map(day=>day.count)),weekTotal=d.week.reduce((sum,day)=>sum+day.count,0);
  return <div className="today-home mission-dashboard" data-day-mode={mode}>
+  {onCapture&&<QuickCaptureBar onOpen={onCapture}/>}
   <DayModeSwitch mode={mode} now={realMode} onChange={next=>setPicked(next===realMode?null:{mode:next,during:realMode,day:closingDay})}/>
   <div className="mission-overview execution-overview">
   {mode==='evening'?<EveningCard art={art} completed={closedCount} reviewed={reviewed} tomorrowPending={tomorrowPending} eveningHour={Math.max(eveningHour,18)} onReview={()=>onReview?onReview(closingDay):navigate('review')} onProposal={()=>onProposal(nextDay)} onInbox={()=>onInbox?.()}/>:<section className={`today-next mission-hero ${loadSignal?'has-time-budget':''}`} aria-labelledby="today-next-title">

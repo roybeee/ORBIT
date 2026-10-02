@@ -43,7 +43,7 @@ function keysFor(action:AgentAction['action'],data:WorkspaceData):string[]{
   case 'task.status':case 'task.focus':case 'task.record':task(a.id);keys.add('preferences');break;
   case 'task.laser':task(a.id);keys.add('preferences');for(const t of data.tasks.filter(t=>t.laserDate===a.date))task(t.id);break;
   case 'task.assign':for(const assignment of a.assignments){task(assignment.id);project(assignment.projectId)}for(const p of a.projects??[])draftProject(p);break;
-  case 'note.upsert':row('notes',a.note.id);project(a.note.projectId);break;
+  case 'note.upsert':row('notes',a.note.id);project(a.note.projectId);if(a.project)draftProject(a.project);break;
   case 'event.upsert':row('events',a.event.id);task(a.event.taskId);project(a.event.projectId);keys.add('preferences');if(a.project)draftProject(a.project);break;
   case 'preferences.update':keys.add('preferences');break;
   case 'project.domino':keys.add('dominoProjectId');project(a.id);break;
