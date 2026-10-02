@@ -96,3 +96,15 @@
 .today-row-check.is-closing .today-check{background:var(--galaxy-green);border-color:var(--galaxy-green);color:var(--background)}
 .today-row-check.is-closing .today-row strong{text-decoration:line-through}
 @media(prefers-reduced-motion:reduce){.today-row-check{transition:none}}
+/* 프로젝트 on a phone: the goal ladder reads as three one-line rungs, and the city art (whose counts repeat the tabs) steps aside,
+   so the project list starts on the first screen. Full goal sentences stay in the title and on 목표. */
+@media(max-width:600px){
+ .goal-ladder{padding:10px 12px;gap:8px;margin-bottom:14px}
+ .goal-ladder ol{gap:4px}
+ .goal-ladder li{grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;column-gap:8px;padding:8px 10px}
+ .goal-ladder li strong{display:block;-webkit-line-clamp:unset;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.85rem}
+ .goal-ladder li:not(:last-child)::after{display:none}
+ .goal-ladder-foot{gap:6px 10px}
+ /* Its counts repeat the 진행 중·완료 tabs right below it. */
+ .project-universe-banner{display:none}
+}

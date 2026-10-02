@@ -54,3 +54,16 @@ test('phone tap targets are at least 44px on the busiest screens',async({page},i
  await expect(page.locator('[data-slot=tabs-trigger]:visible').first()).toBeVisible();
  for(const size of await tapSize(page,'[data-slot=tabs-trigger]'))expect(size).toBeGreaterThanOrEqual(44);
 });
+
+test('on a phone the goal ladder is three one-line rungs and the project list starts on the first screen',async({page},info)=>{
+ test.skip(info.project.name!=='mobile','phone layout');
+ await page.goto('/demo#projects');
+ const rungs=page.locator('.goal-ladder li');
+ await expect(rungs).toHaveCount(3);
+ for(const box of await rungs.evaluateAll(list=>list.map(e=>e.getBoundingClientRect().height)))expect(box).toBeLessThanOrEqual(48);
+ await expect(rungs.first().locator('strong')).toHaveAttribute('title',/.+/);
+ await expect(page.locator('.project-universe-banner')).toBeHidden();
+ const tab=page.getByRole('tab',{name:/진행 중/}).first();
+ await expect(tab).toBeVisible();
+ expect((await tab.boundingBox())!.y).toBeLessThan(page.viewportSize()!.height-200);
+});
