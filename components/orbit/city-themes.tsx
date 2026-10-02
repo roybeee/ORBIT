@@ -55,7 +55,8 @@ export function CityThemeButton({project}:{project?:{id:string;name:string}}){
  const {open,theme,disabled}=useCityThemes();
  return <button type="button" className={project?'project-city-button':'city-theme-trigger'} disabled={disabled} aria-label={project?'프로젝트 테마 설정':'화면 테마 설정'} onClick={()=>open(project?{scope:'project',id:project.id,title:project.name}:undefined)}><Palette size={18}/><span>{project?'표지 테마':theme.name}</span></button>;
 }
-export function CityScreenBanner({compact=false}:{compact?:boolean}){
+// Work screens get a slim strip so the content starts above the fold; the theme stays one tap away.
+export function CityScreenBanner({compact=false,slim=false}:{compact?:boolean;slim?:boolean}){
  const {theme,open}=useCityThemes();
- return <section className={`city-screen-banner ${compact?'is-compact':''}`} aria-label={`${theme.name} 테마`}><img src={theme.image} width="1600" height="1194" alt=""/><div><span>{theme.collection==='worlds'?'A WORLD AT YOUR OWN PACE':'YOUR EVERYDAY, SOMEWHERE NEW'}</span><strong>{theme.english}</strong><p>{theme.name} · {theme.landmarks}</p></div><button onClick={()=>open()} aria-label="이 화면 테마 변경"><Palette size={17}/><span>테마 변경</span></button></section>;
+ return <section className={`city-screen-banner ${slim?'is-slim':compact?'is-compact':''}`} aria-label={`${theme.name} 테마`}><img src={theme.image} width="1600" height="1194" alt=""/><div><span>{theme.collection==='worlds'?'A WORLD AT YOUR OWN PACE':'YOUR EVERYDAY, SOMEWHERE NEW'}</span><strong>{theme.english}</strong><p>{theme.name} · {theme.landmarks}</p></div><button onClick={()=>open()} aria-label="이 화면 테마 변경"><Palette size={17}/><span>테마 변경</span></button></section>;
 }

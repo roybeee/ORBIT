@@ -51,10 +51,14 @@ export function AreaSections({view,navigate,inboxCount,newsUnread}:{view:View;na
  const track=useRef<HTMLDivElement>(null);
  // Keep the current screen's chip in view when the row scrolls on a phone.
  useEffect(()=>{
-  const center=()=>{const row=track.current,chip=row?.querySelector<HTMLElement>('[aria-current="page"]');if(row&&chip)row.scrollLeft=chip.offsetLeft-(row.clientWidth-chip.offsetWidth)/2;};
+  const row=track.current;
+  // A fade marks the side that still has chips, so a cut-off chip reads as "scroll for more".
+  const edges=()=>{if(!row)return;const max=row.scrollWidth-row.clientWidth;row.classList.toggle('has-more-start',row.scrollLeft>4);row.classList.toggle('has-more-end',row.scrollLeft<max-4);};
+  const center=()=>{const chip=row?.querySelector<HTMLElement>('[aria-current="page"]');if(row&&chip)row.scrollLeft=chip.offsetLeft-(row.clientWidth-chip.offsetWidth)/2;edges();};
   const frame=requestAnimationFrame(center);
   void document.fonts?.ready.then(center);
-  return()=>cancelAnimationFrame(frame);
+  row?.addEventListener('scroll',edges,{passive:true});window.addEventListener('resize',edges);
+  return()=>{cancelAnimationFrame(frame);row?.removeEventListener('scroll',edges);window.removeEventListener('resize',edges);};
  },[view]);
  if(area.views.length<2)return null;
  return <nav className="area-sections" aria-label={`${area.label} 화면`}><div className="area-sections-track" ref={track}>{area.views.map(id=>{const Icon=viewIcons[id];const on=view===id;return <button key={id} className={on?'is-selected':''} aria-current={on?'page':undefined} onClick={()=>navigate(id)}><Icon size={15} aria-hidden="true"/>{viewLabels[id]}{id==='inbox'&&<NavBadge count={inboxCount} news={newsUnread}/>}</button>;})}</div></nav>;

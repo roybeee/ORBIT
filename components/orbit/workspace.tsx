@@ -1151,7 +1151,7 @@ function WorkspaceContent({
           className={`content ${view === 'agent' ? 'agent-content' : view === 'sound' ? 'sound-content' : ''} ${!loaded ? 'is-loading' : ''}`}
         >
           {loaded&&!demo&&<IaIntro onSearch={openSearch}/>}
-          <div className={`page-heading ${view === 'agent' || view === 'sound' ? 'agent-page-heading' : ''}`}>
+          <div className={`page-heading ${view === 'agent' || view === 'sound' ? 'agent-page-heading' : view === 'today' ? 'is-today' : ''}`}>
             <div>
               <div className="eyebrow">
                 {view === 'today'
@@ -1171,7 +1171,7 @@ function WorkspaceContent({
             ) : null}
           </div>
           <AreaSections view={view} navigate={navigate} inboxCount={inbox.total} newsUnread={news?.unread??0}/>
-          {loaded&&!['today','projects','inbox'].includes(view)&&<CityScreenBanner compact={view==='agent'||view==='sound'}/>}
+          {loaded&&!['today','projects','inbox'].includes(view)&&<CityScreenBanner compact={view==='agent'||view==='sound'} slim={view!=='agent'&&view!=='sound'}/>}
           {!loaded && (
             <section className="load-state" role="status">
               <RefreshCw size={22} />
@@ -1291,6 +1291,7 @@ function WorkspaceContent({
                         <div className="task-meta">
                           <ProjectLabel project={projectById(t.projectId)} />
                           <span>{t.due.slice(5).replace('-', '/')} 마감 · {categoryLabels[categoryOf(t)]}</span>
+                          {(() => { const goalId = projectById(t.projectId)?.goalId; const goal = goalId ? data.goals?.find(g => g.id === goalId) : undefined; return goal ? <em className="goal-tag"><Target size={12} aria-hidden="true" />{goal.sentence}</em> : null; })()}
                           {t.dependsOn?.length ? <span>선행 작업 {t.dependsOn.length}개</span> : null}
                         </div>
                       </div>

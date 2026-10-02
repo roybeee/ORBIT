@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useState,type CSSProperties} from 'react';
-import {ArrowRight,Check,Clock3,Play,Plus,ChevronRight,Headphones,Orbit,CheckCheck,Flag,ArrowUpRight,Inbox,Mic,Sunrise} from 'lucide-react';
+import {ArrowRight,Check,Clock3,Play,Plus,ChevronRight,Headphones,Orbit,CheckCheck,Flag,ArrowUpRight,Inbox,Mic,Sunrise,Target} from 'lucide-react';
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {projectWorld} from '@/lib/orbit/project-world';
 import {workspaceDashboard} from '@/lib/orbit/dashboard';
@@ -56,6 +56,8 @@ export function TodayHome({onCapture,onVoiceCapture,orders=[],onOrder,data,now,b
  const complete=async(id:string,previous:Task['status'])=>{
   if(await perform({type:'task.status',id,status:'done'}))toast.success('완료로 기록했습니다',{action:{label:'되돌리기',onClick:()=>void perform({type:'task.status',id,status:previous})}});
  };
+ // Each task shows the goal it moves, so the link from today's action to the goal is visible where you act.
+ const goalOf=(projectId:string)=>{const goalId=data.projects.find(p=>p.id===projectId)?.goalId;return goalId?data.goals?.find(g=>g.id===goalId)?.sentence:undefined;};
  const weekMax=Math.max(1,...d.week.map(day=>day.count)),weekTotal=d.week.reduce((sum,day)=>sum+day.count,0);
  return <div className="today-home mission-dashboard" data-day-mode={mode}>
   {onCapture&&<QuickCaptureBar onOpen={onCapture} onVoice={onVoiceCapture}/>}
@@ -82,12 +84,13 @@ export function TodayHome({onCapture,onVoiceCapture,orders=[],onOrder,data,now,b
 
   </div>
   <AiHoldBanner demo={demo} timeZone={data.preferences.timeZone} onPlan={()=>onProposal(d.today)} onNote={id=>onOpen({kind:'note',id})}/>
-  <OrbitCheckCard data={data} today={d.today} onGoals={()=>navigate('goals')}/>
-  {inboxCount>0&&<section className="today-review" aria-label="결재함"><button className="today-row" onClick={()=>onInbox?.()}><span><strong>결재함 · 정할 일 {inboxCount}건</strong><small>계획·Orbit 제안·업무 지시·확인일을 한곳에서 승인하거나 보류하세요</small></span><ChevronRight size={19}/></button></section>}
+  {/* What to do now comes first: today's tasks and the next events sit right under the one thing. */}
   <div className="today-columns">
-   <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><div key={t.id} className="today-row-check"><button type="button" className="today-check" disabled={demo} aria-label={`${t.title} 완료`} title="완료" onClick={()=>void complete(t.id,t.status)}><Check size={16}/></button><button className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small></span><ChevronRight size={19}/></button></div>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>
+   <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><div key={t.id} className="today-row-check"><button type="button" className="today-check" disabled={demo} aria-label={`${t.title} 완료`} title="완료" onClick={()=>void complete(t.id,t.status)}><Check size={16}/></button><button className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small>{goalOf(t.projectId)&&<em className="goal-tag"><Target size={12} aria-hidden="true"/>{goalOf(t.projectId)}</em>}</span><ChevronRight size={19}/></button></div>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>
    <section className="today-section mission-agenda"><div className="section-title"><h2>다가오는 일정</h2><button className="text-button" onClick={()=>onCalendar(d.today)}>전체 일정<ChevronRight size={15}/></button></div>{events.length?events.map(e=><button key={e.id} className="today-row" onClick={()=>e.id.startsWith('protected:')?navigate('portfolio'):onOpen({kind:'event',id:e.id})}><span className="mission-event-time">{formatTime(e.start)}<small>{e.date===d.today?'오늘':e.date.slice(5).replace('-','/')}</small></span><span><strong>{e.title}</strong><small>{e.date===d.today?'오늘':e.date} · {formatTime(e.start)}–{formatTime(e.end)}</small></span></button>):<p className="today-empty">저장된 다음 일정이 없어요.</p>}</section>
   </div>
+  {inboxCount>0&&<section className="today-review" aria-label="결재함"><button className="today-row" onClick={()=>onInbox?.()}><span><strong>결재함 · 정할 일 {inboxCount}건</strong><small>계획·Orbit 제안·업무 지시·확인일을 한곳에서 승인하거나 보류하세요</small></span><ChevronRight size={19}/></button></section>}
+  <OrbitCheckCard data={data} today={d.today} onGoals={()=>navigate('goals')}/>
   {actionableOrders.length>0&&<section className="today-review" aria-label="맡긴 업무"><div className="section-title"><h2>맡긴 업무 · 다음 확인</h2><button className="text-button" onClick={()=>onOrder?.()}>전체 보기</button></div>{actionableOrders.slice(0,3).map(o=><button key={o.id} className="today-row" onClick={()=>onOrder?.(o.id)}><span><strong>{o.title}</strong><small>{o.status==='completed'?(o.review==='needs_work'?'보완 실행이 필요해요':'결과를 확인해 주세요'):orderStatusLabel[o.status]}</small></span><ChevronRight size={19}/></button>)}</section>}
   {timeCard}
   <div className="mission-stats" aria-label="오늘의 현황">

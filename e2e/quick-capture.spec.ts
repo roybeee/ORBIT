@@ -62,6 +62,9 @@ test('the floating button and the #capture shortcut open the same sheet',async({
  await expect(page).toHaveURL(/#today$/);
  await page.keyboard.press('Escape');
  await expect(page.getByRole('dialog',{name:'빠른 기록'})).toBeHidden();
+ // On 오늘 the entry bar is the capture entry; the floating button steps aside while it is on screen.
+ await expect(page.getByRole('button',{name:'빠른 기록 (N)'})).toBeHidden();
+ await page.goto('/#tasks');
  await page.getByRole('button',{name:'빠른 기록 (N)'}).click();
  await expect(page.getByRole('dialog',{name:'빠른 기록'})).toBeVisible();
 });
