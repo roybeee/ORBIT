@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-02 실행 루프 강화(PR #153, `claude/orbit-current-score-eval-uw23yu`, 기준 main `57e22a1941cfbdd751147b9179b983a357876713`): 빠른 기록(어디서든 한 번에, 메모·회의록 새로 쓰기 즉시 저장, 빠른 기록함 자동 정리), 궤도 추적(목표별 최근 7일 기록·흐름, 오늘의 궤도 점검, AI 브리프 `goalMomentum`), 회고 규칙 ★의 결정적 계획 반영(`plan-rules.ts`), 기록 탭 첫 화면 히스토리, 결재함 하루 계획 일괄 승인, 가끔 여는 화면 지연 로딩(워크스페이스 번들 gzip 약 347KB→211KB), 저녁 1분 회고 알림 1회. typecheck passed · real, 전체 회귀 1006개 passed(외부 서비스 stub 포함 mocked), E2E 56개 passed(Chromium 실제 입력, 로컬 worker+D1 real, 로그인 헤더 mocked). 실제 휴대폰 키보드·설치 앱 바로가기 확인은 not_run(실기기 필요). Sites published/runtime-verified는 not_run.
+
 - 2026-09-29 인터랙션 햅틱: `feat/interaction-haptics`, 기준 main `0ef42ce45ae4d8b8ce5846e41364c236d94a34b7`. 버튼·탭·확인 창 10ms, 확정 날짜 스와이프·롱프레스 18ms; 80ms 중복 제한. 미지원·거부·예외·숨김·동작 줄이기는 무음으로 처리한다. typecheck/build passed · real, 전체 회귀 981개 passed(외부 서비스 mocked 포함), 모바일 햅틱 브라우저 7개 passed(실제 Chromium 입력, 진동 API·demo 인증 mocked). Python-less 검사는 macOS에서 not_run, Linux CI에서 확인한다. 이 변경의 Sites published/runtime-verified는 아직 not_run.
 
 - 2026-09-29 일간 시간표 날짜 스와이프: `fix/day-grid-date-swipe`, 기준 main `3cf5cc468eacdce799048bac9d79c30117a1f5a7`. 빈 시간대·일정·종일 카드에서 왼쪽은 다음 날, 오른쪽은 전날. 세로 스크롤·멀티터치·터치 취소와 활성 롱프레스는 날짜를 바꾸지 않는다. typecheck/build passed · real, 전체 회귀 970개 passed(외부 서비스 mocked 포함), 모바일 브라우저 9개 passed(Chromium 실제 터치 입력, demo/인증 mocked). Python-less 검사는 macOS에서 not_run이며 Linux CI에서 확인한다. PR #151 merged `0ef42ce`; Sites published `appgdep_6abb2befedd4819193f51a00fea2d014` (tree `bcae61cf2eda7d1a5e2eaa621cecf387038e629e`). 인증 브라우저 새 시간표 안내 확인 passed · real. 운영 `/api/version` tree 읽기는 브라우저 API 탐색 차단으로 blocked · real이므로 runtime-verified는 아님.
@@ -80,18 +82,17 @@
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-09-28T23:54:25Z
-- `origin/main`: `959612be0bf5062d4bcf86a51f628e9b7e72ec4f` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `75552709cac8010cf89b3ccf9db1621add9e0bfe`
+- 생성 시각(UTC): 2026-10-02T12:16:39Z
+- `origin/main`: `57e22a1941cfbdd751147b9179b983a357876713` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `3d05d03f344b5dd6c8fd56b4bc1eb5b3930b3d9e`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| ORBIT | main | `959612b` | 0 / 0 | no |
-| ORBIT-contract | feat/release-contract | `959612b` | 0 / 0 | yes |
+| ORBIT | claude/orbit-current-score-eval-uw23yu | `26f303f` | 0 / 6 | no |
 
 ### 열린 PR
 
-- (gh 없음, 확인 불가)
+- (gh pr list failed)
 <!-- status:auto:end -->
