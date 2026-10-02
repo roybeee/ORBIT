@@ -62,3 +62,5 @@
 .inbox-approve-day{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px dashed color-mix(in srgb,var(--galaxy-violet) 50%,var(--border));border-radius:16px;font-size:.875rem;color:var(--muted-foreground)}
 .inbox-approve-day .primary-button{min-height:42px}
 .view-loading{padding:32px 4px;color:var(--muted-foreground);font-size:.875rem}
+.settings-toggle{display:flex;gap:12px;align-items:flex-start;margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:14px;cursor:pointer}
+.settings-toggle>span{display:grid;gap:4px}.settings-toggle strong{font-size:.9rem}.settings-toggle small{font-size:.8125rem;line-height:1.5;color:var(--muted-foreground)}

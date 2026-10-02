@@ -195,6 +195,7 @@ export const preferencesSchema = z
     laserMinutes: z.number().int().min(60).max(360).optional(),
     travelMinutes: z.number().int().min(0).max(120).optional(),
     colorBy: z.enum(['project', 'cognition']).optional(),
+    autoApprovePlan: z.boolean().optional(),
   })
   .strict()
   .refine((p) => p.workEnd > p.workStart, '업무 종료 시간은 시작 시간 이후여야 합니다.');

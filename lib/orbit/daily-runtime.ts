@@ -1,4 +1,5 @@
 import {collectNotifications,notify} from './notifications/store.ts';
+import {autoApproveToday} from './plan-autoapprove.ts';
 import {reviewNudge} from './review-nudge.ts';
 import {flushPushNotifications} from './notifications/push.ts';
 import {processMeetingReviews} from './meetings/review-runtime.ts';
@@ -62,6 +63,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  }
  const snapshot=await readWorkspace(db,owner),zone=snapshot.data.preferences.timeZone,today=todayInZone(zone),afterEvening=eveningDue(new Date(),zone,config.eveningHour),target=afterEvening?addDays(today,1):today;
  {const nudge=reviewNudge(snapshot.data,today,afterEvening);if(nudge)await notify(db,owner,nudge).catch(()=>{});}
+ if(snapshot.data.preferences.autoApprovePlan)await autoApproveToday(db,owner,today).catch(()=>{});
  const previousMonth=addDays(today.slice(0,7)+'-01',-1).slice(0,7);
  if(!snapshot.data.monthlyReports?.some(r=>r.id===previousMonth)){try{await writeCommand(db,owner,{operationId:crypto.randomUUID(),expectedRevision:snapshot.revision,action:{type:'monthly.generate',month:previousMonth}});return await finish(true);}catch{config.lastError='월간 보고서 준비를 다음 실행에서 재시도합니다.';}}
  for(const p of snapshot.data.proposals.filter(p=>p.date>=today&&p.date<=addDays(today,1))){if((!p.replan||Date.now()-Date.parse(p.replan.generatedAt)>900000)&&p.replan?.basis!==replanBasis(snapshot.data,p.date)){try{await writeCommand(db,owner,{operationId:crypto.randomUUID(),expectedRevision:snapshot.revision,action:{type:'proposal.replan.prepare',date:p.date}});return await finish(true);}catch{config.lastError='일정 대안은 다음 실행에서 다시 계산합니다.';}}}
