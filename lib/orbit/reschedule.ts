@@ -1,4 +1,5 @@
 import type {WorkspaceData,Task,Proposal} from './model.ts';
+import {planRules} from './plan-rules.ts';
 import {planningFloor} from './dates.ts';
 import {generateProposal,calibrationFactor,overlaps} from './planner.ts';
 import {careEvents} from './chief.ts';
@@ -14,7 +15,7 @@ export function prepareReplan(data:WorkspaceData,date:string,now=new Date()):Non
  const pool=all;
  const extras=[...careEvents(data,date),...protectedEvents(data,date)],events=[...data.events,...extras];
  const alternatives=(['normal','low'] as const).map(energy=>{
-  const p=generateProposal(pool,events,date,energy,previous,data.preferences,{context:data,earliestStart,dominoProjectId:data.dominoProjectId,projectPriority:Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),calibration:(t:Task)=>calibrationFactor(data.tasks,t,date,data.executionHistory)});
+  const p=generateProposal(pool,events,date,energy,previous,data.preferences,{context:data,earliestStart,dominoProjectId:data.dominoProjectId,projectPriority:Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),calibration:(t:Task)=>calibrationFactor(data.tasks,t,date,data.executionHistory),rules:planRules(data.improvements,data.preferences)});
   p.draftTasks=drafts;p.items=p.items.map(i=>{const draft=drafts.find(t=>t.id===i.taskId);return i.state==='pending'&&draft?{...i,draftTask:draft}:i});return p;
  });
  const conflicts:string[]=[];

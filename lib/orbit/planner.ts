@@ -14,6 +14,7 @@ import {
   type Cognition,
 } from './model.ts';
 import { addDays } from './dates.ts';
+import type { PlanRules } from './plan-rules.ts';
 export function overlaps(a: { start: number; end: number }, b: { start: number; end: number }) {
   return a.start < b.end && a.end > b.start;
 }
@@ -74,6 +75,8 @@ export interface PlannerOptions {
   ordered?: string[];
   // Explicit Goal Laser choice (the brief's first priority); otherwise the domino heuristic decides.
   laserTaskId?: string;
+  // The owner's active review rules, already reduced to planner effects (plan-rules.ts).
+  rules?: PlanRules;
 }
 const quadrantWord: Record<Quadrant, string> = {
   A: '중요하고 급한 A',
@@ -100,9 +103,10 @@ export function generateProposal(
   const prefs = withDefaults(preferences ?? DEFAULT_PREFERENCES);
   const workStart = Math.max(preferences?.workStart ?? 540,options.earliestStart??0),
     workEnd = preferences?.workEnd ?? 1080,
-    focusLimit = preferences?.focusLimit ?? 3,
-    breakMinutes = preferences?.breakMinutes ?? 10,
-    bufferFraction = preferences?.bufferFraction ?? 0.2;
+    rules = options.rules,
+    focusLimit = Math.min(preferences?.focusLimit ?? 3, rules?.focusLimit ?? Infinity),
+    breakMinutes = rules?.breakMinutes ?? preferences?.breakMinutes ?? 10,
+    bufferFraction = rules?.bufferFraction ?? preferences?.bufferFraction ?? 0.2;
   const retained = previous?.date === date ? previous.items.filter((i) => i.state !== 'pending') : [];
   const reserved = retained
     .filter((i) => i.state === 'approved')
@@ -154,7 +158,15 @@ export function generateProposal(
     (t.must ? 12 : 0) +
     (t.status === 'doing' ? 5 : 0) +
     (energy === 'high' && t.duration >= 60 ? 8 : energy === 'low' && t.duration <= 30 ? 8 : 0);
-  const factorOf = (t: Task) => options.calibration?.(t) ?? 1;
+  const measured = (t: Task) => options.calibration?.(t) ?? 1;
+  // A rule like "예상보다 넉넉히" applies only where the owner's own records say nothing yet.
+  const factorOf = (t: Task) => { const f = measured(t); return f === 1 && rules?.minFactor ? rules.minFactor : f; };
+  const isExternal = (t: Task) => t.cognition === 'external' || t.category === 'meeting' || t.category === 'phone';
+  const ruleNote = (t: Task, minutesFromRule: boolean) => {
+    const cited = (rules?.applied ?? []).filter(r =>
+      r.kind === 'buffer' || r.kind === 'limit' || (r.kind === 'estimate' && minutesFromRule) || (r.kind === 'external-window' && isExternal(t)));
+    return cited.length ? ` 규칙 ★ ${[...new Set(cited.map(r => `‘${r.rule}’`))].join(', ')}을 반영했습니다.` : '';
+  };
   const planned = (t: Task) => calibrate(t.duration, factorOf(t));
   const items: ProposalItem[] = [...retained];
   const unscheduled: string[] = [];
@@ -164,7 +176,12 @@ export function generateProposal(
   const fitting = (w: Window, minutes: number) => w.end - w.start >= minutes;
   const afterLunch = (w: Window) => w.start >= prefs.rhythm.lunchEnd;
   // Placement preference follows an explicit cognition level only; unlabelled work takes the earliest slot.
-  const preferredWindows = (cognition: Cognition | undefined, minutes: number): Window[] => {
+  const preferredWindows = (cognition: Cognition | undefined, minutes: number, external = false): Window[] => {
+    // A placement rule keeps meetings and calls inside the hours the owner chose.
+    if (external && rules && (rules.externalAfter !== undefined || rules.externalBefore !== undefined)) {
+      const after = rules.externalAfter ?? 0, before = rules.externalBefore ?? 1440;
+      return windows.map(w => ({ start: Math.max(w.start, after), end: Math.min(w.end, before) })).filter(w => fitting(w, minutes));
+    }
     const ok = windows.filter(w => fitting(w, minutes));
     const inside = windows.map(w => ({start: Math.max(w.start, peak.start), end: Math.min(w.end, peak.end)})).filter(w => fitting(w, minutes));
     const outside = windows.flatMap(w => [{start:w.start,end:Math.min(w.end,peak.start)}, {start:Math.max(w.start,peak.end),end:w.end}]).filter(w => fitting(w, minutes));
@@ -215,7 +232,7 @@ export function generateProposal(
       must = !!t.must || t.due <= date;
     const minutes = planned(t);
     const factor = factorOf(t);
-    const w = preferredWindows(c, minutes)[0];
+    const w = preferredWindows(c, minutes, isExternal(t))[0];
     if (minutes > remaining || !w || count() >= focusLimit) {
       unscheduled.push(t.id);
       return;
@@ -232,7 +249,7 @@ export function generateProposal(
       cognition: taskCognition(t),
       factor,
       estimate: t.duration,
-      reason: reasonFor(t, q, c, minutes, factor, must ? 'must' : 'fill', slot),
+      reason: reasonFor(t, q, c, minutes, factor, must ? 'must' : 'fill', slot) + ruleNote(t, factor !== measured(t)),
     });
     remaining -= minutes;
   };
@@ -335,9 +352,10 @@ export function generateProposal(
     .filter((t) => !items.some((i) => i.taskId === t.id) && !unscheduled.includes(t.id))
     .map((t) => ({ t, q: inferQuadrant(t, date), c: t.cognition, must: !!t.must || t.due <= date }));
   // An explicit 반드시 종결 mark is the user's commitment for the day and overrides D delegation.
-  for (const { t, q, must } of rest) if (q === 'D' && !must) delegate.push(t.id);
+  const declined = (q: Quadrant, must: boolean) => (q === 'D' || (q === 'C' && !!rules?.declineC)) && !must;
+  for (const { t, q, must } of rest) if (declined(q, must)) delegate.push(t.id);
   rest
-    .filter(({ q, must }) => q !== 'D' || must)
+    .filter(({ q, must }) => !declined(q, must))
     .sort(
       (a, b) =>
         rank(a.t.id) - rank(b.t.id) ||
@@ -358,6 +376,7 @@ export function generateProposal(
     energy,
     laser,
     delegate,
+    ...(rules?.applied.length ? { rules: rules.applied } : {}),
   };
 }
 export function approveProposalItem(

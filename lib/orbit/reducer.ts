@@ -1,4 +1,5 @@
 import {registrationOverlap} from './overlap-review.ts';
+import {planRules} from './plan-rules.ts';
 import {workEligibility} from './work-policy.ts';
 import {reconcileProjectWork,projectStatus} from './project-management.ts';
 import {mergeProjects,projectMergeProblem} from './project-merge.ts';
@@ -157,6 +158,7 @@ export function applyAction(
     dominoProjectId: data.dominoProjectId,
     projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
     calibration: (t: Task) => calibrationFactor(data.tasks, t, date, data.executionHistory),
+    rules: planRules(data.improvements, data.preferences),
   });
   const finishSession = (t: Task) => {
     if (!t.startedAt) return;

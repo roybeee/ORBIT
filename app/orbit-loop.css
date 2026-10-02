@@ -29,3 +29,6 @@
 .orbit-check-main .orbit-check-alert{color:var(--galaxy-amber)}
 .orbit-check.is-good .orbit-check-main{border-color:color-mix(in srgb,var(--galaxy-green) 45%,var(--border))}
 .orbit-check.is-low .orbit-check-main{border-color:color-mix(in srgb,var(--galaxy-amber) 50%,var(--border))}
+/* 규칙 ★ → 계획 */
+.brief-notice.plan-rules>span{display:grid;gap:4px}
+.brief-notice.plan-rules>span>span{font-size:.8125rem;color:var(--muted-foreground)}

@@ -193,6 +193,8 @@ export interface Proposal {
   energy: 'low' | 'normal' | 'high';
   laser?: { taskId?: string; status: 'placed' | 'failed' | 'none'; minutes: number; note: string };
   delegate?: string[];
+  // Review rules the deterministic planner applied (plan-rules.ts), shown with the plan.
+  rules?: { id: string; rule: string; kind: string; note: string }[];
 }
 export interface Rhythm {
   peakStart: number;
