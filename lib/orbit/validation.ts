@@ -329,6 +329,8 @@ export const actionSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('note.upsert'),
       note: noteSchema,
+      // 빠른 기록 creates its inbox project in the same command; the reducer reuses an existing one.
+      project: projectSchema.optional(),
       expectedNoteRevision: z.number().int().positive().optional(),
     })
     .strict(),

@@ -8,6 +8,9 @@ export type QueuedWrite = {command:Command; basis:Basis; attempted:boolean; bloc
 type Failure = {code:string; message:string};
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export function instantAction(action:WorkspaceAction) {
+  // A note without a revision check is a new record (빠른 기록, memo, meeting note): it shows
+  // at once like a task. Edits of a loaded note carry expectedNoteRevision and still wait.
+  if(action.type==='note.upsert')return action.expectedNoteRevision===undefined;
   return ['project.upsert','task.upsert','event.upsert','task.status','task.focus'].includes(action.type);
 }
 function entity(data:WorkspaceData, action:WorkspaceAction):unknown {
@@ -16,6 +19,7 @@ function entity(data:WorkspaceData, action:WorkspaceAction):unknown {
     case 'task.upsert': return data.tasks.find(x=>x.id===action.task.id)??null;
     case 'event.upsert': return data.events.find(x=>x.id===action.event.id)??null;
     case 'task.status': case 'task.focus': return data.tasks.find(x=>x.id===action.id)??null;
+    case 'note.upsert': return data.notes.find(x=>x.id===action.note.id)??null;
     default:return null;
   }
 }
@@ -25,6 +29,8 @@ export function rebaseWrite(action:WorkspaceAction,basis:Basis,current:Workspace
   if(!instantAction(action))return current.revision===basis.revision?action:null;
   const live=entity(current.data,action);
   if(equal(live,basis.entity))return action;
+  // Note metadata carries server-managed fields; a changed note is never merged field by field.
+  if(action.type==='note.upsert')return null;
   const field=action.type==='project.upsert'?'project':action.type==='task.upsert'?'task':action.type==='event.upsert'?'event':null;
   if(!field||!basis.entity||!live)return null;
   const before=basis.entity as Record<string,unknown>, next=(action as unknown as Record<string,Record<string,unknown>>)[field], remote=live as Record<string,unknown>;

@@ -3,7 +3,7 @@ import {defaultIllustrations, type IllustrationPreferences} from './city-themes.
 import type { DailyBrief } from './brief/schema';
 import type {WeeklyAllocation,OperatingMetric,MetricObservation,SignalFollowup,MeetingRecord} from './phase3-model';
 export type View =
-  'inbox' | 'data' | 'experiments' | 'contacts' | 'monthly' | 'voice' | 'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
+  'history' | 'inbox' | 'data' | 'experiments' | 'contacts' | 'monthly' | 'voice' | 'portfolio' | 'signals' | 'meetings' | 'followup' | 'learning' | 'backup' | 'automation' | 'aside' | 'sound' | 'agent' | 'dashboard' | 'goals' | 'understanding' | 'today' | 'calendar' | 'tasks' | 'projects' | 'wiki' | 'knowledge' | 'review' | 'proposal';
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done';
 // BRAINY / GoTEM vocabulary carried by the domain model.
 // Quadrant = Eisenhower matrix (A important+urgent, B important, C urgent, D neither).
@@ -193,6 +193,8 @@ export interface Proposal {
   energy: 'low' | 'normal' | 'high';
   laser?: { taskId?: string; status: 'placed' | 'failed' | 'none'; minutes: number; note: string };
   delegate?: string[];
+  // Review rules the deterministic planner applied (plan-rules.ts), shown with the plan.
+  rules?: { id: string; rule: string; kind: string; note: string }[];
 }
 export interface Rhythm {
   peakStart: number;

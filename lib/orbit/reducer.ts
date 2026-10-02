@@ -1,4 +1,6 @@
 import {registrationOverlap} from './overlap-review.ts';
+import {CAPTURE_INBOX_ID} from './quick-capture.ts';
+import {planRules} from './plan-rules.ts';
 import {workEligibility} from './work-policy.ts';
 import {reconcileProjectWork,projectStatus} from './project-management.ts';
 import {mergeProjects,projectMergeProblem} from './project-merge.ts';
@@ -157,6 +159,7 @@ export function applyAction(
     dominoProjectId: data.dominoProjectId,
     projectPriority: Object.fromEntries((activeAllocation(data,date)?.allocations??[]).map(a=>[a.projectId,a.stance==='focus'?50:0])),
     calibration: (t: Task) => calibrationFactor(data.tasks, t, date, data.executionHistory),
+    rules: planRules(data.improvements, data.preferences),
   });
   const finishSession = (t: Task) => {
     if (!t.startedAt) return;
@@ -353,6 +356,15 @@ export function applyAction(
       if(updated.status==='completed')updated.completedOn=updated.completedOn??today;else delete updated.completedOn;
       data.projects = replace(data.projects, updated);
       if(updated.status&&updated.status!=='active')suspendProject(updated.id);
+      // 빠른 기록함 files itself: open captured tasks that now clearly belong to this project
+      // (a unique high-confidence keyword match) move with their calendar blocks. Notes keep their
+      // project because their stored revisions carry it; they move through a reviewed edit.
+      else if(updated.id!==CAPTURE_INBOX_ID&&(!old||JSON.stringify(old.keywords??[])!==JSON.stringify(updated.keywords??[])||old.name!==updated.name))
+        for(const t of data.tasks.filter(t=>t.projectId===CAPTURE_INBOX_ID&&t.status!=='done')){
+          if(automaticProject(`${t.title} ${t.definition}`,data.projects,data.tasks,data.notes)?.projectId!==updated.id)continue;
+          t.projectId=updated.id;
+          for(const e of data.events.filter(e=>e.taskId===t.id))e.projectId=updated.id;
+        }
       break;
     }
     case 'project.reorder': {
@@ -617,9 +629,13 @@ export function applyAction(
       }
       break;
     }
-    case 'note.upsert':
+    case 'note.upsert': {
+      const projectId = action.project
+        ? (action.project.id === action.note.projectId ? createProject(action.project) : fail('새 프로젝트와 기록의 연결을 확인해 주세요.'))
+        : action.note.projectId;
       data.notes = replace(data.notes, {
         ...action.note,
+        projectId,
         wiki: action.note.wiki ?? data.notes.find(n=>n.id===action.note.id)?.wiki,
         source: action.note.source ?? data.notes.find(n=>n.id===action.note.id)?.source,
         updated: today,
@@ -634,6 +650,7 @@ export function applyAction(
         if(saved.wiki)saved.wiki={...saved.wiki,links:wikiLinks({...saved,wiki:{...saved.wiki,links:[]}},data.notes)};
       }
       break;
+    }
     case 'note.restore':
       fail('이전 내용은 서버에서 확인한 뒤 복원해 주세요.');
       break;

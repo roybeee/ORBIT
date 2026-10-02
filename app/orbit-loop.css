@@ -1,0 +1,64 @@
+/* 궤도 추적 — history gathered per goal, and Today's 궤도 점검. */
+.goal-momentum{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:600;background:var(--secondary);color:var(--muted-foreground);white-space:nowrap}
+.goal-momentum.is-rising{background:color-mix(in srgb,var(--galaxy-green) 18%,transparent);color:var(--galaxy-green)}
+.goal-momentum.is-steady{background:color-mix(in srgb,var(--galaxy-cyan) 16%,transparent);color:var(--galaxy-cyan)}
+.goal-momentum.is-falling{background:color-mix(in srgb,var(--galaxy-amber) 18%,transparent);color:var(--galaxy-amber)}
+.goal-momentum.is-idle,.goal-momentum.is-new{background:color-mix(in srgb,var(--galaxy-rose) 16%,transparent);color:var(--galaxy-rose)}
+.goal-card-trace{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.75rem;color:var(--muted-foreground)}
+.goal-trace{margin:16px 0;padding:18px;border:1px solid var(--border);border-radius:18px;background:var(--card)}
+.goal-trace-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.goal-trace-head h3{margin:0;font-size:1rem}
+.goal-trace-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+.goal-trace-stats>div{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:6px;padding:10px 12px;border-radius:12px;background:var(--secondary)}
+.goal-trace-stats svg{grid-row:span 2;color:var(--galaxy-violet)}
+.goal-trace-stats strong{font-size:1.05rem;font-variant-numeric:tabular-nums}
+.goal-trace-stats span{font-size:.75rem;color:var(--muted-foreground)}
+.goal-trace-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:2px}
+.goal-trace-list :is(button,div){display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:var(--foreground);font:inherit;font-size:.875rem;text-align:left}
+.goal-trace-list button{cursor:pointer}.goal-trace-list button:hover{background:var(--secondary)}
+.goal-trace-list span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.goal-trace-list small{color:var(--muted-foreground);font-size:.75rem;white-space:nowrap}
+.goal-trace-list svg{flex:none;color:var(--muted-foreground)}
+.goal-trace-empty{margin:12px 0 0;font-size:.875rem;line-height:1.6;color:var(--muted-foreground)}
+.orbit-check{margin:0 0 16px}
+.orbit-check-main{display:flex;align-items:center;gap:12px;width:100%;padding:16px 18px;border:1px solid var(--border);border-radius:18px;background:var(--card);color:var(--foreground);text-align:left;cursor:pointer}
+.orbit-check-main>svg:first-child{flex:none;color:var(--galaxy-violet)}
+.orbit-check-main>span{flex:1;min-width:0;display:grid;gap:3px}
+.orbit-check-main strong{font-size:.95rem}
+.orbit-check-main small{font-size:.8125rem;color:var(--muted-foreground);line-height:1.5}
+.orbit-check-main .orbit-check-alert{color:var(--galaxy-amber)}
+.orbit-check.is-good .orbit-check-main{border-color:color-mix(in srgb,var(--galaxy-green) 45%,var(--border))}
+.orbit-check.is-low .orbit-check-main{border-color:color-mix(in srgb,var(--galaxy-amber) 50%,var(--border))}
+/* 규칙 ★ → 계획 */
+.brief-notice.plan-rules>span{display:grid;gap:4px}
+.brief-notice.plan-rules>span>span{font-size:.8125rem;color:var(--muted-foreground)}
+/* 히스토리 — one chronological feed of saved records. */
+.history-view{display:grid;gap:16px;max-width:880px}
+.history-summary{display:flex;align-items:center;gap:10px;padding:14px 16px;border:1px solid var(--border);border-radius:16px;background:var(--card);font-size:.875rem;color:var(--muted-foreground)}
+.history-summary>svg{color:var(--galaxy-violet);flex:none}.history-summary>span{flex:1;min-width:0}.history-summary strong{color:var(--foreground)}
+.history-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.history-chips{display:flex;gap:6px;flex-wrap:wrap}
+.history-chips button{min-height:38px;padding:0 14px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--muted-foreground);font-size:.8125rem;cursor:pointer}
+.history-chips button.is-active{border-color:var(--galaxy-violet);color:var(--foreground);background:color-mix(in srgb,var(--galaxy-violet) 14%,transparent);font-weight:600}
+.history-filters select{flex:1 1 200px;min-height:40px;max-width:320px}
+.history-search{flex:1 1 180px;display:flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border:1px solid var(--input);border-radius:12px;background:var(--background);color:var(--muted-foreground)}
+.history-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--foreground);font:inherit;font-size:.875rem;outline:0}
+.history-days{list-style:none;margin:0;padding:0;display:grid;gap:18px}
+.history-day-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 4px 6px;border-bottom:1px solid var(--border)}
+.history-day-head h3{margin:0;font-size:.95rem}.history-day-head span{font-size:.75rem;color:var(--muted-foreground)}
+.history-day ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:2px}
+.history-day li>:is(button,div){display:flex;gap:10px;width:100%;padding:10px 8px;border:0;border-radius:12px;background:transparent;color:var(--foreground);font:inherit;text-align:left}
+.history-day li>button{cursor:pointer}.history-day li>button:hover{background:var(--secondary)}
+.history-icon{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--secondary);color:var(--muted-foreground)}
+.history-icon.is-done{color:var(--galaxy-green)}.history-icon.is-attempt{color:var(--galaxy-amber)}.history-icon:is(.is-meeting,.is-event){color:var(--galaxy-cyan)}.history-icon.is-review{color:var(--galaxy-violet)}.history-icon:is(.is-routine,.is-habit){color:var(--galaxy-rose)}
+.history-main{flex:1;min-width:0;display:grid;gap:2px}
+.history-title{font-size:.9rem;font-weight:550;overflow-wrap:anywhere}.history-title small{display:block;font-size:.7rem;font-weight:500;color:var(--muted-foreground)}
+.history-detail{font-size:.8125rem;color:var(--muted-foreground);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.history-meta{font-size:.75rem;color:var(--muted-foreground)}
+.history-empty{display:grid;justify-items:center;gap:8px;padding:40px 16px;text-align:center;color:var(--muted-foreground)}.history-empty h3{margin:0;color:var(--foreground)}.history-empty p{margin:0;max-width:440px;font-size:.875rem;line-height:1.6}
+.history-more{justify-self:center}
+@media(max-width:767px){.history-summary .secondary-button{display:none}.history-filters select{max-width:none}}
+/* 결재함: approve a whole day's plan at once */
+.inbox-approve-day{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px dashed color-mix(in srgb,var(--galaxy-violet) 50%,var(--border));border-radius:16px;font-size:.875rem;color:var(--muted-foreground)}
+.inbox-approve-day .primary-button{min-height:42px}
+.view-loading{padding:32px 4px;color:var(--muted-foreground);font-size:.875rem}

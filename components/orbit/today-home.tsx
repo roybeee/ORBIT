@@ -13,13 +13,15 @@ import {TimeBudget} from './time-budget';
 import {dayMode,DEFAULT_EVENING_HOUR,NIGHT_END,type DayMode} from '@/lib/orbit/day-mode';
 import {DayModeSwitch} from './today/day-mode-switch';
 import {EveningCard} from './today/evening-card';
+import {QuickCaptureBar} from './quick-capture';
+import {OrbitCheckCard} from './coach/goal-trace';
 import {AiHoldBanner} from './brief/ai-hold-banner';
 import {Progress} from '@/components/ui/progress';
 import {formatTime,type WorkspaceData,type View} from '@/lib/orbit/model';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
 
-type Props={orders?:WorkOrder[];onOrder?:(id?:string)=>void;data:WorkspaceData;now:Date;busy:boolean;demo:boolean;pendingAI?:number|null;eveningHour?:number;inboxCount?:number;onInbox?:()=>void;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;navigate:(view:View)=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onReview?:(date:string)=>void;onTimeSettings:()=>void};
-export function TodayHome({orders=[],onOrder,data,now,busy,demo,eveningHour=DEFAULT_EVENING_HOUR,inboxCount=0,onInbox,perform,onOpen,navigate,onCreate,onAsk,onCalendar,onProposal,onReview,onTimeSettings}:Props){
+type Props={onCapture?:()=>void;onVoiceCapture?:()=>void;orders?:WorkOrder[];onOrder?:(id?:string)=>void;data:WorkspaceData;now:Date;busy:boolean;demo:boolean;pendingAI?:number|null;eveningHour?:number;inboxCount?:number;onInbox?:()=>void;perform:(action:WorkspaceAction,message?:string)=>Promise<boolean>;onOpen:(target:{kind:'task'|'project'|'note'|'event';id:string})=>void;navigate:(view:View)=>void;onCreate:()=>void;onAsk:(text:string)=>void;onCalendar:(date:string)=>void;onProposal:(date:string)=>void;onReview?:(date:string)=>void;onTimeSettings:()=>void};
+export function TodayHome({onCapture,onVoiceCapture,orders=[],onOrder,data,now,busy,demo,eveningHour=DEFAULT_EVENING_HOUR,inboxCount=0,onInbox,perform,onOpen,navigate,onCreate,onAsk,onCalendar,onProposal,onReview,onTimeSettings}:Props){
  const d=useMemo(()=>workspaceDashboard(data,now),[data,now]);
  const primary=d.chief.primary;
  const loadSignal=primary.key===`load:${d.today}`;
@@ -51,6 +53,7 @@ export function TodayHome({orders=[],onOrder,data,now,busy,demo,eveningHour=DEFA
  const progress=registered?Math.round(finished/registered*100):0;
  const weekMax=Math.max(1,...d.week.map(day=>day.count)),weekTotal=d.week.reduce((sum,day)=>sum+day.count,0);
  return <div className="today-home mission-dashboard" data-day-mode={mode}>
+  {onCapture&&<QuickCaptureBar onOpen={onCapture} onVoice={onVoiceCapture}/>}
   <DayModeSwitch mode={mode} now={realMode} onChange={next=>setPicked(next===realMode?null:{mode:next,during:realMode,day:closingDay})}/>
   <div className="mission-overview execution-overview">
   {mode==='evening'?<EveningCard art={art} completed={closedCount} reviewed={reviewed} tomorrowPending={tomorrowPending} eveningHour={Math.max(eveningHour,18)} onReview={()=>onReview?onReview(closingDay):navigate('review')} onProposal={()=>onProposal(nextDay)} onInbox={()=>onInbox?.()}/>:<section className={`today-next mission-hero ${loadSignal?'has-time-budget':''}`} aria-labelledby="today-next-title">
@@ -74,6 +77,7 @@ export function TodayHome({orders=[],onOrder,data,now,busy,demo,eveningHour=DEFA
 
   </div>
   <AiHoldBanner demo={demo} timeZone={data.preferences.timeZone} onPlan={()=>onProposal(d.today)} onNote={id=>onOpen({kind:'note',id})}/>
+  <OrbitCheckCard data={data} today={d.today} onGoals={()=>navigate('goals')}/>
   {inboxCount>0&&<section className="today-review" aria-label="결재함"><button className="today-row" onClick={()=>onInbox?.()}><span><strong>결재함 · 정할 일 {inboxCount}건</strong><small>계획·Orbit 제안·업무 지시·확인일을 한곳에서 승인하거나 보류하세요</small></span><ChevronRight size={19}/></button></section>}
   <div className="today-columns">
    <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small></span><ChevronRight size={19}/></button>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>

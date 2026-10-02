@@ -4,11 +4,14 @@ import {GoogleEventEditor} from './google-event-editor';
 import {EventPostpone} from './event-postpone';
 import {questReadiness} from '@/lib/orbit/pacemaker';
 import {CalendarEventDelivery} from './agent/calendar-controls';
-import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useMemo, useEffect, useRef, lazy, Suspense, type CSSProperties } from 'react';
+// Screens opened occasionally load on first visit so Today starts with less JavaScript.
 import Link from 'next/link';
 import {afterPopupClose,replacePopupRoute,pushPopupRoute,ensurePopupHistory,usePopupHistory} from '@/components/ui/use-popup-history';
 import {AppNavigation,AreaSections,SearchTrigger} from './shell/app-navigation';
 import {OrbitSearch,useSearchShortcut,type SearchAction} from './shell/orbit-search';
+import {QuickCapture,QuickCaptureButton,useCaptureShortcut} from './quick-capture';
+const HistoryTimeline=lazy(()=>import('./history-timeline').then(m=>({default:m.HistoryTimeline})));
 import {MeSheet} from './shell/me-sheet';
 import {IaIntro} from './shell/ia-intro';
 import {OrbitDock} from './shell/orbit-dock';
@@ -21,14 +24,18 @@ import {CityThemeProvider,CityThemeButton,CityScreenBanner} from './city-themes'
 import {illustrationTheme,screenIllustration} from '@/lib/orbit/city-themes';
 import {AppearanceShortcut} from './appearance';
 import {CosmicBackdrop,CosmicMotionToggle,useCosmicMotion} from './cosmic-skin';
-import {ExperimentsPanel,ContactsPanel,MonthlyPanel} from './phase4/workbench';
+const ExperimentsPanel=lazy(()=>import('./phase4/workbench').then(m=>({default:m.ExperimentsPanel})));
+const ContactsPanel=lazy(()=>import('./phase4/workbench').then(m=>({default:m.ContactsPanel})));
+const MonthlyPanel=lazy(()=>import('./phase4/workbench').then(m=>({default:m.MonthlyPanel})));
 import {VoicePanel} from './phase4/voice';
-import {FollowupPanel} from './phase2/followup';
-import {LearningPanel} from './phase2/learning';
-import {BackupPanel} from './phase2/backup';
-import {DataManager} from './data-manager';
+const FollowupPanel=lazy(()=>import('./phase2/followup').then(m=>({default:m.FollowupPanel})));
+const LearningPanel=lazy(()=>import('./phase2/learning').then(m=>({default:m.LearningPanel})));
+const BackupPanel=lazy(()=>import('./phase2/backup').then(m=>({default:m.BackupPanel})));
+const DataManager=lazy(()=>import('./data-manager').then(m=>({default:m.DataManager})));
 import type {TrashRecord} from '@/lib/orbit/data-manager';
-import {PortfolioPanel,SignalsPanel,MeetingsPanel} from './phase3/executive';
+const PortfolioPanel=lazy(()=>import('./phase3/executive').then(m=>({default:m.PortfolioPanel})));
+const SignalsPanel=lazy(()=>import('./phase3/executive').then(m=>({default:m.SignalsPanel})));
+const MeetingsPanel=lazy(()=>import('./phase3/executive').then(m=>({default:m.MeetingsPanel})));
 import {protectedEvents} from '@/lib/orbit/allocation-policy';
 import { SoundStation } from './sound/station';
 import { DailyBriefPanel } from './brief/daily-brief';
@@ -120,8 +127,8 @@ import {registrationOverlap} from '@/lib/orbit/overlap-review';
 import {eventCommand,moveRestriction,canEditCalendarEvent} from '@/lib/orbit/calendar-move';
 import type {CalendarEvent} from '@/lib/orbit/model';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem} from '@/components/ui/dropdown-menu';
-import {GoalDashboard} from './coach/goal-dashboard';
-import {Understanding} from './coach/understanding';
+const GoalDashboard=lazy(()=>import('./coach/goal-dashboard').then(m=>({default:m.GoalDashboard})));
+const Understanding=lazy(()=>import('./coach/understanding').then(m=>({default:m.Understanding})));
 import { AgentWorkspace } from '@/components/orbit/agent/chat';
 import { AsidePanel } from '@/components/orbit/aside/panel';
 import { AutomationPanel } from '@/components/orbit/automation/panel';
@@ -141,7 +148,7 @@ import type { ReviewReflection } from '@/lib/orbit/review-evidence';
 import { coachTask } from '@/lib/orbit/coach';
 import { suggestProject, automaticProject, projectDraft, assignmentPlan } from '@/lib/orbit/classify';
 import { WikiLibrary, WikiRelated } from '@/components/orbit/wiki/wiki-library';
-import { GraphView } from '@/components/orbit/graph/graph-view';
+const GraphView=lazy(()=>import('@/components/orbit/graph/graph-view').then(m=>({default:m.GraphView})));
 import { AssignDialog } from '@/components/orbit/coach/assign-dialog';
 import { addDays, todayInZone, koreanDate, weekDates, weekday, minuteInZone } from '@/lib/orbit/dates';
 import type { Preferences } from '@/lib/orbit/model';
@@ -198,12 +205,14 @@ const navigation: { id: View; label: string; icon: typeof Sun }[] = [
   { id: 'projects', label: '프로젝트', icon: FolderKanban },
   { id: 'sound', label: '사운드스테이션', icon: Headphones },
   { id: 'understanding', label: '나를 이해하는 기록', icon: Sparkles },
+  { id: 'history', label: '히스토리', icon: Layers },
   { id: 'wiki', label: '개인 위키', icon: BookOpen },
   { id: 'knowledge', label: '지식창고', icon: Library },
   { id: 'review', label: '저녁 회고', icon: Moon },
   { id: 'proposal', label: '내일 제안', icon: Sparkles },
 ];
 const pageInfo: Record<View, { title: string; subtitle: string; eyebrow: string }> = {
+  history:{title:'히스토리',subtitle:'적지 않아도 쌓인 나의 하루들. 완료·회의·메모·회고가 날짜별로 모입니다.',eyebrow:'MY HISTORY'},
   inbox:{title:'결재함',subtitle:'승인·보류·확인이 필요한 것만 출처와 함께 모았습니다.',eyebrow:'DECISIONS'},
   experiments:{title:'지식에서 사업 실험으로',subtitle:'작게 실행하고 근거로 판단합니다.',eyebrow:'EXPERIMENTS'},
   contacts:{title:'사람·거래처',subtitle:'만남 전에 합의와 약속을 확인합니다.',eyebrow:'PEOPLE'},
@@ -324,6 +333,10 @@ function WorkspaceContent({
   const [briefLaunch, setBriefLaunch] = useState<{ date: string; id: string }>();
   const [reflection, setReflection] = useState<ReviewReflection | null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
+  // 빠른 기록 opens from the floating button, the Today bar, ⌘K, the N key and the #capture shortcut.
+  const [captureOpen,setCaptureOpen]=useState(false);
+  const captureOnLoad=useRef(false);
+  const [captureVoice,setCaptureVoice]=useState(0);
   const [meOpen,setMeOpen]=useState(false);
   const [aiActions,setAiActions]=useState<AgentAction[]|null>(null);
   const [news,setNews]=useState<NewsSummary|null>(null);
@@ -441,11 +454,15 @@ function WorkspaceContent({
   useEffect(() => {
     ensurePopupHistory();
     const v = location.hash.slice(1) as View;
+    // The installed app's 빠른 기록 shortcut lands on Today with the capture sheet open.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- same client-only hash read as below
+    if ((v as string) === 'capture') { captureOnLoad.current = true; setView('today'); replacePopupRoute(null, location.pathname + location.search + '#today'); }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial view comes from location.hash, which only exists on the client after mount; the server renders the default view
-    if (navigation.some((n) => n.id === v)) setView(v);
+    else if (navigation.some((n) => n.id === v)) setView(v);
     else {const url=new URL(location.href);const initial=url.searchParams.has('conversation')||url.searchParams.has('chatProject')?'agent':'today';setView(initial);replacePopupRoute(null,url.pathname+url.search+'#'+initial);}
     const handle = () => {
       const next = location.hash.slice(1) as View;
+      if ((next as string) === 'capture') { replacePopupRoute(null, location.pathname + location.search + '#today'); setView('today'); setCaptureOpen(true); return; }
       setView(navigation.some((n) => n.id === next) ? next : 'today');
       setSearch('');
       setDetail(null);
@@ -1022,7 +1039,12 @@ function WorkspaceContent({
     : detail?.kind === 'note' ? `기록 · ${notes.find(n => n.id === detail.id)?.title ?? '선택한 기록'}`
     : detail?.kind === 'event' ? `일정 · ${events.find(e => e.id === detail.id)?.title ?? '선택한 일정'}`
     : areaOf(view).views[0] === view ? `${areaOf(view).label} 화면` : `${areaOf(view).label} · ${viewLabels[view]}`;
+  const openCapture = () => {
+    if (!loaded) { toast('저장된 내용을 불러오는 중입니다. 잠시 후 다시 눌러 주세요.'); return; }
+    setSearchOpen(false); setMeOpen(false); setCaptureOpen(true);
+  };
   const searchActions: SearchAction[] = [
+    {id:'capture',label:'빠른 기록',hint:'메모·할 일·일정 한 번에 · N',icon:<Pencil/>,keywords:['메모','기록','노트','회의록','적기','캡처','capture'],disabled:!loaded,run:openCapture},
     {id:'task',label:'새 할 일',hint:'제목만 적어도 됩니다',icon:<Plus/>,keywords:['할 일 추가','투두'],disabled:!loaded||busy,run:()=>openCreate(projects.length?'task':'project')},
     {id:'event',label:'새 일정',hint:'Google 일정과 함께 저장',icon:<CalendarDays/>,keywords:['일정 추가','캘린더'],disabled:!loaded||busy,run:()=>openCreate('event')},
     {id:'project',label:'새 프로젝트',hint:'목표 결과물부터',icon:<FolderKanban/>,keywords:['프로젝트 추가'],disabled:!loaded||busy,run:()=>openCreate('project')},
@@ -1031,6 +1053,9 @@ function WorkspaceContent({
     {id:'settings',label:'업무 시간·계획 기준',hint:'설정',icon:<Settings2/>,keywords:['설정','환경','리듬'],run:openSettings},
   ];
   useSearchShortcut(setSearchOpen);
+  useCaptureShortcut(openCapture);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- a #capture launch waits for the workspace to load once
+  useEffect(()=>{if(loaded&&captureOnLoad.current){captureOnLoad.current=false;setCaptureOpen(true);}},[loaded]);
   return (
     <CityThemeProvider preferences={data.preferences} view={view} title={navigation.find(n=>n.id===view)?.label??pageInfo[view].title} busy={busy||hasPending||!loaded} perform={perform} demo={demo}><SidebarProvider className={`galaxy-workspace ${view==='projects'?'project-flow-workspace':''} ${view==='today'?'mission-workspace':''} ${dockOpen&&view!=='agent'?'has-orbit-dock':''}`} data-illustration-collection={illustrationTheme(screenIllustration(data.preferences,view)).collection} style={{ '--sidebar-width': '248px', '--illustration-accent':illustrationTheme(screenIllustration(data.preferences,view)).accent } as CSSProperties}>
       <CosmicBackdrop/>
@@ -1050,6 +1075,8 @@ function WorkspaceContent({
         onSearch={openSearch}
       />
       <OrbitSearch open={searchOpen} onOpenChange={setSearchOpen} view={view} navigate={navigate} actions={searchActions}/>
+      <QuickCapture open={captureOpen} onOpenChange={open=>{setCaptureOpen(open);if(!open)setCaptureVoice(0);}} voiceRequest={captureVoice} data={data} today={TODAY} nowMinute={demo?600:minuteInZone(preferences.timeZone,clock)} demo={demo} ownerId={ownerId} disabled={!loaded} perform={action=>perform(action)} onOpenRecord={target=>{setCaptureOpen(false);afterPopupClose(()=>setDetail(target));}}/>
+      <QuickCaptureButton onOpen={openCapture} hidden={!loaded||view==='agent'||dockOpen||captureOpen||!!create||!!detail}/>
       <MeSheet open={meOpen} onOpenChange={setMeOpen} displayName={displayName} view={view} demo={demo} loaded={loaded} navigate={navigate} onSettings={()=>{setMeOpen(false);afterPopupClose(openSettings)}} onConnections={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:connections')))}} onRuntime={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:runtime')))}} onNews={()=>{setMeOpen(false);afterPopupClose(()=>setNewsOpen(true))}}/>
       <div className="app-main">
         <header className="topbar">
@@ -1196,6 +1223,7 @@ function WorkspaceContent({
           {loaded && <AsidePanel visible={view==='aside'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{askOrbit(text)}}/>}
           {loaded && <AutomationPanel visible={view==='automation'} snapshot={snapshot} perform={perform} busy={busy||hasPending} demo={demo} onAsk={text=>{askOrbit(text)}}/>}
           <SoundStation visible={view === 'sound'} demo={demo} onOpen={() => {setDetail(null);navigate('sound')}} />
+          <Suspense fallback={<p className="view-loading" role="status">화면을 불러오는 중…</p>}>
           {loaded && ['experiments','contacts','monthly'].includes(view)&&(()=>{const Panel=view==='experiments'?ExperimentsPanel:view==='contacts'?ContactsPanel:MonthlyPanel;return <Panel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onAsk={text=>{askOrbit(text)}}/>})()}
           {loaded&&view==='voice'&&<VoicePanel data={data} today={TODAY} onAsk={text=>{askOrbit(text)}}/>}
           {loaded && view==='followup'&&<FollowupPanel data={data} today={TODAY} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})}/>}
@@ -1204,10 +1232,12 @@ function WorkspaceContent({
           {loaded && view==='data'&&<DataManager initialTab={dataInitialTab} snapshot={snapshot} demo={demo} demoTrash={demoDataTrash} setDemoTrash={setDemoDataTrash} busy={busy||hasPending} today={TODAY} onRefresh={refresh} onSnapshot={acceptSnapshot} onEditing={setDataEditing} onCreate={openCreate} onEdit={openEdit} onNavigate={navigate} onConnections={()=>{window.dispatchEvent(new Event('orbit:connections'))}} perform={perform}/>}
           {loaded && (view==='portfolio'||view==='signals'||view==='meetings')&&(()=>{const Panel=view==='portfolio'?PortfolioPanel:view==='signals'?SignalsPanel:MeetingsPanel;return <Panel data={data} today={TODAY} now={demo?new Date('2026-09-06T03:00:00Z'):clock} demo={demo} busy={busy||hasPending} perform={perform} onOpen={(kind,id,revision)=>setDetail({kind,id,revision})} onAsk={text=>{askOrbit(text)}} onNavigate={navigate}/>})()}
           {loaded && view === 'dashboard' && <WorkspaceDashboard onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} navigate={navigate} onOpen={setDetail} onGoals={()=>setBrainyOpen(true)} onCreate={()=>openCreate('task')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onCoachSettings={()=>{openOrbit();window.dispatchEvent(new Event('orbit:coach-settings'))}}/>}
+          {loaded && view === 'history' && <HistoryTimeline data={data} today={TODAY} onOpen={setDetail} onReview={date=>{setReviewDate(date);navigate('review')}} onCapture={openCapture}/>}
           {loaded && view === 'goals' && <GoalDashboard data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onManage={()=>setBrainyOpen(true)} onOpen={setDetail} onAsk={text=>{askOrbit(text)}}/>}
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{askOrbit(text)}} onConnect={()=>{window.dispatchEvent(new Event('orbit:connections'))}}/>}
+          </Suspense>
           {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} split={proposalSplit} aiLoading={!demo&&aiActions===null} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{askOrbit(text)}} onReviewDeferred={()=>{openOrbit();window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
-          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
+          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onCapture={openCapture} onVoiceCapture={()=>{setCaptureVoice(n=>n+1);openCapture();}} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">
@@ -1286,6 +1316,7 @@ function WorkspaceContent({
               <Wand2 size={18} /><span>키워드로 분류할 할 일이 {assignable}개 있습니다. 프로젝트를 생성하거나 연결하면 그래프에도 반영됩니다.</span>
               <button className="secondary-button" onClick={() => setAssignOpen(true)}>지금 분류하기</button>
             </div>}
+            <Suspense fallback={<p className="view-loading" role="status">관계도를 불러오는 중…</p>}>
             <GraphView
               data={data}
               onOpen={(ref) => {
@@ -1293,6 +1324,7 @@ function WorkspaceContent({
                 else if (ref.kind !== 'keyword') setDetail({ kind: ref.kind, id: ref.id });
               }}
             />
+            </Suspense>
             </>
           )}
           {loaded && view === 'projects' && projectsMode === 'cards' && <ProjectHub onReorder={ids=>perform({type:'project.reorder',ids},'프로젝트 순서를 저장했습니다.')} onMerge={action=>perform(action,'프로젝트를 하나로 합쳤습니다.')} data={data} today={TODAY} busy={busy||hasPending||!loaded} onOpen={openProject} onOpenTask={id=>setDetail({kind:'task',id})} onCreateTask={id=>openCreate('task',id)} onCreateProject={()=>openCreate('project')} onManage={id=>setProjectAction({id,mode:'menu'})} onTrash={openProjectTrash}/>}

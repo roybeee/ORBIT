@@ -93,9 +93,9 @@ export function useWorkspace(demo:boolean, ownerId='') {
       persist:queue=>{if(!demo){if(queue.length)saveDraft(ownerId,'write-queue',target,queue);else clearDraft(ownerId,'write-queue',target);}},
       online:()=>demo||navigator.onLine,
       change:()=>{if(!active)return;setSnapshot(client.view);setFailure(client.failure);setSaving(client.queue.some(x=>!x.blocked));setBusy(client.running&&client.blocking);setHasPending(client.blocking);setSavedInputs(client.queue.filter(x=>x.blocked).map(x=>{
-        const a=x.command.action;const record=a.type==='project.upsert'?a.project:a.type==='task.upsert'?a.task:a.type==='event.upsert'?a.event:null;
+        const a=x.command.action;const record=a.type==='project.upsert'?a.project:a.type==='task.upsert'?a.task:a.type==='event.upsert'?a.event:a.type==='note.upsert'?a.note:null;
         if(!record)return {title:'보관된 변경 요청',text:'내용을 다시 확인한 후 다시 시도해 주세요.'};
-        const labels:Record<string,string>={name:'이름',title:'제목',goal:'목표',description:'설명',memo:'메모',due:'마감일',date:'날짜',start:'시작(분)',end:'종료(분)',definition:'완료 기준'};
+        const labels:Record<string,string>={name:'이름',title:'제목',goal:'목표',description:'설명',memo:'메모',due:'마감일',date:'날짜',start:'시작(분)',end:'종료(분)',definition:'완료 기준',body:'내용'};
         return {title:'title' in record?record.title:'name' in record?record.name:'보관된 입력',text:Object.entries(record).filter(([k])=>labels[k]).map(([k,v])=>labels[k]+': '+String(v??'')).join('\n')};
       }));},
     });

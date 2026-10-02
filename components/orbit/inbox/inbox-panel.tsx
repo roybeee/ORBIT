@@ -1,6 +1,7 @@
 'use client';
 import {ArrowRight,Check,CheckCheck,Crosshair,Inbox,Pause,Sparkles,Workflow} from 'lucide-react';
 import {useEffect,useState,type ReactNode} from 'react';
+import {toast} from 'sonner';
 import {addDays,koreanDate} from '@/lib/orbit/dates';
 import {formatTime,type WorkspaceData,type WorkspaceSnapshot} from '@/lib/orbit/model';
 import type {AgentAction} from '@/lib/orbit/agent/types';
@@ -43,6 +44,20 @@ function PlanCard({date,today,late,item,title,busy,demo,perform,onProposal}:{dat
  </Card>;
 }
 
+// One tap for a whole day's plan: approves each still-possible block in order and stops at the
+// first one that needs attention (overlap, focus limit, a changed task), which stays as its card.
+function ApproveDay({date,today,count,ids,busy,demo,perform}:{date:string;today:string;count:number;ids:string[];busy:boolean;demo:boolean;perform:Perform}){
+ const [running,setRunning]=useState(false);
+ if(ids.length<2)return null;
+ const run=async()=>{
+  setRunning(true);
+  try{let done=0;for(const itemId of ids){if(!await perform({type:'proposal.approve',date,itemId}))break;done++;}
+   if(done)toast.success(done===ids.length?`${dayLabel(date,today)} 계획 ${done}건을 모두 일정에 반영했습니다.`:`${done}건을 반영했습니다. 남은 항목은 카드에서 확인해 주세요.`);}
+  finally{setRunning(false)}
+ };
+ return <div className="inbox-approve-day"><span>{dayLabel(date,today)} 계획 {count}건</span><button className="primary-button" disabled={busy||demo||running} onClick={()=>void run()}><CheckCheck size={15}/>{running?'반영 중…':`${ids.length}건 한 번에 승인`}</button></div>;
+}
+
 // 결재함 v1: everything the owner must decide, with its source, in one list.
 export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiLoading,snapshot,news,busy,demo,perform,onProposal,onOrder,onFollowup,onNews,onOpenNote,onOpenConversation,onAskOrbit,onReviewDeferred}:Props){
  const [picked,setPicked]=useState<Filter>('all');
@@ -65,6 +80,7 @@ export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiL
   <header className="inbox-summary"><div><strong>{aiLoading?(counts.total?<>지금까지 <em>{counts.total}</em>건 · 나머지를 확인하는 중</>:'정할 일을 확인하는 중…'):counts.total?<>내가 정할 일 <em>{counts.total}</em>건</>:'지금 정할 일이 없습니다'}</strong><p>승인한 항목만 할 일·일정에 반영됩니다. 외부 연락과 Google 일정 등록은 따로 한 번 더 확인합니다.</p>{split.backlogCount>0&&<button className="text-button inbox-backlog-jump" onClick={toBacklog}>7일 넘은 회의 결재 {split.backlogCount}건 보기</button>}</div></header>
   <div className="inbox-filters" role="group" aria-label="결재함 분류">{chips.filter(([id,,n])=>id==='all'||n>0).map(([id,label,n])=><button key={id} className={filter===id?'is-selected':''} aria-pressed={filter===id} onClick={()=>setPicked(id)}>{label}<span>{n}</span></button>)}</div>
   {filter==='all'&&<SlackRequests timeZone={data.preferences.timeZone} onOpenDrafts={id=>{setPicked('ai');requestAnimationFrame(()=>document.querySelector(`[data-slack-drafts="${CSS.escape(id)}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}))}}/>}
+  {show('plans')&&[...new Set(plans.map(p=>p.date))].map(date=>{const day=plans.filter(p=>p.date===date);return <ApproveDay key={'all:'+date} date={date} today={today} count={day.length} ids={day.filter(p=>!(date===today&&p.item.start<nowMinute)).sort((a,b)=>a.item.start-b.item.start).map(p=>p.item.id)} busy={busy} demo={demo} perform={perform}/>;})}
   {show('plans')&&plans.map(({date,item})=><PlanCard key={date+item.id} date={date} today={today} late={date===today&&item.start<nowMinute} item={item} title={data.tasks.find(t=>t.id===item.taskId)?.title??item.draftTask?.title??'저장된 실행 항목'} busy={busy} demo={demo} perform={perform} onProposal={onProposal}/>)}
   {aiLoading&&<p className="inbox-loading" role="status">{slow?'Orbit 제안을 아직 불러오지 못했습니다. 연결을 확인하거나 Orbit 대화를 한 번 열어 주세요.':'Orbit 제안을 불러오는 중…'}</p>}
   {show('ai')&&<InboxAiDecisions actions={split.fresh} deferredCount={actions.filter(a=>a.state==='deferred').length} snapshot={snapshot} onOpenNote={onOpenNote} onOpenConversation={onOpenConversation} onAskOrbit={onAskOrbit} onReviewDeferred={onReviewDeferred}/>}
