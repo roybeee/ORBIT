@@ -58,6 +58,17 @@ function ApproveDay({date,today,count,ids,busy,demo,perform}:{date:string;today:
  return <div className="inbox-approve-day"><span>{dayLabel(date,today)} 계획 {count}건</span><button className="primary-button" disabled={busy||demo||running} onClick={()=>void run()}><CheckCheck size={15}/>{running?'반영 중…':`${ids.length}건 한 번에 승인`}</button></div>;
 }
 
+// Offered once while plan blocks wait: the owner can stop approving plans by hand every morning.
+const AUTO_TIP='orbit:auto-approve-tip:v1';
+function AutoApproveTip({data,busy,demo,perform}:{data:WorkspaceData;busy:boolean;demo:boolean;perform:Perform}){
+ const [hidden,setHidden]=useState(()=>{try{return localStorage.getItem(AUTO_TIP)==='closed'}catch{return false}});
+ if(hidden||demo||data.preferences.autoApprovePlan)return null;
+ const close=()=>{setHidden(true);try{localStorage.setItem(AUTO_TIP,'closed')}catch{/* the tip just shows again next time */}};
+ return <div className="inbox-auto-tip" role="note"><Sparkles size={16}/><span><strong>매일 아침 계획을 자동으로 승인할까요?</strong><small>업무 시작 전에 오늘 계획을 일정에 넣고, 겹치거나 바뀐 항목만 여기에 남깁니다. 설정에서 언제든 끌 수 있습니다.</small></span>
+  <button className="primary-button" disabled={busy} onClick={async()=>{if(await perform({type:'preferences.update',preferences:{...data.preferences,autoApprovePlan:true}},'내일부터 아침마다 계획을 자동 승인합니다.'))close();}}>켜기</button>
+  <button className="text-button" onClick={close}>괜찮아요</button></div>;
+}
+
 // 결재함 v1: everything the owner must decide, with its source, in one list.
 export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiLoading,snapshot,news,busy,demo,perform,onProposal,onOrder,onFollowup,onNews,onOpenNote,onOpenConversation,onAskOrbit,onReviewDeferred}:Props){
  const [picked,setPicked]=useState<Filter>('all');
@@ -80,6 +91,7 @@ export function InboxPanel({data,today,nowMinute,counts,orders,actions,split,aiL
   <header className="inbox-summary"><div><strong>{aiLoading?(counts.total?<>지금까지 <em>{counts.total}</em>건 · 나머지를 확인하는 중</>:'정할 일을 확인하는 중…'):counts.total?<>내가 정할 일 <em>{counts.total}</em>건</>:'지금 정할 일이 없습니다'}</strong><p>승인한 항목만 할 일·일정에 반영됩니다. 외부 연락과 Google 일정 등록은 따로 한 번 더 확인합니다.</p>{split.backlogCount>0&&<button className="text-button inbox-backlog-jump" onClick={toBacklog}>7일 넘은 회의 결재 {split.backlogCount}건 보기</button>}</div></header>
   <div className="inbox-filters" role="group" aria-label="결재함 분류">{chips.filter(([id,,n])=>id==='all'||n>0).map(([id,label,n])=><button key={id} className={filter===id?'is-selected':''} aria-pressed={filter===id} onClick={()=>setPicked(id)}>{label}<span>{n}</span></button>)}</div>
   {filter==='all'&&<SlackRequests timeZone={data.preferences.timeZone} onOpenDrafts={id=>{setPicked('ai');requestAnimationFrame(()=>document.querySelector(`[data-slack-drafts="${CSS.escape(id)}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}))}}/>}
+  {show('plans')&&plans.length>0&&<AutoApproveTip data={data} busy={busy} demo={demo} perform={perform}/>}
   {show('plans')&&[...new Set(plans.map(p=>p.date))].map(date=>{const day=plans.filter(p=>p.date===date);return <ApproveDay key={'all:'+date} date={date} today={today} count={day.length} ids={day.filter(p=>!(date===today&&p.item.start<nowMinute)).sort((a,b)=>a.item.start-b.item.start).map(p=>p.item.id)} busy={busy} demo={demo} perform={perform}/>;})}
   {show('plans')&&plans.map(({date,item})=><PlanCard key={date+item.id} date={date} today={today} late={date===today&&item.start<nowMinute} item={item} title={data.tasks.find(t=>t.id===item.taskId)?.title??item.draftTask?.title??'저장된 실행 항목'} busy={busy} demo={demo} perform={perform} onProposal={onProposal}/>)}
   {aiLoading&&<p className="inbox-loading" role="status">{slow?'Orbit 제안을 아직 불러오지 못했습니다. 연결을 확인하거나 Orbit 대화를 한 번 열어 주세요.':'Orbit 제안을 불러오는 중…'}</p>}

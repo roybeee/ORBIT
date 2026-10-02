@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-02 실행 루프 2차(`claude/orbit-current-score-eval-uw23yu`, 기준 main `e074d2b5217ab831cd3f1492cf15188265834672` = PR #153 merged, tree `bc6aabc`): 완료·기록·승인·습관 체크·문서 수정 즉시 저장, 오늘 할 일 한 번 완료(되돌리기), 아침 계획 자동 승인(선택, 기본 꺼짐) 및 결재함 1회 제안, 목표 연결 제안, 월요일 궤도 리포트, 규칙 효과 표시, 모바일 가로 넘침·히스토리 실행률 표시 수정. typecheck passed · real, 전체 회귀 1016개 passed(외부 서비스 stub 포함 mocked), E2E 60개 passed(Chromium 실제 입력, 로컬 worker+D1 real, 로그인 헤더 mocked). PR #153 소스는 merged이며 Sites published/runtime-verified는 not_run(소유자 `publish-sites.sh` 필요).
+
 - 2026-10-02 실행 루프 강화(PR #153, `claude/orbit-current-score-eval-uw23yu`, 기준 main `57e22a1941cfbdd751147b9179b983a357876713`): 빠른 기록(어디서든 한 번에, 메모·회의록 새로 쓰기 즉시 저장, 빠른 기록함 자동 정리), 궤도 추적(목표별 최근 7일 기록·흐름, 오늘의 궤도 점검, AI 브리프 `goalMomentum`), 회고 규칙 ★의 결정적 계획 반영(`plan-rules.ts`), 기록 탭 첫 화면 히스토리, 결재함 하루 계획 일괄 승인, 가끔 여는 화면 지연 로딩(워크스페이스 번들 gzip 약 347KB→211KB), 저녁 1분 회고 알림 1회. typecheck passed · real, 전체 회귀 1006개 passed(외부 서비스 stub 포함 mocked), E2E 56개 passed(Chromium 실제 입력, 로컬 worker+D1 real, 로그인 헤더 mocked). 실제 휴대폰 키보드·설치 앱 바로가기 확인은 not_run(실기기 필요). Sites published/runtime-verified는 not_run.
 
 - 2026-09-29 인터랙션 햅틱: `feat/interaction-haptics`, 기준 main `0ef42ce45ae4d8b8ce5846e41364c236d94a34b7`. 버튼·탭·확인 창 10ms, 확정 날짜 스와이프·롱프레스 18ms; 80ms 중복 제한. 미지원·거부·예외·숨김·동작 줄이기는 무음으로 처리한다. typecheck/build passed · real, 전체 회귀 981개 passed(외부 서비스 mocked 포함), 모바일 햅틱 브라우저 7개 passed(실제 Chromium 입력, 진동 API·demo 인증 mocked). Python-less 검사는 macOS에서 not_run, Linux CI에서 확인한다. 이 변경의 Sites published/runtime-verified는 아직 not_run.

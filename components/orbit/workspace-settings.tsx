@@ -107,6 +107,10 @@ export function WorkspaceSettings({settingsOpen,setSettingsOpen,settingsDraft,se
                 />
               </div>
             </div>
+            <label className="settings-toggle">
+              <Checkbox checked={!!settingsDraft.autoApprovePlan} onCheckedChange={(v) => setSettingsDraft((p) => ({ ...p, autoApprovePlan: v === true }))} />
+              <span><strong>오늘 계획 아침 자동 승인</strong><small>업무 시작 전 서버가 오늘 계획을 승인해 일정에 넣습니다. 겹치거나 바뀐 항목은 결재함에 남기고, 결과를 알림으로 알려 드립니다.</small></span>
+            </label>
             <div className="divider" />
             <label className="form-label">BRAINY 리듬 · 집중이 가장 좋은 구간</label>
             <div className="field-grid">

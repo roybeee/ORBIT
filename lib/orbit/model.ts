@@ -219,6 +219,8 @@ export interface Preferences {
   laserMinutes?: number;
   travelMinutes?: number;
   colorBy?: 'project' | 'cognition';
+  // Owner opt-in: the morning runtime approves today's plan blocks (plan-autoapprove.ts).
+  autoApprovePlan?: boolean;
 }
 export interface ReviewStats {
   planned: number;
@@ -350,6 +352,7 @@ export const withDefaults = (p: Preferences): Required<Preferences> => ({
   laserMinutes: p.laserMinutes ?? 180,
   travelMinutes: p.travelMinutes ?? 0,
   colorBy: p.colorBy ?? 'project',
+  autoApprovePlan: p.autoApprovePlan ?? false,
 });
 export const emptyWorkspace = (): WorkspaceData => ({
   schemaVersion: 2,

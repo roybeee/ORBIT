@@ -65,3 +65,34 @@ test('the floating button and the #capture shortcut open the same sheet',async({
  await page.getByRole('button',{name:'빠른 기록 (N)'}).click();
  await expect(page.getByRole('dialog',{name:'빠른 기록'})).toBeVisible();
 });
+
+test('a task captured from Today is closed with one tap and can be undone',async({page})=>{
+ await page.goto('/');
+ await page.getByRole('button',{name:/무엇이든 적어 두세요/}).click();
+ const input=page.getByRole('textbox',{name:'빠른 기록 내용'});
+ await input.fill('오늘까지 견적서 회신하기');
+ const saved=page.waitForResponse(r=>r.url().endsWith('/api/workspace')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'저장',exact:true}).click();
+ expect((await saved).status()).toBe(200);
+ const check=page.getByRole('button',{name:'견적서 회신하기 완료'});
+ await expect(check).toBeVisible();
+ const done=page.waitForResponse(r=>r.url().endsWith('/api/workspace')&&r.request().method()==='POST');
+ await check.click();
+ await expect(page.getByText('완료로 기록했습니다')).toBeVisible();
+ expect((await done).status()).toBe(200);
+ const after=await page.evaluate(async()=>(await (await fetch('/api/workspace',{cache:'no-store'})).json()));
+ expect(after.data.tasks.find((t:{title:string})=>t.title==='견적서 회신하기')?.status).toBe('done');
+ const undone=page.waitForResponse(r=>r.url().endsWith('/api/workspace')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'되돌리기'}).click();
+ expect((await undone).status()).toBe(200);
+ const back=await page.evaluate(async()=>(await (await fetch('/api/workspace',{cache:'no-store'})).json()));
+ expect(back.data.tasks.find((t:{title:string})=>t.title==='견적서 회신하기')?.status).toBe('todo');
+});
+
+test('the Today entry row never widens the page',async({page})=>{
+ await page.goto('/');
+ await expect(page.getByRole('button',{name:/무엇이든 적어 두세요/})).toBeVisible();
+ await expect(page.getByRole('button',{name:'말로 기록'})).toBeVisible();
+ const [scroll,client]=await page.evaluate(()=>[document.documentElement.scrollWidth,document.documentElement.clientWidth]);
+ expect(scroll).toBeLessThanOrEqual(client);
+});
