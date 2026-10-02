@@ -15,6 +15,10 @@ test("today's tasks start on the first screen and show the goal they move",async
  // The first task's check and title are above the fold (and above the phone tab bar).
  expect(box!.y+56).toBeLessThan(view.height-(view.width<768?80:0));
  await expect(page.locator('.today-section .goal-tag').first()).toBeVisible();
+ // 아침·낮·저녁 rides on the 오늘 card instead of taking a row of its own.
+ const hero=(await page.locator('.mission-hero').boundingBox())!,modes=(await page.getByRole('group',{name:'오늘 화면의 시간대'}).boundingBox())!;
+ expect(modes.y).toBeGreaterThanOrEqual(hero.y);expect(modes.y+modes.height).toBeLessThanOrEqual(hero.y+hero.height);
+ expect(modes.x+modes.width).toBeLessThanOrEqual(hero.x+hero.width);
  // The entry bar is the capture entry on 오늘, so the floating button is not stacked over the cards.
  await expect(page.getByRole('button',{name:'빠른 기록 (N)'})).toBeHidden();
 });

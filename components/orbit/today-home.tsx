@@ -53,16 +53,24 @@ export function TodayHome({onCapture,onVoiceCapture,orders=[],onOrder,data,now,b
  const registered=d.projects.reduce((sum,p)=>sum+p.total,0),finished=d.projects.reduce((sum,p)=>sum+p.done,0);
  const progress=registered?Math.round(finished/registered*100):0;
  // One tap closes a task from Today; the toast offers an immediate undo instead of a confirmation.
+ // The check fills and the row fades for a beat before the task leaves the list.
+ const [closing,setClosing]=useState<string[]>([]);
  const complete=async(id:string,previous:Task['status'])=>{
-  if(await perform({type:'task.status',id,status:'done'}))toast.success('완료로 기록했습니다',{action:{label:'되돌리기',onClick:()=>void perform({type:'task.status',id,status:previous})}});
+  if(closing.includes(id))return;
+  setClosing(list=>[...list,id]);
+  if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)await new Promise(resolve=>setTimeout(resolve,260));
+  const ok=await perform({type:'task.status',id,status:'done'});
+  setClosing(list=>list.filter(x=>x!==id));
+  if(ok)toast.success('완료로 기록했습니다',{action:{label:'되돌리기',onClick:()=>void perform({type:'task.status',id,status:previous})}});
  };
  // Each task shows the goal it moves, so the link from today's action to the goal is visible where you act.
  const goalOf=(projectId:string)=>{const goalId=data.projects.find(p=>p.id===projectId)?.goalId;return goalId?data.goals?.find(g=>g.id===goalId)?.sentence:undefined;};
  const weekMax=Math.max(1,...d.week.map(day=>day.count)),weekTotal=d.week.reduce((sum,day)=>sum+day.count,0);
  return <div className="today-home mission-dashboard" data-day-mode={mode}>
   {onCapture&&<QuickCaptureBar onOpen={onCapture} onVoice={onVoiceCapture}/>}
-  <DayModeSwitch mode={mode} now={realMode} onChange={next=>setPicked(next===realMode?null:{mode:next,during:realMode,day:closingDay})}/>
   <div className="mission-overview execution-overview">
+  {/* The time-of-day switch sits on the card it changes, instead of a row of its own. */}
+  <DayModeSwitch mode={mode} now={realMode} onChange={next=>setPicked(next===realMode?null:{mode:next,during:realMode,day:closingDay})}/>
   {mode==='evening'?<EveningCard art={art} completed={closedCount} reviewed={reviewed} tomorrowPending={tomorrowPending} eveningHour={Math.max(eveningHour,18)} onReview={()=>onReview?onReview(closingDay):navigate('review')} onProposal={()=>onProposal(nextDay)} onInbox={()=>onInbox?.()}/>:<section className={`today-next mission-hero ${loadSignal?'has-time-budget':''}`} aria-labelledby="today-next-title">
    <img className="mission-hero-art" src={art} width="1536" height="864" alt="" fetchPriority="high"/>
    <div className="mission-copy">
@@ -86,7 +94,7 @@ export function TodayHome({onCapture,onVoiceCapture,orders=[],onOrder,data,now,b
   <AiHoldBanner demo={demo} timeZone={data.preferences.timeZone} onPlan={()=>onProposal(d.today)} onNote={id=>onOpen({kind:'note',id})}/>
   {/* What to do now comes first: today's tasks and the next events sit right under the one thing. */}
   <div className="today-columns">
-   <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><div key={t.id} className="today-row-check"><button type="button" className="today-check" disabled={demo} aria-label={`${t.title} 완료`} title="완료" onClick={()=>void complete(t.id,t.status)}><Check size={16}/></button><button className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small>{goalOf(t.projectId)&&<em className="goal-tag"><Target size={12} aria-hidden="true"/>{goalOf(t.projectId)}</em>}</span><ChevronRight size={19}/></button></div>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>
+   <section className="today-section"><div className="section-title"><h2>오늘의 할 일</h2><button className="text-button" onClick={()=>navigate('tasks')}>전체 보기<ChevronRight size={15}/></button></div>{priorities.length?priorities.map(t=><div key={t.id} className={'today-row-check'+(closing.includes(t.id)?' is-closing':'')}><button type="button" className="today-check" disabled={demo} aria-label={`${t.title} 완료`} title="완료" onClick={()=>void complete(t.id,t.status)}><Check size={16}/></button><button className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.startedAt?'진행 중':questReadiness(data,t,d.today).reason} · {t.duration}분</small>{goalOf(t.projectId)&&<em className="goal-tag"><Target size={12} aria-hidden="true"/>{goalOf(t.projectId)}</em>}</span><ChevronRight size={19}/></button></div>):<p className="today-empty">지금 시작할 일이 없어요. 할 일을 추가하거나 Orbit과 정리해 보세요.</p>}<button className="text-button today-add" disabled={busy||demo} onClick={onCreate}><Plus size={16}/>{data.projects.length?'할 일 추가':'프로젝트 추가'}</button>{d.attention.length>0&&<details className="today-attention"><summary>다시 확인할 일 {d.attention.length}개</summary>{d.attention.slice(0,5).map(t=><button key={t.id} className="today-row" onClick={()=>onOpen({kind:'task',id:t.id})}><span><strong>{t.title}</strong><small>{t.due<d.today?'기한 지남 · ':''}{questReadiness(data,t,d.today).reason}</small></span><ChevronRight size={18}/></button>)}</details>}</section>
    <section className="today-section mission-agenda"><div className="section-title"><h2>다가오는 일정</h2><button className="text-button" onClick={()=>onCalendar(d.today)}>전체 일정<ChevronRight size={15}/></button></div>{events.length?events.map(e=><button key={e.id} className="today-row" onClick={()=>e.id.startsWith('protected:')?navigate('portfolio'):onOpen({kind:'event',id:e.id})}><span className="mission-event-time">{formatTime(e.start)}<small>{e.date===d.today?'오늘':e.date.slice(5).replace('-','/')}</small></span><span><strong>{e.title}</strong><small>{e.date===d.today?'오늘':e.date} · {formatTime(e.start)}–{formatTime(e.end)}</small></span></button>):<p className="today-empty">저장된 다음 일정이 없어요.</p>}</section>
   </div>
   {inboxCount>0&&<section className="today-review" aria-label="결재함"><button className="today-row" onClick={()=>onInbox?.()}><span><strong>결재함 · 정할 일 {inboxCount}건</strong><small>계획·Orbit 제안·업무 지시·확인일을 한곳에서 승인하거나 보류하세요</small></span><ChevronRight size={19}/></button></section>}

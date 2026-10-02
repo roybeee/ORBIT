@@ -44,7 +44,6 @@
  .text-button{min-height:44px;min-width:44px}
  .primary-button.compact,.secondary-button.compact{min-height:44px}
  .form-field{min-height:44px}
- .day-mode-switch{margin:-4px 0 8px}
  .day-mode-switch button{min-height:44px;padding:0 12px}
  .area-sections button{min-height:44px}
  .goal-domino{min-height:44px}
@@ -69,7 +68,7 @@
 }
 /* 오늘 heading on a phone: "오늘 · date" on one line; the tab bar and chip already say where you are. */
 .page-heading.is-today>div{display:flex;flex-direction:row-reverse;justify-content:flex-end;align-items:baseline;gap:12px}.page-heading.is-today .eyebrow{margin:0}.mission-workspace .page-heading.is-today{margin-bottom:14px}
-.mission-dashboard{gap:18px}.mission-workspace .area-sections{margin-bottom:16px}.day-mode-switch{margin:-4px 0 4px}
+.mission-dashboard{gap:18px}.mission-workspace .area-sections{margin-bottom:16px}
 @media(min-width:768px) and (pointer:fine){.quest-row-actions .text-button,.candidate-evidence li .text-button{min-width:44px;min-height:36px}}
 /* The goal a task moves, shown on the row where it is done. */
 .goal-tag{display:flex;align-items:center;gap:4px;min-width:0;margin-top:3px;font-style:normal;font-size:.75rem;color:var(--galaxy-violet);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -79,3 +78,21 @@
 @media(max-width:767px){.galaxy-workspace:has(.city-screen-banner) .top-actions .city-theme-trigger{display:none!important}}
 /* Phones: the screen's tagline repeats on every visit; the title and chips are enough to know where you are. */
 @media(max-width:767px){.galaxy-workspace .page-heading>div>p{display:none}.galaxy-workspace .page-heading{margin-bottom:14px}}
+/* 아침·낮·저녁 rides on the 오늘 card's top-right corner as a glass pill. */
+.mission-overview{position:relative}
+.mission-overview>.day-mode-switch{position:absolute;top:14px;right:14px;z-index:3;margin:0;padding:3px;border-radius:999px;background:#12142ab8;border:1px solid #ffffff1f;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.mission-overview>.day-mode-switch button{color:#d8d3f0}
+.mission-overview>.day-mode-switch button.is-selected{background:#ffffff26;color:#fff}
+.mission-overview>.day-mode-switch small{color:#cbbcff}
+@media(max-width:767px){
+ .mission-overview>.day-mode-switch{top:10px;right:10px}
+ .mission-overview>.day-mode-switch button{padding:0 10px;gap:4px}
+ .execution-overview .mission-copy{padding-top:58px}
+}
+@media(max-width:400px){.mission-overview>.day-mode-switch button svg{display:none}}
+/* One-tap completion: the circle fills and the row fades before it leaves. */
+.today-row-check{transition:opacity .26s ease}
+.today-row-check.is-closing{opacity:.5}
+.today-row-check.is-closing .today-check{background:var(--galaxy-green);border-color:var(--galaxy-green);color:var(--background)}
+.today-row-check.is-closing .today-row strong{text-decoration:line-through}
+@media(prefers-reduced-motion:reduce){.today-row-check{transition:none}}

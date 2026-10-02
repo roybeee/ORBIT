@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-02 UI/UX 2차(기준 main `f9e6123` = PR #156 merged): 아침·낮·저녁 전환을 오늘 카드 위 오버레이로(별도 줄 제거), 한 번 완료 시 채움·취소선 피드백(동작 줄이기 존중). 데모 측정 '오늘의 할 일' 제목 y 618 → 594(휴대폰) · 655 → 603(노트북), 44px 미만 0 유지. typecheck passed · real, 단위 1017 passed, e2e 67 passed(로컬 worker+D1, 인증 헤더 mocked).
+
 - 2026-10-02 UI/UX 집중(`claude/orbit-current-score-eval-uw23yu`, 기준 main `ad6324e` = PR #155 merged): 오늘 화면 위계 재배치(할 일·일정이 히어로 바로 아래), 작업 화면 테마 배너 → 한 줄 띠, 휴대폰 터치 영역 44px, 할 일 목표 태그, 칩 줄 가장자리 흐림, 빠른 기록 버튼 비키기. 데모 10개 화면 측정(390×844 · 1280×800): 휴대폰 44px 미만 누름 대상 7–23개/화면 → 0, '오늘의 할 일' 제목 위치 y≈2080 → 618(휴대폰) · 1129 → 655(노트북). typecheck passed · real, 단위 1017 passed, e2e(로컬 worker+D1, 인증 헤더 mocked) 62+5 passed.
 
 - 2026-10-02 실행 루프 2차(`claude/orbit-current-score-eval-uw23yu`, 기준 main `e074d2b5217ab831cd3f1492cf15188265834672` = PR #153 merged, tree `bc6aabc`): 완료·기록·승인·습관 체크·문서 수정 즉시 저장, 오늘 할 일 한 번 완료(되돌리기), 아침 계획 자동 승인(선택, 기본 꺼짐) 및 결재함 1회 제안, 목표 연결 제안, 월요일 궤도 리포트, 규칙 효과 표시, 모바일 가로 넘침·히스토리 실행률 표시 수정. typecheck passed · real, 전체 회귀 1016개 passed(외부 서비스 stub 포함 mocked), E2E 60개 passed(Chromium 실제 입력, 로컬 worker+D1 real, 로그인 헤더 mocked). PR #153 소스는 merged이며 Sites published/runtime-verified는 not_run(소유자 `publish-sites.sh` 필요).
