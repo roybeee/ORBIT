@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-02 UI/UX 집중(`claude/orbit-current-score-eval-uw23yu`, 기준 main `ad6324e` = PR #155 merged): 오늘 화면 위계 재배치(할 일·일정이 히어로 바로 아래), 작업 화면 테마 배너 → 한 줄 띠, 휴대폰 터치 영역 44px, 할 일 목표 태그, 칩 줄 가장자리 흐림, 빠른 기록 버튼 비키기. 데모 10개 화면 측정(390×844 · 1280×800): 휴대폰 44px 미만 누름 대상 7–23개/화면 → 0, '오늘의 할 일' 제목 위치 y≈2080 → 618(휴대폰) · 1129 → 655(노트북). typecheck passed · real, 단위 1017 passed, e2e(로컬 worker+D1, 인증 헤더 mocked) 62+5 passed.
+
 - 2026-10-02 실행 루프 2차(`claude/orbit-current-score-eval-uw23yu`, 기준 main `e074d2b5217ab831cd3f1492cf15188265834672` = PR #153 merged, tree `bc6aabc`): 완료·기록·승인·습관 체크·문서 수정 즉시 저장, 오늘 할 일 한 번 완료(되돌리기), 아침 계획 자동 승인(선택, 기본 꺼짐) 및 결재함 1회 제안, 목표 연결 제안, 월요일 궤도 리포트, 규칙 효과 표시, 모바일 가로 넘침·히스토리 실행률 표시 수정. typecheck passed · real, 전체 회귀 1016개 passed(외부 서비스 stub 포함 mocked), E2E 60개 passed(Chromium 실제 입력, 로컬 worker+D1 real, 로그인 헤더 mocked). PR #153 소스는 merged이며 Sites published/runtime-verified는 not_run(소유자 `publish-sites.sh` 필요).
 
 - 2026-10-02 실행 루프 강화(PR #153, `claude/orbit-current-score-eval-uw23yu`, 기준 main `57e22a1941cfbdd751147b9179b983a357876713`): 빠른 기록(어디서든 한 번에, 메모·회의록 새로 쓰기 즉시 저장, 빠른 기록함 자동 정리), 궤도 추적(목표별 최근 7일 기록·흐름, 오늘의 궤도 점검, AI 브리프 `goalMomentum`), 회고 규칙 ★의 결정적 계획 반영(`plan-rules.ts`), 기록 탭 첫 화면 히스토리, 결재함 하루 계획 일괄 승인, 가끔 여는 화면 지연 로딩(워크스페이스 번들 gzip 약 347KB→211KB), 저녁 1분 회고 알림 1회. typecheck passed · real, 전체 회귀 1006개 passed(외부 서비스 stub 포함 mocked), E2E 56개 passed(Chromium 실제 입력, 로컬 worker+D1 real, 로그인 헤더 mocked). 실제 휴대폰 키보드·설치 앱 바로가기 확인은 not_run(실기기 필요). Sites published/runtime-verified는 not_run.

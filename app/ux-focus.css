@@ -1,0 +1,81 @@
+/* UI/UX focus pass: what to do now sits above the fold, and every tap lands on a 44px target on touch screens. */
+
+/* 오늘: a compact "지금 한 가지" so today's tasks start on the first screen. */
+.mission-hero.today-next{min-height:180px;padding:20px 30px}
+.mission-intro{display:none}
+.mission-hero .mission-copy h2{margin-top:2px}
+@media(max-width:767px){
+ .mission-hero.today-next{min-height:0;padding:18px 18px 20px}
+ .mission-copy{padding-top:22px}
+ .mission-dashboard .today-columns .today-section{padding-top:14px}
+ .mission-dashboard .today-columns .section-title{margin-bottom:4px}
+ .mission-hero .mission-copy h2{font-size:1.25rem;line-height:1.4}
+ .mission-hero .today-actions{margin-top:14px}
+}
+@media(max-width:360px){.mission-copy{padding-top:18px}}
+
+/* One tap closes a task: a 40px circle on desktop, 44px on touch. */
+.today-check{width:40px;height:40px}
+.mission-dashboard .today-row{min-height:64px;padding:12px 0}
+
+/* Whole task and quest rows open their record; the checkbox stays on top. */
+.task-list-row{position:relative}
+.task-list-row .task-title::after{content:'';position:absolute;inset:0;z-index:0}
+.task-list-row .task-check,.task-list-row .task-meta button,.task-list-row .task-meta a{position:relative;z-index:1}
+.quest-row{position:relative}
+.quest-row .quest-title::after{content:'';position:absolute;inset:0;z-index:0}
+.quest-row .quest-row-actions,.quest-row .quest-row-body .text-button{position:relative;z-index:1}
+/* A pressed-button nudge (transform/filter) would make the title the hit area's containing block and drop the click. */
+.task-list-row .task-title:active,.quest-row .quest-title:active{transform:none;filter:none}
+
+/* The screen chips fade at a scrollable edge so the cut-off chip reads as "more". */
+.area-sections-track.has-more-end{mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+.area-sections-track.has-more-start{mask-image:linear-gradient(90deg,transparent,#000 36px);-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px)}
+.area-sections-track.has-more-start.has-more-end{mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+
+/* 빠른 기록 button: tucked away while reading down a list, back on the way up. */
+.quick-capture-fab{transition:transform .2s ease,opacity .2s ease,visibility 0s}
+.quick-capture-fab.is-tucked,html[data-capture-bar=visible] .quick-capture-fab{transform:translateY(24px) scale(.85);opacity:0;pointer-events:none;visibility:hidden;transition:transform .2s ease,opacity .2s ease,visibility 0s .2s}
+@media(prefers-reduced-motion:reduce){.quick-capture-fab{transition:none}}
+
+/* Touch screens: 44px targets everywhere a finger lands. */
+@media(max-width:767px),(pointer:coarse){
+ .today-check{width:44px;height:44px}
+ .text-button{min-height:44px;min-width:44px}
+ .primary-button.compact,.secondary-button.compact{min-height:44px}
+ .form-field{min-height:44px}
+ .day-mode-switch{margin:-4px 0 8px}
+ .day-mode-switch button{min-height:44px;padding:0 12px}
+ .area-sections button{min-height:44px}
+ .goal-domino{min-height:44px}
+ .history-filters button,.inbox-filters button{min-height:44px}
+ [data-slot=tabs-trigger]{min-height:44px}
+ [data-slot=tabs-list]{height:auto}
+ .filter-tabs [data-slot=tabs-list]{height:auto;min-height:50px}.filter-tabs [data-slot=tabs-trigger],.dm-top-actions [data-slot=tabs-trigger]{min-height:44px}
+ select.form-field{height:44px}
+ .date-input{min-height:44px}
+ .top-actions .city-theme-trigger,.top-actions .me-trigger,.mission-workspace .share-intake-button,.galaxy-workspace .share-intake-button{width:44px;height:44px;min-height:44px}
+ .outcome-buttons button{min-height:44px;padding:8px 14px}
+ .candidate-time .text-button,.candidate-time input.form-field{min-height:44px}
+ .goal-project-path button{min-height:44px;padding:8px 12px}
+ .quest-row-actions button{min-height:44px}
+ .brief-date-navigation .secondary-button,.brief-date-navigation select{min-height:44px}
+ .goal-trace-list :is(button,div){min-height:44px}
+ .history-search{min-height:44px}.history-search input{min-height:42px}
+ .candidate-evidence li .text-button{min-height:44px}
+}
+@media(max-width:767px){
+ .galaxy-workspace .content{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+}
+/* 오늘 heading on a phone: "오늘 · date" on one line; the tab bar and chip already say where you are. */
+.page-heading.is-today>div{display:flex;flex-direction:row-reverse;justify-content:flex-end;align-items:baseline;gap:12px}.page-heading.is-today .eyebrow{margin:0}.mission-workspace .page-heading.is-today{margin-bottom:14px}
+.mission-dashboard{gap:18px}.mission-workspace .area-sections{margin-bottom:16px}.day-mode-switch{margin:-4px 0 4px}
+@media(min-width:768px) and (pointer:fine){.quest-row-actions .text-button,.candidate-evidence li .text-button{min-width:44px;min-height:36px}}
+/* The goal a task moves, shown on the row where it is done. */
+.goal-tag{display:flex;align-items:center;gap:4px;min-width:0;margin-top:3px;font-style:normal;font-size:.75rem;color:var(--galaxy-violet);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.goal-tag>svg{flex:none}
+.task-meta .goal-tag{display:inline-flex;margin-top:0;max-width:100%}
+/* Phones: the slim strip already carries the theme button, so the top bar keeps one row. */
+@media(max-width:767px){.galaxy-workspace:has(.city-screen-banner) .top-actions .city-theme-trigger{display:none!important}}
+/* Phones: the screen's tagline repeats on every visit; the title and chips are enough to know where you are. */
+@media(max-width:767px){.galaxy-workspace .page-heading>div>p{display:none}.galaxy-workspace .page-heading{margin-bottom:14px}}

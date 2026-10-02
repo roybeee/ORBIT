@@ -119,13 +119,33 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
  </Dialog>;
 }
 
+// The floating button steps aside while reading down a list and comes back on the way up;
+// on 오늘 it waits until the entry bar has scrolled away, so only one capture entry shows at a time.
 export function QuickCaptureButton({onOpen,hidden}:{onOpen:()=>void;hidden?:boolean}){
+ const [tucked,setTucked]=useState(false);
+ useEffect(()=>{
+  let last=window.scrollY;
+  const onScroll=()=>{const y=window.scrollY;if(y>last+8&&y>160)setTucked(true);else if(y<last-8||y<=160)setTucked(false);if(Math.abs(y-last)>8||y<=160)last=y;};
+  window.addEventListener('scroll',onScroll,{passive:true});
+  return()=>window.removeEventListener('scroll',onScroll);
+ },[]);
  if(hidden)return null;
- return <button type="button" className="quick-capture-fab" onClick={onOpen} aria-label="빠른 기록 (N)" title="빠른 기록 (N)"><PenLine size={22}/></button>;
+ return <button type="button" className={'quick-capture-fab'+(tucked?' is-tucked':'')} onClick={onOpen} aria-label="빠른 기록 (N)" title="빠른 기록 (N)"><PenLine size={22}/></button>;
 }
 
+const visibleBars=new Set<Element>();
 export function QuickCaptureBar({onOpen,onVoice,disabled}:{onOpen:()=>void;onVoice?:()=>void;disabled?:boolean}){
- return <div className="quick-capture-entry-row">
+ const row=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  const el=row.current,root=document.documentElement;
+  if(!el||typeof IntersectionObserver==='undefined')return;
+  // Counted per bar: a remounting 오늘 can unmount the old bar after the new one reported itself.
+  const sync=()=>{if(visibleBars.size)root.dataset.captureBar='visible';else delete root.dataset.captureBar;};
+  const io=new IntersectionObserver(([entry])=>{if(entry?.isIntersecting)visibleBars.add(el);else visibleBars.delete(el);sync();});
+  io.observe(el);
+  return()=>{io.disconnect();visibleBars.delete(el);sync();};
+ },[]);
+ return <div className="quick-capture-entry-row" ref={row}>
   <button type="button" className="quick-capture-bar-entry" onClick={onOpen} disabled={disabled}>
    <PenLine size={18}/><span>무엇이든 적어 두세요 — 메모 · 할 일 · 일정</span><kbd>N</kbd>
   </button>

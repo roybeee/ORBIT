@@ -40,3 +40,8 @@
 .project-detail-panel .project-detail-surface [data-slot=progress-indicator]{background:color-mix(in srgb,var(--illustration-accent) 65%,#28384d)}
 @media(max-width:767px){.theme-collection-tabs[data-slot=tabs]{gap:11px}.theme-collection-tabs [data-slot=tabs-trigger]{padding:8px 6px;gap:5px}.city-theme-dialog .city-theme-footer{gap:10px}.city-theme-dialog .city-theme-footer p>span,.city-theme-dialog .city-theme-footer small{font-size:.75rem}.city-theme-dialog .city-theme-scope{font-size:.8125rem}.city-theme-preview{height:138px}}
 @media(max-width:360px){.theme-collection-tabs [data-slot=tabs-trigger]{font-size:.8125rem}.city-theme-preview{height:118px}.city-theme-dialog .city-theme-footer p>span{font-size:.75rem}}
+/* Slim strip on work screens: one line, the theme button keeps a 44px target. */
+.city-screen-banner.is-slim{display:flex;align-items:center;min-height:56px;padding:8px 64px 8px 18px;border-radius:16px;margin:0 0 14px}
+.city-screen-banner.is-slim>img{object-position:center 40%}.city-screen-banner.is-slim>div{display:flex;align-items:baseline;gap:10px;min-width:0}.city-screen-banner.is-slim>div>span{display:none}
+.city-screen-banner.is-slim strong{font-size:.9375rem;letter-spacing:.12em;margin:0;max-width:none;flex-shrink:0}.city-screen-banner.is-slim p{margin:0;max-width:none;font-size:.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.city-screen-banner.is-slim>button{top:50%;bottom:auto;right:6px;transform:translateY(-50%);min-width:44px;min-height:44px;padding:0 12px;justify-content:center;border-color:transparent;background:transparent}.city-screen-banner.is-slim>button span{display:none}
