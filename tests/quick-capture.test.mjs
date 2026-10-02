@@ -128,3 +128,16 @@ test('instant memo: visible before the server answers, committed once, no blocki
 test('editing a loaded note still waits for the server revision check',()=>{
  assert.equal(instantAction({type:'note.upsert',expectedNoteRevision:2,note:{id:'n',title:'t',kind:'wiki',projectId:'p',summary:'',body:'',tags:[],updated:today}}),false);
 });
+
+test('captured tasks file themselves when a project that clearly matches them is created',()=>{
+ let d={...emptyWorkspace(),projects:[]};
+ for(const [id,text] of [['t1','올드페리도넛 가맹 제안서 보내기'],['t2','세탁소 맡기기']]){
+  d=applyAction(d,captureAction(readCapture(text,{today,projects:d.projects}),'task',{id,today,data:d}),now);
+ }
+ d=applyAction(d,{type:'task.schedule',taskId:'t1',eventId:'ev1',date:'2026-10-05',start:600,minutes:30},now);
+ assert.deepEqual(d.tasks.map(t=>t.projectId),[CAPTURE_INBOX_ID,CAPTURE_INBOX_ID]);
+ d=applyAction(d,{type:'project.upsert',project:project('ofd','올드페리도넛',['올드페리도넛','가맹'])},now);
+ assert.equal(d.tasks.find(t=>t.id==='t1').projectId,'ofd');
+ assert.equal(d.events.find(e=>e.id==='ev1').projectId,'ofd','its calendar block moves with it');
+ assert.equal(d.tasks.find(t=>t.id==='t2').projectId,CAPTURE_INBOX_ID,'unrelated captures stay in the inbox');
+});

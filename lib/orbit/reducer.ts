@@ -1,4 +1,5 @@
 import {registrationOverlap} from './overlap-review.ts';
+import {CAPTURE_INBOX_ID} from './quick-capture.ts';
 import {planRules} from './plan-rules.ts';
 import {workEligibility} from './work-policy.ts';
 import {reconcileProjectWork,projectStatus} from './project-management.ts';
@@ -355,6 +356,15 @@ export function applyAction(
       if(updated.status==='completed')updated.completedOn=updated.completedOn??today;else delete updated.completedOn;
       data.projects = replace(data.projects, updated);
       if(updated.status&&updated.status!=='active')suspendProject(updated.id);
+      // 빠른 기록함 files itself: open captured tasks that now clearly belong to this project
+      // (a unique high-confidence keyword match) move with their calendar blocks. Notes keep their
+      // project because their stored revisions carry it; they move through a reviewed edit.
+      else if(updated.id!==CAPTURE_INBOX_ID&&(!old||JSON.stringify(old.keywords??[])!==JSON.stringify(updated.keywords??[])||old.name!==updated.name))
+        for(const t of data.tasks.filter(t=>t.projectId===CAPTURE_INBOX_ID&&t.status!=='done')){
+          if(automaticProject(`${t.title} ${t.definition}`,data.projects,data.tasks,data.notes)?.projectId!==updated.id)continue;
+          t.projectId=updated.id;
+          for(const e of data.events.filter(e=>e.taskId===t.id))e.projectId=updated.id;
+        }
       break;
     }
     case 'project.reorder': {
