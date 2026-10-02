@@ -336,6 +336,7 @@ function WorkspaceContent({
   // 빠른 기록 opens from the floating button, the Today bar, ⌘K, the N key and the #capture shortcut.
   const [captureOpen,setCaptureOpen]=useState(false);
   const captureOnLoad=useRef(false);
+  const [captureVoice,setCaptureVoice]=useState(0);
   const [meOpen,setMeOpen]=useState(false);
   const [aiActions,setAiActions]=useState<AgentAction[]|null>(null);
   const [news,setNews]=useState<NewsSummary|null>(null);
@@ -1074,7 +1075,7 @@ function WorkspaceContent({
         onSearch={openSearch}
       />
       <OrbitSearch open={searchOpen} onOpenChange={setSearchOpen} view={view} navigate={navigate} actions={searchActions}/>
-      <QuickCapture open={captureOpen} onOpenChange={setCaptureOpen} data={data} today={TODAY} nowMinute={demo?600:minuteInZone(preferences.timeZone,clock)} demo={demo} ownerId={ownerId} disabled={!loaded} perform={action=>perform(action)} onOpenRecord={target=>{setCaptureOpen(false);afterPopupClose(()=>setDetail(target));}}/>
+      <QuickCapture open={captureOpen} onOpenChange={open=>{setCaptureOpen(open);if(!open)setCaptureVoice(0);}} voiceRequest={captureVoice} data={data} today={TODAY} nowMinute={demo?600:minuteInZone(preferences.timeZone,clock)} demo={demo} ownerId={ownerId} disabled={!loaded} perform={action=>perform(action)} onOpenRecord={target=>{setCaptureOpen(false);afterPopupClose(()=>setDetail(target));}}/>
       <QuickCaptureButton onOpen={openCapture} hidden={!loaded||view==='agent'||dockOpen||captureOpen||!!create||!!detail}/>
       <MeSheet open={meOpen} onOpenChange={setMeOpen} displayName={displayName} view={view} demo={demo} loaded={loaded} navigate={navigate} onSettings={()=>{setMeOpen(false);afterPopupClose(openSettings)}} onConnections={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:connections')))}} onRuntime={()=>{setMeOpen(false);afterPopupClose(()=>window.dispatchEvent(new Event('orbit:runtime')))}} onNews={()=>{setMeOpen(false);afterPopupClose(()=>setNewsOpen(true))}}/>
       <div className="app-main">
@@ -1236,7 +1237,7 @@ function WorkspaceContent({
           {loaded && view === 'understanding' && <Understanding data={data} today={TODAY} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onAsk={text=>{askOrbit(text)}} onConnect={()=>{window.dispatchEvent(new Event('orbit:connections'))}}/>}
           </Suspense>
           {loaded&&view==='inbox'&&<InboxPanel data={data} today={TODAY} nowMinute={demo?720:minuteInZone(preferences.timeZone,clock)} counts={inbox} orders={homeOrders} actions={aiActions??[]} split={proposalSplit} aiLoading={!demo&&aiActions===null} snapshot={snapshot} news={news} busy={busy||hasPending} demo={demo} perform={perform} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onNews={()=>setNewsOpen(true)} onOpenNote={id=>setDetail({kind:'note',id})} onOpenConversation={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:open-chat',{detail:{id}}))}} onAskOrbit={text=>{askOrbit(text)}} onReviewDeferred={()=>{openOrbit();window.dispatchEvent(new Event('orbit:review'))}} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onFollowup={()=>navigate('followup')}/>}
-          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onCapture={openCapture} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
+          {loaded&&view==='today'&&<TodayHome eveningHour={eveningHour} inboxCount={inbox.total} onInbox={()=>navigate('inbox')} orders={homeOrders} onOrder={id=>{openOrbit();window.dispatchEvent(new CustomEvent('orbit:orders',{detail:{id}}))}} onTimeSettings={openSettings} data={data} now={demo?new Date('2026-09-06T03:00:00Z'):clock} busy={busy||hasPending} demo={demo} perform={perform} onOpen={setDetail} navigate={navigate} onCreate={()=>openCreate(projects.length?'task':'project')} onCapture={openCapture} onVoiceCapture={()=>{setCaptureVoice(n=>n+1);openCapture();}} onAsk={text=>{askOrbit(text)}} onCalendar={date=>openCalendarDay(date)} onProposal={date=>{setProposalDate(date);navigate('proposal')}} onReview={date=>{setReviewDate(date);navigate('review')}}/>}
           {view === 'tasks' && (
             <>
               <div className="view-toolbar">

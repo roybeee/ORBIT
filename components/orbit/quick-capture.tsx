@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {CalendarDays,CheckCheck,FileText,MessagesSquare,PenLine,Send,X} from 'lucide-react';
+import {CalendarDays,CheckCheck,FileText,Mic,MessagesSquare,PenLine,Send,X} from 'lucide-react';
 import {toast} from 'sonner';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {VoiceInput} from './phase4/voice';
@@ -28,12 +28,14 @@ export function useCaptureShortcut(open:()=>void){
 }
 
 type Props={
+ // Incremented by "말로 기록": the sheet opens straight into voice input.
+ voiceRequest?:number;
  open:boolean;onOpenChange:(open:boolean)=>void;data:WorkspaceData;today:string;nowMinute:number;
  demo:boolean;ownerId:string;disabled:boolean;
  perform:(action:WorkspaceAction)=>Promise<boolean>;
  onOpenRecord:(target:{kind:'task'|'event';id:string})=>void;
 };
-export function QuickCapture({open,onOpenChange,data,today,nowMinute,demo,ownerId,disabled,perform,onOpenRecord}:Props){
+export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMinute,demo,ownerId,disabled,perform,onOpenRecord}:Props){
  const [text,setText]=useState('');
  const [override,setOverride]=useState<CaptureKind|null>(null);
  const [projectChoice,setProjectChoice]=useState<string>('auto');
@@ -93,7 +95,7 @@ export function QuickCapture({open,onOpenChange,data,today,nowMinute,demo,ownerI
      <span>{[when,destination].filter(Boolean).join(' · ')}{projectChoice==='auto'&&reading.project?.matched.length?` (‘${reading.project.matched[0]}’)`:''}</span>
     </div>}
     <div className="quick-capture-bar">
-     <VoiceInput compact disabled={disabled||saving} onText={spoken=>setText(current=>(current.trim()?current.trimEnd()+'\n':'')+spoken)}/>
+     <VoiceInput compact requestStart={voiceRequest} disabled={disabled||saving} onText={spoken=>setText(current=>(current.trim()?current.trimEnd()+'\n':'')+spoken)}/>
      <select className="quick-capture-project" aria-label="연결할 프로젝트" value={projectChoice} onChange={e=>setProjectChoice(e.target.value)}>
       <option value="auto">프로젝트 자동</option>
       {kind!=='event'&&<option value="inbox">빠른 기록함</option>}
@@ -113,8 +115,11 @@ export function QuickCaptureButton({onOpen,hidden}:{onOpen:()=>void;hidden?:bool
  return <button type="button" className="quick-capture-fab" onClick={onOpen} aria-label="빠른 기록 (N)" title="빠른 기록 (N)"><PenLine size={22}/></button>;
 }
 
-export function QuickCaptureBar({onOpen,disabled}:{onOpen:()=>void;disabled?:boolean}){
- return <button type="button" className="quick-capture-bar-entry" onClick={onOpen} disabled={disabled}>
-  <PenLine size={18}/><span>무엇이든 적어 두세요 — 메모 · 할 일 · 일정</span><kbd>N</kbd>
- </button>;
+export function QuickCaptureBar({onOpen,onVoice,disabled}:{onOpen:()=>void;onVoice?:()=>void;disabled?:boolean}){
+ return <div className="quick-capture-entry-row">
+  <button type="button" className="quick-capture-bar-entry" onClick={onOpen} disabled={disabled}>
+   <PenLine size={18}/><span>무엇이든 적어 두세요 — 메모 · 할 일 · 일정</span><kbd>N</kbd>
+  </button>
+  {onVoice&&<button type="button" className="quick-capture-voice-entry" onClick={onVoice} disabled={disabled} aria-label="말로 기록"><Mic size={20}/></button>}
+ </div>;
 }
