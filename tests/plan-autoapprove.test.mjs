@@ -38,6 +38,8 @@ test('opted in: the morning tick approves today\'s plan once and reports it',asy
   assert.equal(data.events.filter(e=>e.id.startsWith('approved:')).length,plan.items.length);
   const again=await autoApproveToday(db,'owner',today,morning);
   assert.equal(again.skipped,'done','never twice a day');
+  assert.equal((await autoApproveToday(db,'owner',today,morning,data)).skipped,'done','the tick passes its snapshot and stops at the marker');
+  assert.equal((await autoApproveToday(db,'owner',today,morning,{preferences:{...data.preferences,autoApprovePlan:false}})).skipped,'off');
  }finally{db.close()}
 });
 

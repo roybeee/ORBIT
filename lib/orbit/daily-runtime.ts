@@ -64,7 +64,7 @@ export async function tickRuntime(db:Database,owner:string,env:Runtime,options:{
  }
  const snapshot=await readWorkspace(db,owner),zone=snapshot.data.preferences.timeZone,today=todayInZone(zone),afterEvening=eveningDue(new Date(),zone,config.eveningHour),target=afterEvening?addDays(today,1):today;
  {const nudge=reviewNudge(snapshot.data,today,afterEvening);if(nudge)await notify(db,owner,nudge).catch(()=>{});}
- if(snapshot.data.preferences.autoApprovePlan)await autoApproveToday(db,owner,today).catch(()=>{});
+ if(snapshot.data.preferences.autoApprovePlan)await autoApproveToday(db,owner,today,new Date(),snapshot.data).catch(()=>{});
  // Monday morning: one look back at last week's orbit (insert-once per week).
  if(!afterEvening&&minuteInZone(zone,new Date())>=Math.max(0,snapshot.data.preferences.workStart-90)){const weekly=weeklyOrbitReport(snapshot.data,today);if(weekly)await notify(db,owner,{...weekly,createdAt:new Date().toISOString()}).catch(()=>{});}
  const previousMonth=addDays(today.slice(0,7)+'-01',-1).slice(0,7);

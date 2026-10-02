@@ -17,14 +17,19 @@ export function autoApproveCandidates(data: WorkspaceData, date: string, minute:
   return (plan?.items ?? []).filter(i => i.state === 'pending' && i.start >= minute + 5).sort((a, b) => a.start - b.start).map(i => i.id);
 }
 
-export async function autoApproveToday(db: Database, owner: string, today: string, now = new Date()) {
+// The runtime calls this every tick: the cheap checks (preference, window, today's marker) come
+// before the workspace is read again. `current` is the tick's own snapshot when it has one.
+export async function autoApproveToday(db: Database, owner: string, today: string, now = new Date(), current?: Pick<WorkspaceData, 'preferences'>) {
+  const known = current?.preferences;
+  if (known && !known.autoApprovePlan) return { skipped: 'off' as const };
+  if (known && !inAutoApproveWindow(known, minuteInZone(known.timeZone, now))) return { skipped: 'window' as const };
+  const marker = autoApproveMarker(today);
+  if (await db.prepare('SELECT 1 AS seen FROM orbit_notifications WHERE owner_id=? AND id=?').bind(owner, marker).first()) return { skipped: 'done' as const };
   let snapshot = await readWorkspace(db, owner);
   const prefs = snapshot.data.preferences;
   if (!prefs.autoApprovePlan) return { skipped: 'off' as const };
   const minute = minuteInZone(prefs.timeZone, now);
   if (!inAutoApproveWindow(prefs, minute)) return { skipped: 'window' as const };
-  const marker = autoApproveMarker(today);
-  if (await db.prepare('SELECT 1 AS seen FROM orbit_notifications WHERE owner_id=? AND id=?').bind(owner, marker).first()) return { skipped: 'done' as const };
   const ids = autoApproveCandidates(snapshot.data, today, minute);
   // No plan yet: try again on a later tick instead of marking the day.
   if (!ids.length) return { skipped: snapshot.data.proposals.some(p => p.date === today) ? 'none' as const : 'no-plan' as const };
