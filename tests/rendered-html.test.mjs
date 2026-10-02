@@ -190,8 +190,10 @@ test('the packaged workspace atomically creates a keyword project and moves its 
  const data=(await (await request('/api/workspace',{headers})).json()).data;
  assert.equal(data.projects.length,2);assert.equal(data.tasks[0].projectId,'ofd');assert.equal(data.tasks[0].duration,75);
  const assets=await readdir(new URL('../dist/client/assets/',import.meta.url));
- const bundles=await Promise.all(assets.filter(name=>/^workspace-.*\.js$/.test(name)).map(name=>readFile(new URL('../dist/client/assets/'+name,import.meta.url),'utf8')));
- assert.ok(bundles.some(source=>source.includes('그래프 프로젝트 선택')&&source.includes('그래프에 연결된 할 일')&&source.includes('새 프로젝트')));
+ // The graph is loaded on first use (its own chunk); the shell and graph ship together in the build.
+ const bundles=await Promise.all(assets.filter(name=>/^(workspace|graph-view)-.*\.js$/.test(name)).map(name=>readFile(new URL('../dist/client/assets/'+name,import.meta.url),'utf8')));
+ const shipped=bundles.join('\n');
+ assert.ok(shipped.includes('그래프 프로젝트 선택')&&shipped.includes('그래프에 연결된 할 일')&&shipped.includes('새 프로젝트'));
 });
 
 test('past and current proposal dates are accepted by the built HTTP API and available through workspace reload',async()=>{
