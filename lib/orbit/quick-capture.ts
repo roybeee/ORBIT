@@ -136,7 +136,11 @@ function strip(line: string, spans: Span[]) {
   // Blank every covered character first so overlapping spans cannot shift each other.
   // Spans are UTF-16 offsets from RegExp, so split into code units (not code points).
   const chars = line.split('');
-  for (const s of spans) for (let i = s.index; i < s.index + s.length && i < chars.length; i++) chars[i] = ' ';
+  for (const s of spans) {
+    // A particle glued to the removed date or time ("금요일까지", "3시에") goes with it.
+    const glued = /^(?:까지|에는|에|부터|엔|쯤)/.exec(line.slice(s.index + s.length))?.[0].length ?? 0;
+    for (let i = s.index; i < s.index + s.length + glued && i < chars.length; i++) chars[i] = ' ';
+  }
   const out = chars.join('');
   return out
     .replace(/\s+/g, ' ')
@@ -249,6 +253,42 @@ export function captureAction(reading: CaptureReading, kind: CaptureKind, input:
     note: {
       id, title: reading.title, kind: kind === 'meeting' ? 'meeting' : 'wiki', projectId: projectId ?? inbox!.id,
       summary: body.replace(/\s+/g, ' ').slice(0, 95), body, tags: tags(kind === 'meeting' ? '회의록' : '개인 기록'), updated: reading.date && reading.date <= today ? reading.date : today,
+    },
+  };
+}
+
+// Action lines inside a meeting note or memo ("- 샘플 금요일까지 발송", "→ 견적서 회신하기",
+// "TODO: 계약서 검토"). Offered in the sheet so the follow-ups are registered with the note in
+// one save, linked to it, instead of being re-typed or waiting for a separate review.
+export interface CaptureFollowUp { line: number; title: string; date?: string; minutes?: number }
+const BULLET = /^\s*(?:[-*•·]|→|->|=>|\d+[.)]|\[\s?\])\s*/;
+const ACTION_PREFIX = /^\s*(?:할\s*일|todo|액션|action|to\s*do)\s*[:：]\s*/i;
+export function captureFollowUps(text: string, today: string): CaptureFollowUp[] {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const out: CaptureFollowUp[] = [];
+  for (let i = 1; i < lines.length && out.length < 8; i++) {
+    const raw = lines[i];
+    const prefixed = ACTION_PREFIX.test(raw) || /^\s*[-*]?\s*\[\s?\]/.test(raw) || /^\s*(?:→|->|=>)/.test(raw);
+    const line = raw.replace(ACTION_PREFIX, '').replace(BULLET, '').trim();
+    if (line.length < 3 || line.length > 120) continue;
+    const date = findDate(line, today);
+    const actionable = prefixed || TASK_END.test(line) || (/까지/.test(line) && !!date);
+    if (!actionable) continue;
+    const minutes = findMinutes(line);
+    const title = strip(line, date ? [date] : []).replace(/^까지\s*/, '').trim() || line;
+    out.push({ line: i + 1, title: shorten(title, 120), date: date?.date, minutes });
+  }
+  return out;
+}
+// One task per chosen follow-up, linked to the note and its project.
+export function followUpAction(item: CaptureFollowUp, input: { id: string; noteId: string; noteTitle: string; projectId: string; today: string }): WorkspaceAction {
+  return {
+    type: 'task.upsert',
+    task: {
+      id: input.id, title: item.title, projectId: input.projectId, status: 'todo',
+      duration: clampMinutes(item.minutes, 30, 5, 480), due: item.date && item.date >= input.today ? item.date : input.today,
+      impact: 3, focus: false, definition: `‘${input.noteTitle.slice(0, 80)}’에서 정한 후속 조치`, noteId: input.noteId,
+      category: PHONE.test(item.title) ? 'phone' : 'work', scope: 'work',
     },
   };
 }

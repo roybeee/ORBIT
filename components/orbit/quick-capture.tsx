@@ -5,7 +5,7 @@ import {toast} from 'sonner';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {VoiceInput} from './phase4/voice';
 import {readDraft,saveDraft,clearDraft} from '@/lib/orbit/device-drafts';
-import {readCapture,captureAction,captureKindLabel,CAPTURE_INBOX_ID,type CaptureKind} from '@/lib/orbit/quick-capture';
+import {readCapture,captureAction,captureFollowUps,followUpAction,captureKindLabel,CAPTURE_INBOX_ID,type CaptureKind} from '@/lib/orbit/quick-capture';
 import {formatTime,durationText,type WorkspaceData} from '@/lib/orbit/model';
 import {koreanDate} from '@/lib/orbit/dates';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
@@ -50,6 +50,10 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
  const ctx=useMemo(()=>({today,projects:data.projects,tasks:data.tasks,notes:data.notes}),[today,data.projects,data.tasks,data.notes]);
  const reading=useMemo(()=>readCapture(text,ctx),[text,ctx]);
  const kind=override??reading.kind;
+ // Follow-ups written inside a meeting note or memo are registered with it (unticked ones are skipped).
+ const followUps=useMemo(()=>kind==='note'||kind==='meeting'?captureFollowUps(text,today):[],[kind,text,today]);
+ const [skipped,setSkipped]=useState<Set<number>>(()=>new Set());
+ const chosenFollowUps=followUps.filter(f=>!skipped.has(f.line));
  const activeProjects=data.projects.filter(p=>p.status!=='completed');
  const chosen=projectChoice==='auto'?reading.project:projectChoice==='inbox'?undefined:{projectId:projectChoice,matched:[]};
  const projectName=chosen?data.projects.find(p=>p.id===chosen.projectId)?.name:undefined;
@@ -67,11 +71,13 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
    const ok=await perform(action);
    if(!ok)return;
    if(!demo)clearDraft(ownerId,'capture','current');
-   const label=`${captureKindLabel[kind]} · ${reading.title}`;
+   let linked=0;
+   if(action.type==='note.upsert')for(const item of chosenFollowUps){if(await perform(followUpAction(item,{id:crypto.randomUUID(),noteId:id,noteTitle:reading.title,projectId:action.note.projectId,today})))linked++;}
+   const label=`${captureKindLabel[kind]} · ${reading.title}${linked?` + 할 일 ${linked}`:''}`;
    const target=kind==='task'?{kind:'task' as const,id}:kind==='event'?{kind:'event' as const,id}:null;
    toast.success(`저장됨 · ${label}`,{description:kind==='event'?when:destination,...(target?{action:{label:'열기',onClick:()=>onOpenRecord(target)}}:{})});
    idRef.current=crypto.randomUUID();
-   setText('');setOverride(null);setProjectChoice('auto');
+   setText('');setOverride(null);setProjectChoice('auto');setSkipped(new Set());
    if(keepOpen){setKept(list=>[label,...list].slice(0,5));requestAnimationFrame(()=>area.current?.focus());}
    else onOpenChange(false);
   }finally{setSaving(false)}
@@ -94,6 +100,9 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
      <strong>{reading.title}</strong>
      <span>{[when,destination].filter(Boolean).join(' · ')}{projectChoice==='auto'&&reading.project?.matched.length?` (‘${reading.project.matched[0]}’)`:''}</span>
     </div>}
+    {followUps.length>0&&<fieldset className="quick-capture-followups"><legend>함께 등록할 할 일 {chosenFollowUps.length}/{followUps.length}</legend>
+     {followUps.map(f=><label key={f.line}><input type="checkbox" checked={!skipped.has(f.line)} onChange={()=>setSkipped(set=>{const next=new Set(set);if(next.has(f.line))next.delete(f.line);else next.add(f.line);return next;})}/><span>{f.title}</span>{f.date&&<small>{f.date.slice(5).replace('-','/')}까지</small>}</label>)}
+    </fieldset>}
     <div className="quick-capture-bar">
      <VoiceInput compact requestStart={voiceRequest} disabled={disabled||saving} onText={spoken=>setText(current=>(current.trim()?current.trimEnd()+'\n':'')+spoken)}/>
      <select className="quick-capture-project" aria-label="연결할 프로젝트" value={projectChoice} onChange={e=>setProjectChoice(e.target.value)}>

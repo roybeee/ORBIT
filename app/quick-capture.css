@@ -42,3 +42,9 @@ html[data-keyboard=open] .quick-capture-dialog{top:calc(var(--phone-viewport-top
 .today-check{flex:none;width:34px;height:34px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--galaxy-green) 60%,var(--border));background:transparent;color:transparent;display:grid;place-items:center;cursor:pointer;transition:background .15s,color .15s}
 .today-check:hover,.today-check:focus-visible{background:color-mix(in srgb,var(--galaxy-green) 18%,transparent);color:var(--galaxy-green)}
 .today-check:disabled{opacity:.4;cursor:default}
+.quick-capture-followups{margin:12px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:12px;display:grid;gap:4px}
+.quick-capture-followups legend{padding:0 4px;font-size:.8125rem;color:var(--muted-foreground)}
+.quick-capture-followups label{display:flex;align-items:center;gap:8px;min-height:36px;font-size:.875rem;cursor:pointer}
+.quick-capture-followups input{width:18px;height:18px;accent-color:var(--galaxy-violet);flex:none}
+.quick-capture-followups span{flex:1;min-width:0;overflow-wrap:anywhere}
+.quick-capture-followups small{color:var(--muted-foreground);font-size:.75rem;white-space:nowrap}

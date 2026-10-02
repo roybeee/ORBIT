@@ -158,3 +158,18 @@ test('captured tasks file themselves when a project that clearly matches them is
  assert.equal(d.events.find(e=>e.id==='ev1').projectId,'ofd','its calendar block moves with it');
  assert.equal(d.tasks.find(t=>t.id==='t2').projectId,CAPTURE_INBOX_ID,'unrelated captures stay in the inbox');
 });
+
+import {captureFollowUps,followUpAction} from '../lib/orbit/quick-capture.ts';
+test('follow-ups inside a meeting note are found, dated and linked to the note',()=>{
+ const text='해외 바이어 미팅\n- 단가 협의 완료\n- 샘플 3종 금요일까지 발송\n→ 견적서 회신하기\nTODO: 계약서 초안 검토\n- 분위기 좋았음\n1. 다음 미팅 10월 15일까지 일정 잡기';
+ const items=captureFollowUps(text,today);
+ assert.deepEqual(items.map(i=>i.title),['샘플 3종 발송','견적서 회신하기','계약서 초안 검토','다음 미팅 일정 잡기']);
+ assert.equal(items[0].date,today,'금요일 is today (2026-10-02)');
+ assert.equal(items[3].date,'2026-10-15');
+ assert.deepEqual(captureFollowUps('한 줄 메모만',today),[],'the first line is the title, never a follow-up');
+ const action=followUpAction(items[1],{id:'f1',noteId:'n1',noteTitle:'해외 바이어 미팅',projectId:'p',today});
+ valid(action);
+ assert.equal(action.task.noteId,'n1');assert.equal(action.task.due,today);
+ const d=applyAction(applyAction(data(),{type:'note.upsert',note:{id:'n1',title:'해외 바이어 미팅',kind:'meeting',projectId:'mapdal',summary:'',body:text,tags:[],updated:today}},now),{...action,task:{...action.task,projectId:'mapdal'}},now);
+ assert.equal(d.tasks[0].noteId,'n1');
+});

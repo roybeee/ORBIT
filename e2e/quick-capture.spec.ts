@@ -96,3 +96,18 @@ test('the Today entry row never widens the page',async({page})=>{
  const [scroll,client]=await page.evaluate(()=>[document.documentElement.scrollWidth,document.documentElement.clientWidth]);
  expect(scroll).toBeLessThanOrEqual(client);
 });
+
+test('follow-ups written in a meeting note are registered with it in one save',async({page})=>{
+ await page.goto('/');
+ await page.getByRole('button',{name:/무엇이든 적어 두세요/}).click();
+ const input=page.getByRole('textbox',{name:'빠른 기록 내용'});
+ await input.fill('해외 바이어 미팅\n- 단가 협의 완료\n- 샘플 3종 발송하기\n→ 견적서 회신하기\n- 분위기 좋았음');
+ await expect(page.getByRole('radio',{name:/회의록/})).toHaveAttribute('aria-checked','true');
+ const box=page.getByRole('group',{name:/함께 등록할 할 일 2\/2/});
+ await expect(box).toBeVisible();
+ await box.getByRole('checkbox',{name:'견적서 회신하기'}).uncheck();
+ await expect(page.getByRole('group',{name:/함께 등록할 할 일 1\/2/})).toBeVisible();
+ await page.getByRole('button',{name:'저장',exact:true}).click();
+ await expect(page.getByText(/저장됨 · 회의록 · 해외 바이어 미팅 \+ 할 일 1/)).toBeVisible();
+ await expect.poll(async()=>{const s=await page.evaluate(async()=>(await (await fetch('/api/workspace',{cache:'no-store'})).json()));const note=s.data.notes.find((n:{title:string})=>n.title==='해외 바이어 미팅');return note?s.data.tasks.filter((t:{noteId?:string})=>t.noteId===note.id).map((t:{title:string})=>t.title):null},{timeout:20000}).toEqual(['샘플 3종 발송하기']);
+});
