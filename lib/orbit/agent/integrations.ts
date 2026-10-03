@@ -22,6 +22,19 @@ export async function connections(db:Database,owner:string,env:Runtime):Promise<
  const {results}=await db.prepare('SELECT provider,public_json,updated_at FROM orbit_integrations WHERE owner_id=?').bind(owner).all<{provider:Provider;public_json:string;updated_at:string}>();
  return (['hermes','discord','plaud','google_calendar','google_mail'] as Provider[]).map(provider=>{const row=results.find(r=>r.provider===provider),data=row?JSON.parse(row.public_json):{};return {provider,configured:provider==='plaud'||!!row||(provider==='google_mail'&&results.some(r=>r.provider==='google_calendar')),connected:!!data.connected,label:provider==='discord'?'Discord 업무 채널':provider==='hermes'?'헤르메스 에이전트':provider==='plaud'?'Plaud 회의 기록':provider==='google_mail'?'Gmail 읽기':'Google Calendar',updatedAt:row?.updated_at,...(provider==='hermes'?{endpoint:data.endpoint,model:data.model??'Hermes'}:{})}});
 }
+// Why a stored connection stopped working, in words the owner can act on. Google expires the
+// refresh token of an OAuth app left in "Testing" publishing status after 7 days.
+export const TESTING_EXPIRY_DAYS=7;
+export function refreshFailureMessage(provider:'plaud'|'google_calendar'|'google_mail',reason:string,connectedAt?:string,now=Date.now()){
+ const service=provider==='plaud'?'Plaud':'Google';
+ if(reason==='invalid_client'||reason==='unauthorized_client')return `${service} OAuth 클라이언트 정보가 바뀌었거나 삭제됐습니다. 연결 설정에서 클라이언트 ID·비밀번호를 다시 저장한 뒤 다시 연결해 주세요.`;
+ if(reason==='invalid_grant'){
+  const days=connectedAt?(now-Date.parse(connectedAt))/86400000:NaN;
+  if(provider!=='plaud'&&days>=TESTING_EXPIRY_DAYS-1&&days<=TESTING_EXPIRY_DAYS+1)return 'Google 연결이 연결 7일 만에 만료됐습니다. Google Cloud의 OAuth 앱이 ‘테스트’ 상태이면 7일마다 끊깁니다. Google Cloud에서 앱을 ‘프로덕션’으로 게시한 뒤 다시 연결해 주세요.';
+  return `${service}이(가) 이 연결을 더 이상 허용하지 않습니다(권한 해제, 비밀번호 변경, 테스트 앱의 7일 만료 등). 다시 연결해 주세요.`;
+ }
+ return '연결을 갱신하지 못했습니다. 다시 연결해 주세요.';
+}
 export async function accessToken(db:Database,owner:string,provider:'plaud'|'google_calendar'|'google_mail',env:Runtime){
  const config=await readConnection<AuthConfig>(db,owner,provider,keyOf(env));if(!config?.accessToken)throw new AgentError(`${provider==='plaud'?'Plaud':'Google Calendar'}에 먼저 연결해 주세요.`,'CONNECT',409);
  if(config.expiresAt&&config.expiresAt>Date.now()+60000)return config.accessToken;
@@ -34,8 +47,16 @@ export async function accessToken(db:Database,owner:string,provider:'plaud'|'goo
   const form=new URLSearchParams({grant_type:'refresh_token',refresh_token:config.refreshToken,client_id:config.clientId});if(config.clientSecret)form.set('client_secret',config.clientSecret);if(provider==='plaud')form.set('resource',PLAUD.server);
   const {response,data}=await fetchJson<OAuthTokens>(provider==='plaud'?PLAUD.token:GOOGLE.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
   const publicRow=await db.prepare('SELECT public_json FROM orbit_integrations WHERE owner_id=? AND provider=?').bind(owner,provider).first<{public_json:string}>();const publicState=publicRow?JSON.parse(publicRow.public_json):{};
-  if(!response.ok||typeof data.access_token!=='string'){await saveConnection(db,owner,provider,config,{...publicState,connected:false},keyOf(env));throw new AgentError('연결을 갱신하지 못했습니다. 다시 연결해 주세요.','RECONNECT',409)}
-  const next={...config,accessToken:data.access_token,refreshToken:data.refresh_token??config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000};await saveConnection(db,owner,provider,next,{...publicState,connected:true},keyOf(env));return next.accessToken;
+  if(!response.ok||typeof data.access_token!=='string'){
+   // Only a refusal of the grant itself ends the connection. A Google outage or rate limit (5xx, 429)
+   // or an odd answer leaves it connected so the next request simply tries again.
+   const reason=typeof (data as {error?:unknown}).error==='string'?(data as {error:string}).error:'';
+   if(response.ok||response.status===429||response.status>=500)throw new AgentError(`${provider==='plaud'?'Plaud':'Google'} 연결을 잠시 확인하지 못했습니다. 연결은 그대로이니 잠시 후 다시 시도해 주세요.`,'UPSTREAM',502);
+   const at=new Date().toISOString();
+   await saveConnection(db,owner,provider,config,{...publicState,connected:false,lastError:{reason:reason||String(response.status),at}},keyOf(env));
+   throw new AgentError(refreshFailureMessage(provider,reason,publicState.connectedAt),'RECONNECT',409,{reason:reason||String(response.status)});
+  }
+  const next={...config,accessToken:data.access_token,refreshToken:data.refresh_token??config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000};await saveConnection(db,owner,provider,next,{...publicState,connected:true,lastError:undefined},keyOf(env));return next.accessToken;
  }finally{await db.prepare('UPDATE orbit_integrations SET refresh_until=0 WHERE owner_id=? AND provider=? AND refresh_until=?').bind(owner,provider,lease).run()}
 
 }
@@ -69,5 +90,5 @@ export async function finishOAuth(db:Database,owner:string,state:string,code:str
  if(!response.ok||typeof data.access_token!=='string')throw new AgentError('계정 연결을 확인하지 못했습니다. 다시 연결해 주세요.','OAUTH',502);
  if(row.provider==='google_calendar'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/calendar.events'))throw new AgentError('일정 권한을 승인해야 Calendar를 연결할 수 있습니다.','SCOPE',403);
  if(row.provider==='google_mail'&&typeof data.scope==='string'&&!data.scope.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly'))throw new AgentError('메일 읽기 권한을 승인해 주세요.','SCOPE',403);
- await saveConnection(db,owner,row.provider,{...saved.config,accessToken:data.access_token,refreshToken:data.refresh_token??saved.config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000,scope:data.scope},{connected:true},keyOf(env));return row.provider;
+ await saveConnection(db,owner,row.provider,{...saved.config,accessToken:data.access_token,refreshToken:data.refresh_token??saved.config.refreshToken,expiresAt:Date.now()+Number(data.expires_in??3600)*1000,scope:data.scope},{connected:true,connectedAt:new Date().toISOString()},keyOf(env));return row.provider;
 }

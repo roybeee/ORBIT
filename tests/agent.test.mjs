@@ -5,7 +5,7 @@ import {createDatabase} from './sqlite-d1.mjs';
 import {readWorkspace,writeCommand} from '../db/repository.ts';
 import {addDays,todayInZone} from '../lib/orbit/dates.ts';
 import {encrypt,decrypt,readConnection,saveConnection} from '../lib/orbit/agent/secrets.ts';
-import {accessToken,connections,startOAuth,finishOAuth,fetchJson} from '../lib/orbit/agent/integrations.ts';
+import {accessToken,connections,startOAuth,finishOAuth,fetchJson,refreshFailureMessage} from '../lib/orbit/agent/integrations.ts';
 import {beginTurn,finishTurn,listAgent,findAction,claimAction,resetAction} from '../lib/orbit/agent/repository.ts';
 import {decide} from '../lib/orbit/agent/decisions.ts';
 import {parseAction,runAgent,advanceAgent} from '../lib/orbit/agent/runner.ts';
@@ -89,6 +89,29 @@ test('Plaud OAuth uses its own registration, PKCE, matching cookie and one-use o
 test('refresh rotation is serialized across concurrent requests and public status never contains credentials',()=>fixture(async db=>{
  await connect(db,'plaud',true);let release;const wait=new Promise(resolve=>{release=resolve});let started;const ready=new Promise(resolve=>{started=resolve});let requests=0;globalThis.fetch=async()=>{requests++;started();await wait;return j({access_token:'rotated',refresh_token:'rotated-refresh',expires_in:3600})};const first=accessToken(db,'owner','plaud',env);await ready;await assert.rejects(()=>accessToken(db,'owner','plaud',env),e=>e.code==='BUSY');release();assert.equal(await first,'rotated');assert.equal(await accessToken(db,'owner','plaud',env),'rotated');assert.equal(requests,1);assert.ok(!JSON.stringify(await connections(db,'owner',env)).includes('rotated'));
 }));
+test('a Google outage or rate limit during refresh keeps the connection; only a refused grant ends it',()=>fixture(async db=>{
+ const publicState=async()=>JSON.parse((await db.prepare('SELECT public_json FROM orbit_integrations WHERE owner_id=? AND provider=?').bind('owner','google_calendar').first()).public_json);
+ await connect(db,'google_calendar',true);
+ for(const status of [503,500,429]){globalThis.fetch=async()=>j({error:'backendError'},status);await assert.rejects(()=>accessToken(db,'owner','google_calendar',env),e=>e.code==='UPSTREAM'&&e.status===502&&/잠시 후 다시/.test(e.message));assert.equal((await publicState()).connected,true);}
+ assert.equal((await connections(db,'owner',env)).find(c=>c.provider==='google_calendar').connected,true);
+ globalThis.fetch=async()=>j({error:'invalid_grant',error_description:'Token has been expired or revoked.'},400);
+ await assert.rejects(()=>accessToken(db,'owner','google_calendar',env),e=>e.code==='RECONNECT'&&e.details.reason==='invalid_grant'&&/다시 연결/.test(e.message));
+ const after=await publicState();assert.equal(after.connected,false);assert.equal(after.lastError.reason,'invalid_grant');
+ assert.ok(!JSON.stringify(after).includes('private-refresh'));
+ // Reconnecting clears the reason; a later refresh keeps the connection time.
+ globalThis.fetch=async()=>j({access_token:'fresh',expires_in:3600});
+ await saveConnection(db,'owner','google_calendar',{clientId:'orbit-client',accessToken:'old',refreshToken:'private-refresh',expiresAt:Date.now()-1},{connected:true,connectedAt:'2026-10-01T00:00:00.000Z',lastError:{reason:'invalid_grant'}},env.ORBIT_ENCRYPTION_KEY);
+ assert.equal(await accessToken(db,'owner','google_calendar',env),'fresh');
+ const healed=await publicState();assert.equal(healed.connected,true);assert.equal(healed.lastError,undefined);assert.equal(healed.connectedAt,'2026-10-01T00:00:00.000Z');
+}));
+test('a refused refresh explains itself: the 7-day expiry of a Testing app, a changed client, or a revoked grant',()=>{
+ const now=Date.parse('2026-10-08T03:00:00Z');
+ assert.match(refreshFailureMessage('google_calendar','invalid_grant','2026-10-01T02:00:00Z',now),/7일 만에 만료.*프로덕션/);
+ assert.match(refreshFailureMessage('google_calendar','invalid_grant','2026-09-20T02:00:00Z',now),/더 이상 허용하지 않습니다/);
+ assert.match(refreshFailureMessage('google_calendar','invalid_grant',undefined,now),/테스트 앱의 7일 만료/);
+ assert.match(refreshFailureMessage('google_calendar','invalid_client',undefined,now),/클라이언트 ID/);
+ assert.equal(refreshFailureMessage('plaud','invalid_request',undefined,now),'연결을 갱신하지 못했습니다. 다시 연결해 주세요.');
+});
 test('calendar normalization covers all-day, midnight, canceled, declined, transparent and fractional-minute events',()=>{
  const events=normalizeEvents([{id:'all',start:{date:today},end:{date:tomorrow}},{id:'late',start:{dateTime:today+'T23:30:00+09:00'},end:{dateTime:tomorrow+'T00:00:00+09:00'}},{id:'fraction',start:{dateTime:today+'T09:00:15+09:00'},end:{dateTime:today+'T09:30:15+09:00'}},...['cancelled','transparent','declined'].map(id=>({id,status:id,transparency:id,attendees:[{self:true,responseStatus:id}],start:{date:today},end:{date:tomorrow}}))],'Asia/Seoul',today,addDays(today,2));assert.equal(events.length,3);assert.equal(events.find(e=>e.id.startsWith('google:all')).end,1440);assert.equal(events.find(e=>e.id.startsWith('google:late')).end,1440);assert.equal(events.find(e=>e.id.startsWith('google:fraction')).end,571);assert.ok(events.every(e=>e.date===today));
 });
