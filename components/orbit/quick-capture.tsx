@@ -1,11 +1,12 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {CalendarDays,CheckCheck,FileText,Mic,MessagesSquare,PenLine,Send,X} from 'lucide-react';
+import {CalendarDays,CheckCheck,FileText,Mic,MessagesSquare,PenLine,Send,Sparkles,Square,X} from 'lucide-react';
 import {toast} from 'sonner';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
-import {VoiceInput} from './phase4/voice';
+import {VoiceInput,type DictationState} from './phase4/voice';
 import {readDraft,saveDraft,clearDraft} from '@/lib/orbit/device-drafts';
 import {readCapture,captureAction,captureFollowUps,followUpAction,captureKindLabel,CAPTURE_INBOX_ID,type CaptureKind} from '@/lib/orbit/quick-capture';
+import {batchItems,organizedItems,type BatchItem} from '@/lib/orbit/capture-batch';
 import {formatTime,durationText,type WorkspaceData} from '@/lib/orbit/model';
 import {koreanDate} from '@/lib/orbit/dates';
 import type {WorkspaceAction} from '@/lib/orbit/validation';
@@ -43,13 +44,51 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
  const [kept,setKept]=useState<string[]>([]);
  const area=useRef<HTMLTextAreaElement>(null);
  const idRef=useRef('');
+ // Dictation: the text before 말로 기록 started, what is still being recognized, and a 종료 request.
+ const dictationBase=useRef<string|null>(null);
+ const [live,setLive]=useState<DictationState|null>(null);
+ const [stopRequest,setStopRequest]=useState(0);
+ // Several things in one go: reviewed as a list, each with its own title and kind.
+ const [review,setReview]=useState(false);
+ const [single,setSingle]=useState(false);
+ const [ai,setAi]=useState<{text:string;items:BatchItem[]}|null>(null);
+ const [organizing,setOrganizing]=useState<'idle'|'busy'|'local'>('idle');
+ const [edits,setEdits]=useState<{key:string;rows:Record<number,{kind?:CaptureKind;title?:string;skip?:boolean}>}>({key:'',rows:{}});
+ const textRef=useRef('');
  // Restore an unsent draft when the sheet opens; the draft is per device and owner.
  // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the device draft (localStorage) only happens on open
- useEffect(()=>{if(!open)return;idRef.current=crypto.randomUUID();const saved=demo?null:readDraft<{text:string}>(ownerId,'capture','current');setText(typeof saved?.text==='string'?saved.text:'');setOverride(null);setProjectChoice('auto');setKept([]);},[open,demo,ownerId]);
+ useEffect(()=>{if(!open)return;idRef.current=crypto.randomUUID();const saved=demo?null:readDraft<{text:string}>(ownerId,'capture','current');setText(typeof saved?.text==='string'?saved.text:'');setOverride(null);setProjectChoice('auto');setKept([]);setReview(false);setSingle(false);setAi(null);setOrganizing('idle');setLive(null);dictationBase.current=null;},[open,demo,ownerId]);
  useEffect(()=>{if(!open||demo)return;try{if(text.trim())saveDraft(ownerId,'capture','current',{text});else clearDraft(ownerId,'capture','current');}catch{/* typing continues; the draft is a convenience */}},[open,demo,ownerId,text]);
  const ctx=useMemo(()=>({today,projects:data.projects,tasks:data.tasks,notes:data.notes}),[today,data.projects,data.tasks,data.notes]);
  const reading=useMemo(()=>readCapture(text,ctx),[text,ctx]);
  const kind=override??reading.kind;
+ useEffect(()=>{textRef.current=text},[text]);
+ // The local split is instant; the server's reading replaces it while the text is unchanged.
+ const localItems=useMemo(()=>batchItems(text,ctx),[text,ctx]);
+ const items=ai&&ai.text===text?ai.items:localItems;
+ const batch=!single&&!!text.trim()&&(items.length>=2||review);
+ const itemsKey=items.map(i=>i.source).join('\u0000');
+ const rows=edits.key===itemsKey?edits.rows:{};
+ const edit=(index:number,change:{kind?:CaptureKind;title?:string;skip?:boolean})=>setEdits(current=>{const base=current.key===itemsKey?current.rows:{};return {key:itemsKey,rows:{...base,[index]:{...base[index],...change}}};});
+ const chosenItems=items.map((item,index)=>({item,index,kind:rows[index]?.kind??item.kind,title:(rows[index]?.title??item.title).trim()||item.title,skip:!!rows[index]?.skip})).filter(row=>!row.skip);
+ async function organize(source:string){
+  if(demo||!source.trim())return;
+  setOrganizing('busy');
+  try{
+   const response=await fetch('/api/capture/organize',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-orbit-owner':ownerId},body:JSON.stringify({text:source,today})});
+   const result=response.ok?organizedItems((await response.json()).answer,source,ctx):null;
+   if(result&&textRef.current===source){setAi({text:source,items:result});setOrganizing('idle');}
+   else setOrganizing('local');
+  }catch{setOrganizing('local')}
+ }
+ function onDictation(spoken:string,state:DictationState){
+  if(dictationBase.current===null)dictationBase.current=textRef.current.trimEnd();
+  const base=dictationBase.current;
+  const next=(base&&spoken?base+'\n':base)+spoken;
+  setText(next);textRef.current=next;
+  setLive(state.done?null:state);
+  if(state.done){dictationBase.current=null;if(next.trim()){setReview(true);setSingle(false);void organize(next);}}
+ }
  // Follow-ups written inside a meeting note or memo are registered with it (unticked ones are skipped).
  const followUps=useMemo(()=>kind==='note'||kind==='meeting'?captureFollowUps(text,today):[],[kind,text,today]);
  const [skipped,setSkipped]=useState<Set<number>>(()=>new Set());
@@ -62,8 +101,28 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
   ?`${koreanDate(reading.date??today)} ${formatTime(reading.start??Math.min(1380,Math.ceil((nowMinute+1)/30)*30))}${reading.minutes?` · ${durationText(reading.minutes)}`:''}`
   :kind==='task'?`${reading.date&&reading.date>=today?koreanDate(reading.date)+' 마감':'오늘 마감'}${reading.minutes?` · ${durationText(reading.minutes)}`:''}`:'';
  const empty=!text.trim();
+ async function saveBatch(){
+  if(empty||saving||disabled||live||!chosenItems.length)return;
+  setSaving(true);
+  try{
+   const counts:Partial<Record<CaptureKind,number>>={};let saved=0;
+   for(const row of chosenItems){
+    const chosenProject=projectChoice==='auto'?row.item.reading.project:projectChoice==='inbox'?undefined:{projectId:projectChoice,matched:[]};
+    const action=captureAction({...row.item.reading,title:row.title,kind:row.kind,project:chosenProject},row.kind,{id:crypto.randomUUID(),today,data,nowMinute});
+    if(await perform(action)){saved++;counts[row.kind]=(counts[row.kind]??0)+1;}
+   }
+   if(!saved)return;
+   if(!demo)clearDraft(ownerId,'capture','current');
+   const summary=kinds.filter(k=>counts[k]).map(k=>`${captureKindLabel[k]} ${counts[k]}`).join(' · ');
+   toast.success(`저장됨 · ${saved}건`,{description:summary});
+   idRef.current=crypto.randomUUID();
+   setText('');setOverride(null);setProjectChoice('auto');setSkipped(new Set());setReview(false);setSingle(false);setAi(null);setOrganizing('idle');
+   onOpenChange(false);
+  }finally{setSaving(false)}
+ }
  async function save(keepOpen:boolean){
-  if(empty||saving||disabled)return;
+  if(batch)return saveBatch();
+  if(empty||saving||disabled||live)return;
   setSaving(true);
   try{
    const id=idRef.current||crypto.randomUUID();
@@ -77,7 +136,7 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
    const target=kind==='task'?{kind:'task' as const,id}:kind==='event'?{kind:'event' as const,id}:null;
    toast.success(`저장됨 · ${label}`,{description:kind==='event'?when:destination,...(target?{action:{label:'열기',onClick:()=>onOpenRecord(target)}}:{})});
    idRef.current=crypto.randomUUID();
-   setText('');setOverride(null);setProjectChoice('auto');setSkipped(new Set());
+   setText('');setOverride(null);setProjectChoice('auto');setSkipped(new Set());setReview(false);setAi(null);
    if(keepOpen){setKept(list=>[label,...list].slice(0,5));requestAnimationFrame(()=>area.current?.focus());}
    else onOpenChange(false);
   }finally{setSaving(false)}
@@ -93,6 +152,27 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
     <textarea ref={area} className="quick-capture-input" value={text} onChange={e=>setText(e.target.value)} rows={4} maxLength={20000} aria-label="빠른 기록 내용"
      placeholder={'생각나는 그대로 적으세요\n예) 내일 3시 성수 파트너 미팅 · 금요일까지 IR 덱 보내기'}
      onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)&&!e.nativeEvent.isComposing){e.preventDefault();void save(e.shiftKey);}}}/>
+    {live&&<div className="capture-listening" role="status" aria-live="polite">
+     <span className="capture-listening-dot" aria-hidden="true"/>
+     <div><strong>듣고 있어요</strong><small>여러 건을 이어서 말해도 됩니다. 다 말한 뒤 종료를 누르세요.</small>{live.interim&&<p>{live.interim}</p>}</div>
+     <button type="button" className="primary-button capture-listening-stop" onClick={()=>setStopRequest(n=>n+1)}><Square size={15} fill="currentColor"/>종료</button>
+    </div>}
+    {batch?<section className="capture-batch" aria-label={`여러 건으로 등록 ${chosenItems.length}/${items.length}`}>
+     <div className="capture-batch-head"><strong>{items.length>1?`${items.length}건으로 나눠 등록`:'요약해서 등록'}</strong>
+      {organizing==='busy'?<small role="status">AI가 정리하는 중…</small>:organizing==='local'?<small>기기에서 정리했어요</small>:ai?.text===text?<small>AI가 정리했어요</small>:null}
+      <span className="capture-batch-actions">{!demo&&organizing!=='busy'&&!live&&<button type="button" className="text-button" onClick={()=>void organize(text)}><Sparkles size={14}/>AI로 정리</button>}<button type="button" className="text-button" onClick={()=>{setSingle(true);setReview(false)}}>한 건으로</button></span>
+     </div>
+     <ol>{items.map((item,index)=>{const row=rows[index]??{},rowKind=row.kind??item.kind,skip=!!row.skip,r=item.reading;
+      const when=rowKind==='event'?`${koreanDate(r.date??today)} ${formatTime(r.start??Math.min(1380,Math.ceil((nowMinute+1)/30)*30))}${r.minutes?` · ${durationText(r.minutes)}`:''}`:rowKind==='task'?`${r.date&&r.date>=today?koreanDate(r.date)+' 마감':'오늘 마감'}`:'';
+      return <li key={index} className={skip?'is-skipped':''}>
+       <label className="capture-batch-include"><input type="checkbox" checked={!skip} onChange={()=>edit(index,{skip:!skip})} aria-label={`${index+1}번 등록`}/></label>
+       <div className="capture-batch-body">
+        <input className="capture-batch-title" value={row.title??item.title} maxLength={120} onChange={e=>edit(index,{title:e.target.value})} aria-label={`${index+1}번 제목`} disabled={skip}/>
+        <div className="capture-batch-kinds" role="radiogroup" aria-label={`${index+1}번 저장 형식`}>{kinds.map(k=>{const Icon=kindIcon[k];return <button key={k} type="button" role="radio" aria-checked={rowKind===k} className={rowKind===k?'is-active':''} disabled={skip} onClick={()=>edit(index,{kind:k})}><Icon size={14}/>{captureKindLabel[k]}</button>;})}</div>
+        <small className="capture-batch-source">{when&&<b>{when} · </b>}“{item.source}”</small>
+       </div>
+      </li>;})}</ol>
+    </section>:<>
     <div className="quick-capture-kinds" role="radiogroup" aria-label="저장 형식">
      {kinds.map(k=>{const Icon=kindIcon[k];return <button key={k} type="button" role="radio" aria-checked={kind===k} className={'quick-capture-kind'+(kind===k?' is-active':'')} onClick={()=>setOverride(k===reading.kind?null:k)}><Icon size={15}/>{captureKindLabel[k]}{k===reading.kind&&!override&&!empty&&<small>자동</small>}</button>;})}
     </div>
@@ -103,15 +183,18 @@ export function QuickCapture({voiceRequest=0,open,onOpenChange,data,today,nowMin
     {followUps.length>0&&<fieldset className="quick-capture-followups"><legend>함께 등록할 할 일 {chosenFollowUps.length}/{followUps.length}</legend>
      {followUps.map(f=><label key={f.line}><input type="checkbox" checked={!skipped.has(f.line)} onChange={()=>setSkipped(set=>{const next=new Set(set);if(next.has(f.line))next.delete(f.line);else next.add(f.line);return next;})}/><span>{f.title}</span>{f.date&&<small>{f.date.slice(5).replace('-','/')}까지</small>}</label>)}
     </fieldset>}
+    {single&&items.length>=2&&<button type="button" className="text-button" onClick={()=>setSingle(false)}>여러 건으로 나누기 ({items.length}건)</button>}
+    {!single&&!review&&!demo&&text.trim().length>=40&&items.length<2&&<button type="button" className="text-button" onClick={()=>{setReview(true);void organize(text)}}><Sparkles size={14}/>AI로 요약·나누기</button>}
+    </>}
     <div className="quick-capture-bar">
-     <VoiceInput compact requestStart={voiceRequest} disabled={disabled||saving} onText={spoken=>setText(current=>(current.trim()?current.trimEnd()+'\n':'')+spoken)}/>
+     <VoiceInput compact dictation stopRequest={stopRequest} requestStart={voiceRequest} disabled={disabled||saving} onDictation={onDictation} onText={spoken=>setText(current=>(current.trim()?current.trimEnd()+'\n':'')+spoken)}/>
      <select className="quick-capture-project" aria-label="연결할 프로젝트" value={projectChoice} onChange={e=>setProjectChoice(e.target.value)}>
       <option value="auto">프로젝트 자동</option>
       {kind!=='event'&&<option value="inbox">빠른 기록함</option>}
       {activeProjects.filter(p=>p.id!==CAPTURE_INBOX_ID).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
      </select>
-     <button type="button" className="secondary-button quick-capture-more" disabled={empty||saving||disabled} onClick={()=>void save(true)} title="저장하고 이어서 적기 (⌘⇧↵)">계속 적기</button>
-     <button type="submit" className="primary-button" disabled={empty||saving||disabled} title="저장 (⌘↵)"><Send size={16}/>저장</button>
+     {!batch&&<button type="button" className="secondary-button quick-capture-more" disabled={empty||saving||disabled||!!live} onClick={()=>void save(true)} title="저장하고 이어서 적기 (⌘⇧↵)">계속 적기</button>}
+     <button type="submit" className="primary-button" disabled={empty||saving||disabled||!!live||(batch&&!chosenItems.length)} title="저장 (⌘↵)"><Send size={16}/>{batch?`${chosenItems.length}건 저장`:'저장'}</button>
     </div>
     {kept.length>0&&<ul className="quick-capture-kept" aria-label="방금 저장한 기록">{kept.map((k,i)=><li key={i}>✓ {k}</li>)}</ul>}
    </form>

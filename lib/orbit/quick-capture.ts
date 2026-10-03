@@ -31,10 +31,10 @@ export interface CaptureReading {
 }
 
 const WEEKDAYS = '일월화수목금토';
-const MEETING = /(미팅|회의|면담|인터뷰|meeting|미팅록|상담)/i;
+export const MEETING = /(미팅|회의|면담|인터뷰|meeting|미팅록|상담)/i;
 const PHONE = /(통화|전화|콜(?![가-힣])|\bcall\b)/i;
 // A first line that ends in an action verb reads as a to-do.
-const TASK_END = /(하기|해야\s*(함|해|된다|됨|지)?|할\s*것|할것|보내기|드리기|받기|연락(하기)?|요청(하기)?|제출(하기)?|준비(하기)?|확인(하기)?|예약(하기)?|작성(하기)?|정리(하기)?|검토(하기)?|전달(하기)?|공유(하기)?|체크(하기)?|주문(하기)?|결제(하기)?|사기|만들기|올리기|보기)\s*[.!~]*$/;
+export const TASK_END = /(하기|해야\s*(함|해|된다|됨|지)?|할\s*것|할것|보내기|드리기|받기|연락(하기)?|요청(하기)?|제출(하기)?|준비(하기)?|확인(하기)?|예약(하기)?|작성(하기)?|정리(하기)?|검토(하기)?|전달(하기)?|공유(하기)?|체크(하기)?|주문(하기)?|결제(하기)?|사기|만들기|올리기|보기)\s*[.!~]*$/;
 const PREFIX = /^\s*(?:(할\s*일|투두|todo|할일)|(일정|약속|캘린더)|(메모|노트|memo|note)|(회의록?|미팅(?:록)?))\s*[:：]\s*/i;
 const CHECKBOX = /^\s*[-*]?\s*\[\s?\]\s*/;
 
@@ -54,6 +54,13 @@ export function findDate(text: string, today: string): DateHit | undefined {
   const add = (m: RegExpExecArray | null, date: string | undefined) => { if (m && date) hits.push({ index: m.index, length: m[0].length, date }); };
   const relative: [RegExp, number][] = [[/(오늘|금일)/, 0], [/(내일\s*모레|모레)/, 2], [/내일(?!\s*모레)/, 1], [/글피/, 3], [/어제/, -1]];
   for (const [pattern, days] of relative) add(pattern.exec(text), addDays(today, days));
+  // 월말 · 이번 달 말 · 말일 · 다음 달 말: the last day of that month.
+  const monthEnd = /(이번\s*달\s*말|이달\s*말|다음\s*달\s*말|담달\s*말|월말|말일)/.exec(text);
+  if (monthEnd) {
+    const next = /다음|담달/.test(monthEnd[1]);
+    const y = month === 12 && next ? year + 1 : year, mo = next ? (month % 12) + 1 : month;
+    add(monthEnd, `${y}-${pad(mo)}-${pad(new Date(Date.UTC(y, mo, 0)).getUTCDate())}`);
+  }
   const week = /(이번\s*주|금주|다음\s*주|담주|차주|다다음\s*주)?\s*([월화수목금토일])요일/.exec(text);
   if (week) {
     const target = WEEKDAYS.indexOf(week[2]);
@@ -132,7 +139,7 @@ export function findMinutes(text: string): number | undefined {
   return minutes ? Number(minutes[1]) : undefined;
 }
 
-function strip(line: string, spans: Span[]) {
+export function strip(line: string, spans: Span[]) {
   // Blank every covered character first so overlapping spans cannot shift each other.
   // Spans are UTF-16 offsets from RegExp, so split into code units (not code points).
   const chars = line.split('');
@@ -150,7 +157,7 @@ function strip(line: string, spans: Span[]) {
     .trim();
 }
 
-function shorten(text: string, max = 60) {
+export function shorten(text: string, max = 60) {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   const cut = clean.slice(0, max);
