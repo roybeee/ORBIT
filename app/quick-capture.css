@@ -48,3 +48,39 @@ html[data-keyboard=open] .quick-capture-dialog{top:calc(var(--phone-viewport-top
 .quick-capture-followups input{width:18px;height:18px;accent-color:var(--galaxy-violet);flex:none}
 .quick-capture-followups span{flex:1;min-width:0;overflow-wrap:anywhere}
 .quick-capture-followups small{color:var(--muted-foreground);font-size:.75rem;white-space:nowrap}
+/* 받아쓰기: what is being heard, and one big 종료. */
+.capture-listening{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--galaxy-rose,#f47c8f) 45%,var(--border));background:color-mix(in srgb,var(--galaxy-rose,#f47c8f) 8%,var(--card))}
+.capture-listening>div{flex:1;min-width:0;display:grid;gap:2px}
+.capture-listening strong{font-size:.9rem}
+.capture-listening small{color:var(--muted-foreground);font-size:.78rem;line-height:1.4}
+.capture-listening p{margin:4px 0 0;font-size:.875rem;color:var(--foreground);opacity:.75;overflow-wrap:anywhere}
+.capture-listening-dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--galaxy-rose,#f47c8f);animation:capture-pulse 1.2s ease-in-out infinite}
+.capture-listening-stop{flex:none;min-height:48px;min-width:88px;gap:6px}
+@keyframes capture-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+@media(prefers-reduced-motion:reduce){.capture-listening-dot{animation:none}}
+/* 여러 건: one row per item — include, title, kind, and the words it came from. */
+.capture-batch{margin-top:12px;display:grid;gap:8px}
+.capture-batch-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.capture-batch-head strong{font-size:.9rem}
+.capture-batch-head small{color:var(--muted-foreground);font-size:.78rem}
+.capture-batch-actions{display:flex;gap:4px;margin-left:auto}
+.capture-batch-actions .text-button{display:inline-flex;align-items:center;gap:4px;min-height:40px;font-size:.8125rem}
+.capture-batch ol{list-style:none;margin:0;padding:0;display:grid;gap:8px;max-height:46dvh;overflow-y:auto;overscroll-behavior:contain}
+.capture-batch li{display:flex;gap:8px;padding:10px 10px 10px 4px;border:1px solid var(--border);border-radius:14px;background:var(--secondary)}
+.capture-batch li.is-skipped{opacity:.5}
+.capture-batch-include{flex:none;display:grid;place-items:center;width:44px;min-height:44px;cursor:pointer}
+.capture-batch-include input{width:20px;height:20px;accent-color:var(--galaxy-violet)}
+.capture-batch-body{flex:1;min-width:0;display:grid;gap:8px}
+.capture-batch-title{width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--input);border-radius:10px;background:var(--background);color:var(--foreground);font:inherit;font-size:.95rem;font-weight:600}
+.capture-batch-kinds{display:flex;flex-wrap:wrap;gap:6px}
+.capture-batch-kinds button{display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:0 12px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--muted-foreground);font-size:.8125rem;cursor:pointer}
+.capture-batch-kinds button.is-active{border-color:var(--galaxy-violet);color:var(--foreground);background:color-mix(in srgb,var(--galaxy-violet) 16%,transparent);font-weight:600}
+.capture-batch-source{color:var(--muted-foreground);font-size:.78rem;line-height:1.45;overflow-wrap:anywhere}
+.capture-batch-source b{color:var(--foreground);font-weight:600}
+@media(max-width:767px),(pointer:coarse){.capture-batch-kinds button,.capture-batch-actions .text-button{min-height:44px}}
+@media(max-width:400px){.capture-batch-kinds button{padding:0 9px}}
+/* Four kinds always fit one row; the source box gets smaller while the items are reviewed. */
+.capture-batch-kinds{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.capture-batch-kinds button{justify-content:center;padding:0 6px;white-space:nowrap}
+@media(max-width:420px){.capture-batch-kinds button svg{display:none}}
+.quick-capture-dialog:has(.capture-batch) .quick-capture-input{height:80px;min-height:64px;max-height:22dvh}
