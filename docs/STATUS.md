@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-03 Google 연결 갱신 실패 대응(기준 main `baca525` = PR #159 merged): 소유자 화면 "연결을 갱신하지 못했습니다". 원인 후보 — (1) Google OAuth 앱이 ‘테스트’ 게시 상태면 refresh token이 7일 후 만료(설정 안내가 테스트 사용자 추가였음, 소유자 확인 필요), (2) 코드가 5xx·429 같은 일시 오류에도 연결을 끊김으로 저장. 수정: 일시 오류는 연결 유지(UPSTREAM 502), 거절(invalid_grant 등)만 끊고 이유·`connectedAt` 기록, 수정·미루기 화면에 Google 다시 연결 버튼, 안내 문구 프로덕션 게시로 변경. 단위 agent 35 passed(Google token fetch mocked), e2e google-reconnect 2 passed(API mocked).
+
 - 2026-10-03 말로 기록 개선(기준 main `1eccbc9` = PR #158 merged): 연속 받아쓰기(종료까지, 엔진 자동 재시작·누적 결과 병합·10분 상한), 여러 건 분할·요약 제목·건별 종류 선택·일괄 저장, `/api/capture/organize`(OpenAI Responses, 읽기 전용, 실패 시 기기 규칙). 단위 1025 passed · real(OpenAI fetch mocked), e2e 74 passed · 로컬 worker+D1, 인증 헤더·음성 엔진 mocked. 실제 기기 음성 인식은 not_run(브라우저 엔진 필요).
 
 - 2026-10-02 UI/UX 3차(기준 main `b03c81e` = PR #157 merged): 휴대폰 프로젝트 화면 목표 사다리 한 줄 3단·중복 도시 배너 숨김 → 진행 중 탭이 첫 화면에. e2e `ux-focus.spec.ts` 4개(휴대폰)+2개(노트북) passed · 로컬 worker+D1, 인증 헤더 mocked.
