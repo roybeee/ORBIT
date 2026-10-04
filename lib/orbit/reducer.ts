@@ -874,6 +874,7 @@ export function applyAction(
       const p = proposal(action.date);
       if (p.date < today) fail('지난 날짜의 제안은 승인할 수 없습니다.');
       const item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목을 찾을 수 없습니다.');
+      if (item.state === 'rejected') fail('반려한 제안은 승인할 수 없습니다.');
       if(item.state!=='approved'&&p.date===today&&item.start<minuteInZone(data.preferences.timeZone,now))fail('이미 지난 시간입니다. 일정 대안을 다시 계산해 주세요.');
       const target = data.tasks.find(t=>t.id===item.taskId) ?? item.draftTask;
       if(item.state!=='approved' && target){const eligibility=workEligibility(data,target,p.date);if(!eligibility.allowed)fail(eligibility.reason);}
@@ -906,10 +907,21 @@ export function applyAction(
       delete t.planHoldProposalId;
       break;
     }
+    case 'proposal.reject': {
+      const p = proposal(action.date);
+      const item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목이 없습니다.');
+      if (item.state !== 'pending') fail('승인 대기 중인 제안만 반려할 수 있습니다.');
+      item.state = 'rejected';
+      item.rejectReason = action.reason?.trim() || undefined;
+      delete p.replan;
+      if (p.laser?.taskId === item.taskId) p.laser = {status:'none',minutes:0,note:'Goal Laser 제안을 반려했습니다. 대안을 다시 계산할 수 있습니다.'};
+      break;
+    }
     case 'proposal.defer': {
       const p = proposal(action.date),
         item = p.items.find((i) => i.id === action.itemId) ?? fail('제안 항목이 없습니다.');
       if (item.state === 'approved') fail('먼저 승인을 취소해 주세요.');
+      if (item.state === 'rejected') fail('반려한 제안은 보류할 수 없습니다.');
       if (action.revisitDate <= p.date) fail('다음 검토일은 계획 날짜 이후로 지정해 주세요.');
       item.state = 'deferred';
       item.deferReason = action.reason;

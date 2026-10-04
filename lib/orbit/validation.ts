@@ -389,6 +389,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('proposal.reconsider'), date: dateSchema, itemId: id }).strict(),
+  z.object({ type: z.literal('proposal.reject'), date: dateSchema, itemId: id, reason: z.string().trim().max(2000).optional() }).strict(),
   z.object({ type: z.literal('proposal.revoke'), date: dateSchema, itemId: id }).strict(),
   z.object({ type: z.literal('preferences.update'), preferences: preferencesSchema }).strict(),
   z.object({ type: z.literal('improvement.add'), improvement: improvementSchema }).strict(),

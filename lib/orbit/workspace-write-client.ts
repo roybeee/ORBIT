@@ -26,14 +26,16 @@ function entity(data:WorkspaceData, action:WorkspaceAction):unknown {
     case 'note.upsert': {const n=data.notes.find(x=>x.id===action.note.id);return n?{id:n.id,revision:n.revision??1}:null;}
     case 'habit.check': {const h=(data.habits??[]).find(x=>x.id===action.id);return h?{id:h.id,checked:h.log.includes(action.date)}:null;}
     case 'care.check': {const r=(data.careRoutines??[]).find(x=>x.id===action.id);return r?{id:r.id,active:r.active}:null;}
-    case 'proposal.approve': case 'proposal.defer': {const i=data.proposals.find(p=>p.date===action.date)?.items.find(x=>x.id===action.itemId);return i?{id:i.id,taskId:i.taskId,start:i.start,end:i.end,state:i.state}:null;}
+    case 'proposal.approve': case 'proposal.defer': case 'proposal.reject': {const i=data.proposals.find(p=>p.date===action.date)?.items.find(x=>x.id===action.itemId);return i?{id:i.id,taskId:i.taskId,start:i.start,end:i.end,state:i.state}:null;}
     default:return null;
   }
 }
 // Merge only fields edited by this user. Deletes, competing edits and complex
 // decisions fail closed; the server still validates relationships and overlap.
 export function rebaseWrite(action:WorkspaceAction,basis:Basis,current:WorkspaceSnapshot):WorkspaceAction|null {
-  if(!instantAction(action))return current.revision===basis.revision?action:null;
+  // Rejection waits for the server so a failed save retains its card and reason.
+  // It can still rebase across an unrelated write using the proposal's state.
+  if(!instantAction(action)&&action.type!=='proposal.reject')return current.revision===basis.revision?action:null;
   const live=entity(current.data,action);
   if(equal(live,basis.entity))return action;
   // Only full-record upserts merge field by field; any other changed record fails closed.
