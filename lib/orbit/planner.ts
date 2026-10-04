@@ -171,7 +171,7 @@ export function generateProposal(
   const items: ProposalItem[] = [...retained];
   const unscheduled: string[] = [];
   const delegate: string[] = [];
-  const count = () => items.filter((i) => i.state !== 'deferred').length;
+  const count = () => items.filter((i) => i.state === 'pending' || i.state === 'approved').length;
   const peak = { start: prefs.rhythm.peakStart, end: prefs.rhythm.peakEnd };
   const fitting = (w: Window, minutes: number) => w.end - w.start >= minutes;
   const afterLunch = (w: Window) => w.start >= prefs.rhythm.lunchEnd;
@@ -267,7 +267,7 @@ export function generateProposal(
       ? '제안의 우선순위 중 연속 집중이 필요한 고위 인지 업무가 없어 Goal Laser를 두지 않았습니다.'
       : '도미노 프로젝트가 지정되지 않았습니다.',
   };
-  const retainedLaser = retained.find((i) => i.role === 'laser');
+  const retainedLaser = retained.find((i) => i.role === 'laser' && i.state === 'approved');
   if (retainedLaser)
     laser = {
       taskId: retainedLaser.taskId,
@@ -390,6 +390,7 @@ export function approveProposalItem(
   const task = tasks.find((t) => t.id === item?.taskId);
   if (!item || !task) return { proposal, events, error: '항목을 찾을 수 없습니다.' };
   if (item.state === 'approved') return { proposal, events };
+  if (item.state === 'rejected') return { proposal, events, error: '반려한 제안은 승인할 수 없습니다.' };
   if (item.state !== 'pending') return { proposal, events, error: '보류한 항목을 먼저 다시 검토해 주세요.' };
   if (!workEligibility({tasks},task,proposal.date).allowed)
     return { proposal, events, error: '업무 상태가 바뀌었습니다. 제안을 다시 생성해 주세요.' };

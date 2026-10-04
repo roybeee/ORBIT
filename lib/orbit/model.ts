@@ -172,7 +172,8 @@ export interface ProposalItem {
   start: number;
   end: number;
   reason: string;
-  state: 'pending' | 'approved' | 'deferred';
+  state: 'pending' | 'approved' | 'deferred' | 'rejected';
+  rejectReason?: string;
   deferReason?: string;
   revisitDate?: string;
   role?: 'laser' | 'must' | 'fill';

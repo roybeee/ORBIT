@@ -23,20 +23,25 @@ export function carriedImprovement(data:WorkspaceData,date:string):CarriedImprov
 
 const withSlot=(slot:TodayFocus['slot'])=>slot?{slot}:{};
 function plannedSlot(proposal:Proposal,taskId:string|undefined){
- const item=taskId?proposal.items.find(i=>i.taskId===taskId&&i.state!=='deferred'):undefined;
+ const item=taskId?proposal.items.find(i=>i.taskId===taskId&&(i.state==='pending'||i.state==='approved')):undefined;
  return item?{start:item.start,end:item.end}:undefined;
 }
 
 function localTaskId(proposal:Proposal){
- const active=proposal.items.filter(i=>i.state!=='deferred');
- return proposal.laser?.taskId??active.find(i=>i.role==='laser')?.taskId??[...active].sort((a,b)=>a.start-b.start)[0]?.taskId;
+ const active=proposal.items.filter(i=>i.state==='pending'||i.state==='approved');
+ const laser=proposal.laser?.taskId;
+ return (laser&&!proposal.items.some(i=>i.taskId===laser&&i.state==='rejected')?laser:undefined)??active.find(i=>i.role==='laser')?.taskId??[...active].sort((a,b)=>a.start-b.start)[0]?.taskId;
 }
 
 export function todayFocus(data:WorkspaceData,date:string):TodayFocus|null{
  const proposal=data.proposals.find(p=>p.date===date);
  if(!proposal)return null;
  const carry=carriedImprovement(data,date);
- const priority=proposal.brief?.priorities[0];
+ const priority=proposal.brief?.priorities.find((p,index)=>{
+  // planFromBrief gives proposed new tasks an ID at their original priority position.
+  const taskId=p.taskId??`brief:${proposal.brief!.sourceTurnId}:${index}`;
+  return !proposal.items.some(i=>i.taskId===taskId&&i.state==='rejected');
+ });
  if(priority)return {date,...(priority.taskId?{taskId:priority.taskId}:{}),title:priority.title,firstStep:priority.approach[0],
   ...withSlot(plannedSlot(proposal,priority.taskId)),source:'brief',...(carry?{carry}:{})};
  const taskId=localTaskId(proposal),task=data.tasks.find(t=>t.id===taskId);

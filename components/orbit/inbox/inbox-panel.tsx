@@ -6,6 +6,7 @@ import {addDays,koreanDate} from '@/lib/orbit/dates';
 import {formatTime,type WorkspaceData,type WorkspaceSnapshot} from '@/lib/orbit/model';
 import type {AgentAction} from '@/lib/orbit/agent/types';
 import type {NewsSummary} from '../notifications';
+import {RejectProposal} from '../brief/reject-proposal';
 import {InboxAiDecisions} from './inbox-ai';
 import {InboxNews} from './inbox-news';
 import {InboxBacklog} from './inbox-backlog';
@@ -21,8 +22,8 @@ interface Props {data:WorkspaceData;today:string;nowMinute:number;counts:InboxCo
 
 const dayLabel=(date:string,today:string)=>date===today?'오늘':date===addDays(today,1)?'내일':koreanDate(date,false);
 
-function Card({kind,tone,source,title,children,actions}:{kind:string;tone:string;source:string;title:ReactNode;children?:ReactNode;actions:ReactNode}){
- return <article className="inbox-card"><div className="inbox-card-source"><span className={`inbox-kind tone-${tone}`}>{kind}</span><span>{source}</span></div><h3>{title}</h3>{children}<div className="inbox-card-actions">{actions}</div></article>;
+function Card({kind,tone,source,title,children,actions,testId}:{testId?:string;kind:string;tone:string;source:string;title:ReactNode;children?:ReactNode;actions:ReactNode}){
+ return <article className="inbox-card" data-testid={testId}><div className="inbox-card-source"><span className={`inbox-kind tone-${tone}`}>{kind}</span><span>{source}</span></div><h3>{title}</h3>{children}<div className="inbox-card-actions">{actions}</div></article>;
 }
 
 function PlanCard({date,today,late,item,title,busy,demo,perform,onProposal}:{date:string;today:string;late:boolean;item:WorkspaceData['proposals'][number]['items'][number];title:string;busy:boolean;demo:boolean;perform:Perform;onProposal:(date:string)=>void}){
@@ -32,9 +33,9 @@ function PlanCard({date,today,late,item,title,busy,demo,perform,onProposal}:{dat
  const role=item.role==='laser'?' · Goal Laser':item.role==='must'?' · 반드시 종결':'';
  const approve=()=>void perform({type:'proposal.approve',date,itemId:item.id},'승인한 결과물과 집중 시간을 Orbit 일정에 반영했습니다.');
  const defer=async()=>{if(await perform({type:'proposal.defer',date,itemId:item.id,reason:reason.trim(),revisitDate:revisit},'보류 이유를 저장했습니다.'))setDeferring(false);};
- return <Card kind="계획" tone="plan" source={`${dayLabel(date,today)} 실행 제안 · ${formatTime(item.start)}–${formatTime(item.end)}${role}`} title={<>{item.role==='laser'&&<Crosshair size={15} aria-hidden="true"/>}{title}</>}
-  actions={deferring?null:<>{late?<button className="primary-button" onClick={()=>onProposal(date)}><Sparkles size={15}/>대안 다시 계산</button>:<button className="primary-button" disabled={busy||demo} onClick={approve}><Check size={15}/>승인</button>}<button className="secondary-button" disabled={busy||demo} onClick={()=>setDeferring(true)}><Pause size={15}/>보류</button>{!late&&<button className="text-button" onClick={()=>onProposal(date)}>제안 전체 보기<ArrowRight size={14}/></button>}</>}>
-  {late&&<p className="inbox-card-late" role="note">시작 시각이 지나 그대로 승인할 수 없습니다. 남은 시간으로 대안을 다시 계산하거나 보류하세요.</p>}
+ return <Card testId={`plan-proposal-${item.id}`} kind="계획" tone="plan" source={`${dayLabel(date,today)} 실행 제안 · ${formatTime(item.start)}–${formatTime(item.end)}${role}`} title={<>{item.role==='laser'&&<Crosshair size={15} aria-hidden="true"/>}{title}</>}
+  actions={deferring?null:<>{late?<button className="primary-button" onClick={()=>onProposal(date)}><Sparkles size={15}/>대안 다시 계산</button>:<button className="primary-button" disabled={busy||demo} onClick={approve}><Check size={15}/>승인</button>}<button className="secondary-button" disabled={busy||demo} onClick={()=>setDeferring(true)}><Pause size={15}/>보류</button><RejectProposal date={date} itemId={item.id} disabled={busy||demo} perform={perform}/>{!late&&<button className="text-button" onClick={()=>onProposal(date)}>제안 전체 보기<ArrowRight size={14}/></button>}</>}>
+  {late&&<p className="inbox-card-late" role="note">시작 시각이 지나 그대로 승인할 수 없습니다. 남은 시간으로 대안을 다시 계산하거나 보류·반려하세요.</p>}
   {item.reason&&<p className="inbox-card-why">{item.reason}</p>}
   {deferring&&<form className="inbox-defer" onSubmit={e=>{e.preventDefault();void defer();}}>
    <label>보류 이유<textarea className="form-field" required rows={2} value={reason} onChange={e=>setReason(e.target.value)} placeholder="예: 다른 일이 먼저예요"/></label>

@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-04 실행 제안 반려(기준 main `4c9ab34`): 결재함의 일반·지난 시각 카드에 반려 확인과 선택 이유 입력을 추가. 원본 할 일·일정은 유지하며 같은 날짜 재계산·핵심 업무·대기 배지에서 제외. 상세 화면/백업/즉시 저장 상태를 일치시킴. 검증: typecheck/build passed(real), 단위 1039 passed(일부 외부 통신 mocked), 새 브라우저 회귀 12 passed(로컬 API/D1 real, 인증·시각·오류 응답 mocked), 독립 리뷰 P2 1건 수정 후 승인. PR 통합 및 Sites 게시 전.
+
 - 2026-10-03 Google 연결 갱신 실패 대응(기준 main `baca525` = PR #159 merged): 소유자 화면 "연결을 갱신하지 못했습니다". 원인 후보 — (1) Google OAuth 앱이 ‘테스트’ 게시 상태면 refresh token이 7일 후 만료(설정 안내가 테스트 사용자 추가였음, 소유자 확인 필요), (2) 코드가 5xx·429 같은 일시 오류에도 연결을 끊김으로 저장. 수정: 일시 오류는 연결 유지(UPSTREAM 502), 거절(invalid_grant 등)만 끊고 이유·`connectedAt` 기록, 수정·미루기 화면에 Google 다시 연결 버튼, 안내 문구 프로덕션 게시로 변경. 단위 agent 35 passed(Google token fetch mocked), e2e google-reconnect 2 passed(API mocked).
 
 - 2026-10-03 말로 기록 개선(기준 main `1eccbc9` = PR #158 merged): 연속 받아쓰기(종료까지, 엔진 자동 재시작·누적 결과 병합·10분 상한), 여러 건 분할·요약 제목·건별 종류 선택·일괄 저장, `/api/capture/organize`(OpenAI Responses, 읽기 전용, 실패 시 기기 규칙). 단위 1025 passed · real(OpenAI fetch mocked), e2e 74 passed · 로컬 worker+D1, 인증 헤더·음성 엔진 mocked. 실제 기기 음성 인식은 not_run(브라우저 엔진 필요).
@@ -94,17 +96,45 @@
 <!-- status:auto:start -->
 _`scripts/parallel/status.sh --write`가 생성한 구역입니다. 손으로 고치지 마세요._
 
-- 생성 시각(UTC): 2026-10-02T12:16:39Z
-- `origin/main`: `57e22a1941cfbdd751147b9179b983a357876713` (GitHub `ls-remote`와 일치 확인)
-- 소스 tree: `3d05d03f344b5dd6c8fd56b4bc1eb5b3930b3d9e`
+- 생성 시각(UTC): 2026-10-04T02:24:37Z
+- `origin/main`: `4c9ab34fa49a490c800958c981d248ad7d456454` (GitHub `ls-remote`와 일치 확인)
+- 소스 tree: `204c060d9e5ad4077d73b2a4c704544ae72b5b8a`
 
 ### 워크트리 (이 머신)
 
 | 워크트리 | 브랜치 | HEAD | main 대비 뒤/앞 | 미커밋 |
 |---|---|---|---|---|
-| ORBIT | claude/orbit-current-score-eval-uw23yu | `26f303f` | 0 / 6 | no |
+| orbit-analysis | main | `e1f5079` | 54 / 0 | no |
+| orbit-experiment-loop | feat/experiment-loop | `31c8add` | 169 / 0 | no |
+| orbit-gotem-context-loop | feat/gotem-context-loop | `c290f8e` | 162 / 0 | no |
+| orbit-gotem-metrics-card | feat/gotem-metrics-card | `5d037b6` | 152 / 0 | no |
+| orbit-inbox-order-decisions | feat/inbox-order-decisions | `426383e` | 82 / 0 | no |
+| orbit-inbox-speed | fix/inbox-speed | `a155754` | 64 / 0 | no |
+| orbit-meeting-citation | fix/meeting-citation | `8cf5666` | 203 / 0 | no |
+| orbit-meeting-project-picker | feat/meeting-project-picker | `140a44f` | 111 / 0 | no |
+| orbit-override-project-id | fix/override-project-id | `a9dc86f` | 195 / 0 | no |
+| orbit-publish-launch-ad6324e | HEAD | `fb3fac6` | 332 / 67 | no |
+| orbit-reject-proposals | codex/orbit-reject-proposals | `4c9ab34` | 0 / 0 | yes |
+| orbit-release-163e8bc | docs/release-163e8bc | `b36d0d8` | 150 / 0 | no |
+| orbit-release-4bb5318 | feat/release-4bb5318 | `98cbc2e` | 94 / 0 | no |
+| orbit-release-7abbcb9 | docs/release-7abbcb9 | `089b0d1` | 154 / 0 | no |
+| orbit-release-80fff22 | docs/release-80fff22 | `3cb9630` | 193 / 0 | no |
+| orbit-release-8634d55 | feat/release-8634d55 | `5d9f307` | 78 / 0 | no |
+| orbit-release-a59377e | docs/release-a59377e | `5f80316` | 173 / 0 | no |
+| orbit-release-aab5c62 | docs/release-aab5c62 | `053b223` | 160 / 0 | no |
+| orbit-release-c72838b | feat/release-c72838b | `5eb1c3d` | 109 / 0 | no |
+| orbit-release-e1f5079 | feat/release-e1f5079 | `c3d11aa` | 53 / 0 | no |
+| orbit-release-e40bfc9 | docs/release-e40bfc9 | `31516f2` | 201 / 0 | no |
+| orbit-release-e609378 | docs/release-e609378 | `f9993cb` | 49 / 0 | no |
+| orbit-remove-plan-status-card | refactor/remove-plan-status-card | `cc7658d` | 175 / 0 | no |
+| orbit-revert-experiment-loop | chore/revert-experiment-loop | `0629572` | 167 / 0 | no |
+| orbit-slack-directives | claude/slack-directives | `b9dc557` | 290 / 1 | no |
+| orbit-slack-receipts | feat/slack-receipts | `2b4b18e` | 55 / 0 | no |
+| orbit-slack-today | feat/slack-today | `efbdfcb` | 96 / 0 | no |
+| orbit-start-metrics | feat/start-metrics | `ba9a8af` | 156 / 0 | no |
 
 ### 열린 PR
 
-- (gh pr list failed)
+- #144 `docs/save-update-summary` BEHIND — docs: 저장·선택 반려 변경 및 검증 요약
+- #89 `docs/release-9a335c-codex` UNKNOWN — docs: record ORBIT 9a335c Sites publication
 <!-- status:auto:end -->
