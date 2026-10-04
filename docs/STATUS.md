@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-04 일정 삭제 잔상(기준 main `d9cdc41`): 삭제 후 local 빨강 일정 대신 Google 캐시의 파란 사본이 나타나는 경로를 재현. 같은 소유자·Google ID·캘린더의 삭제 처리 기록으로만 사본을 숨기며 다른 가져오기 일정은 보존한다. 할 일이 없어도 삭제 직후 해당 일정의 Google 삭제 전송을 예약한다. 회귀 RED 5건 → GREEN, 전체 1048 passed(SQLite real, Google HTTP/후속 전송 mocked), typecheck/build passed(real). PR 및 Sites 게시 전, 운영 실계정 확인 not_run.
+
 - 2026-10-04 실행 제안 반려(기준 main `4c9ab34`): 결재함의 일반·지난 시각 카드에 반려 확인과 선택 이유 입력을 추가. 원본 할 일·일정은 유지하며 같은 날짜 재계산·핵심 업무·대기 배지에서 제외. 상세 화면/백업/즉시 저장 상태를 일치시킴. 검증: typecheck/build passed(real), 단위 1039 passed(일부 외부 통신 mocked), 새 브라우저 회귀 12 passed(로컬 API/D1 real, 인증·시각·오류 응답 mocked), 독립 리뷰 P2 1건 수정 후 승인. PR 통합 및 Sites 게시 전.
 
 - 2026-10-03 Google 연결 갱신 실패 대응(기준 main `baca525` = PR #159 merged): 소유자 화면 "연결을 갱신하지 못했습니다". 원인 후보 — (1) Google OAuth 앱이 ‘테스트’ 게시 상태면 refresh token이 7일 후 만료(설정 안내가 테스트 사용자 추가였음, 소유자 확인 필요), (2) 코드가 5xx·429 같은 일시 오류에도 연결을 끊김으로 저장. 수정: 일시 오류는 연결 유지(UPSTREAM 502), 거절(invalid_grant 등)만 끊고 이유·`connectedAt` 기록, 수정·미루기 화면에 Google 다시 연결 버튼, 안내 문구 프로덕션 게시로 변경. 단위 agent 35 passed(Google token fetch mocked), e2e google-reconnect 2 passed(API mocked).

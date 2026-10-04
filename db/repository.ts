@@ -16,6 +16,7 @@ import {
   type Note,
   type NoteRevision,
   type ReviewDetail,
+  type CalendarEvent,
   type WorkspaceData,
   type WorkspaceSnapshot,
 } from '../lib/orbit/model.ts';
@@ -51,21 +52,42 @@ export class NoteNotFound extends Error {}
 export async function readWorkspace(db: Database, ownerId: string): Promise<WorkspaceSnapshot> {
   // One transaction prevents mixing a header, chunks and Google cache from
   // different commits while another device is saving.
-  const [headers, chunks, cache] = await db.batch([
+  const [headers, chunks, cache, deliveries] = await db.batch([
     db.prepare('SELECT revision,state_json,updated_at FROM orbit_workspaces WHERE owner_id=?').bind(ownerId),
     db.prepare('SELECT generation,part,content FROM orbit_workspace_chunks WHERE owner_id=? ORDER BY part').bind(ownerId),
     db.prepare('SELECT events_json,time_zone FROM orbit_calendar_cache WHERE owner_id=?').bind(ownerId),
+    db.prepare("SELECT event_id,state_json FROM orbit_calendar_exports WHERE owner_id=? AND json_extract(state_json,'$.automatic')=1 AND json_extract(state_json,'$.status') IN ('pending','publishing','uncertain','cancelled') AND event_id NOT LIKE 'task-due:%' AND json_extract(state_json,'$.googleColor') IS NULL").bind(ownerId),
   ]);
   const row = headers.results?.[0] as Row | undefined;
   const data = row ? decodeWorkspace(row.state_json,(chunks.results??[]) as WorkspaceChunk[]) : emptyWorkspace();
   const external = cache.results?.[0] as {events_json:string;time_zone:string} | undefined;
   // A linked Google cache record is the same event even while an ORBIT edit is
   // waiting for delivery. Reconciliation reads the raw cache to adopt remote edits.
-  if (external?.time_zone === data.preferences.timeZone)
+  if (external?.time_zone === data.preferences.timeZone) {
+    const localIds = new Set(data.events.filter(e=>!e.id.startsWith('google:')).map(e=>e.id));
+    const cached = JSON.parse(external.events_json) as CalendarEvent[];
+    const deleted = new Map<string,{calendarId:string;googleId:string}>();
+    // A deletion receipt outlives the local event and the old Google cache. Match
+    // its deterministic remote ID and calendar so copied/orphan imports survive.
+    await Promise.all(((deliveries.results??[]) as {event_id:string;state_json:string}[]).map(async row=>{
+      if(localIds.has(row.event_id)||!cached.some(e=>e.google?.orbitEventId===row.event_id))return;
+      const state=JSON.parse(row.state_json) as {calendarId?:string};
+      if(!state.calendarId)return;
+      const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ownerId+'\0'+row.event_id));
+      const googleId='orbit'+Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+      deleted.set(row.event_id,{calendarId:state.calendarId,googleId});
+    }));
     data.events = [
       ...data.events.filter((e) => !e.id.startsWith('google:')),
-      ...(JSON.parse(external.events_json) as import('../lib/orbit/model.ts').CalendarEvent[]).filter(e=>!e.google?.orbitEventId||!data.events.some(local=>!local.id.startsWith('google:')&&local.id===e.google?.orbitEventId)),
+      ...cached.filter(e=>{
+        const link=e.google;
+        if(!link?.orbitEventId)return true;
+        if(localIds.has(link.orbitEventId))return false;
+        const receipt=deleted.get(link.orbitEventId);
+        return !receipt||link.eventId!==receipt.googleId||(link.calendarId!=='primary'&&link.calendarId!==receipt.calendarId);
+      }),
     ];
+  }
   if (data.schemaVersion !== 2 && data.schemaVersion !== 3) throw new Error('Unsupported workspace schema');
   data.events=data.events.map(event=>linkEventProject(event,data));
   return { data, revision: row?.revision ?? 0, updatedAt: row?.updated_at ?? null };

@@ -2186,7 +2186,7 @@ function WorkspaceContent({
             <AlertDialogDescription>
               {deleteTarget?.title}
               <br />
-              {deleteTarget?.kind==='event'&&<>ORBIT에서 삭제합니다. Google에 등록된 일정은 Google 캘린더에서 별도로 삭제해 주세요.<br /></>}
+              {deleteTarget?.kind==='event'&&<>ORBIT에서 삭제합니다. ORBIT가 Google에 등록한 사본도 함께 삭제를 요청합니다. 연결 문제로 지연되면 동기화 상태를 확인해 주세요.<br /></>}
               삭제 전 백업·복구 화면에서 백업하면 선택 복구할 수 있습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
