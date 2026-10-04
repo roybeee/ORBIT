@@ -54,6 +54,73 @@ test('deleting an ORBIT event also deletes its Google copy',()=>fixture(async db
  assert.equal((await calendarExports(db,'a')).find(r=>r.eventId==='meeting').status,'cancelled');
 }));
 
+test('deleting a cached ORBIT event hides its mirror before delivery and after the deletion receipt settles',()=>fixture(async db=>{
+ const g=await published(db);await syncCalendar(db,'a',env,day);
+ const deleted=await act(db,{type:'event.delete',id:event.id});
+ assert.deepEqual(deleted.data.events,[],'save response must not replace the local event with its cached Google mirror');
+ assert.deepEqual(await shown(db),[],'reload while deletion is pending');
+ assert.equal(g.events.size,1,'delivery has not deleted Google yet');
+ await db.prepare("UPDATE orbit_calendar_exports SET state_json=json_set(state_json,'$.status','publishing','$.leaseUntil',0) WHERE owner_id=? AND event_id=?").bind('a',event.id).run();
+ assert.deepEqual(await shown(db),[],'reload while deletion is being delivered');
+ await flushCalendarOutbox(db,'a',env,event.id);
+ assert.equal((await calendarExports(db,'a')).find(r=>r.eventId===event.id).status,'cancelled');
+ assert.deepEqual(await shown(db),[],'the old cache stays hidden after delivery');
+ await syncCalendar(db,'a',env,day);
+ assert.deepEqual(await shown(db),[],'refresh cannot resurrect the deleted event');
+}));
+
+test('uncertain Google deletion retains its receipt without showing the stale mirror again',()=>fixture(async db=>{
+ const g=await published(db);await syncCalendar(db,'a',env,day);
+ await act(db,{type:'event.delete',id:event.id});
+ const inner=globalThis.fetch;
+ globalThis.fetch=async(url,init={})=>init.method==='DELETE'?Response.json({error:'temporarily unavailable'},{status:503}):inner(url,init);
+ await flushCalendarOutbox(db,'a',env,event.id);
+ assert.equal((await calendarExports(db,'a')).find(r=>r.eventId===event.id).status,'uncertain');
+ assert.equal(g.events.size,1,'the failed remote deletion remains retryable');
+ assert.deepEqual(await shown(db),[]);
+ await syncCalendar(db,'a',env,day);
+ assert.deepEqual(await shown(db),[],'fresh Google cache must respect the local deletion');
+}));
+
+test('deletion tombstone hides only its exact managed Google mirror',()=>fixture(async db=>{
+ await published(db);await syncCalendar(db,'a',env,day);
+ const cache=await db.prepare('SELECT events_json FROM orbit_calendar_cache WHERE owner_id=?').bind('a').first();
+ const [mirror]=JSON.parse(cache.events_json);
+ const unrelated={...mirror,id:'google:unrelated',google:{calendarId:'primary',eventId:'unrelated'}};
+ const orphan={...mirror,id:'google:orphan',google:{calendarId:'primary',eventId:'orphan',orbitEventId:'missing'}};
+ const differentId={...mirror,id:'google:copied',google:{...mirror.google,eventId:'copied'}};
+ const differentCalendar={...mirror,id:'google:elsewhere',google:{...mirror.google,calendarId:'other@example.test'}};
+ const imports=[unrelated,orphan,differentId,differentCalendar];
+ await act(db,{type:'event.delete',id:event.id});
+ await db.prepare('UPDATE orbit_calendar_cache SET events_json=? WHERE owner_id=?').bind(JSON.stringify([mirror,...imports]),'a').run();
+ assert.deepEqual((await shown(db)).map(e=>e.id).sort(),imports.map(e=>e.id).sort());
+}));
+
+test('unmanaged and settled receipts do not turn orphan Google imports into deletion tombstones',()=>fixture(async db=>{
+ await published(db);await syncCalendar(db,'a',env,day);
+ await act(db,{type:'event.delete',id:event.id});
+ const row=await db.prepare('SELECT state_json FROM orbit_calendar_exports WHERE owner_id=? AND event_id=?').bind('a',event.id).first();
+ const pending=JSON.parse(row.state_json);
+ for(const state of [{...pending,automatic:false},{...pending,status:'verified'}]){
+  await db.prepare('UPDATE orbit_calendar_exports SET state_json=? WHERE owner_id=? AND event_id=?').bind(JSON.stringify(state),'a',event.id).run();
+  assert.equal((await shown(db)).length,1);
+ }
+ await db.prepare('DELETE FROM orbit_calendar_exports WHERE owner_id=? AND event_id=?').bind('a',event.id).run();
+ await db.prepare('INSERT INTO orbit_calendar_exports(owner_id,event_id,state_json) VALUES(?,?,?)').bind('other-owner',event.id,row.state_json).run();
+ assert.equal((await shown(db)).length,1,'another owner receipt must not hide this owner cache');
+}));
+
+test('pending virtual task calendar receipts are not treated as deleted local events',()=>fixture(async db=>{
+ await connect(db);const g=google();
+ await act(db,{type:'project.upsert',project:{id:'p',name:'Work',goal:'Ship',due:day,priority:3,color:'#5484ed',symbol:'W'}});
+ await act(db,{type:'task.upsert',task:{id:'t',title:'Virtual due date',projectId:'p',status:'todo',due:day,duration:60,impact:3,focus:false,definition:''}});
+ await flushCalendarOutbox(db,'a',env,'task-due:t');
+ g.edit({transparency:'opaque'}); // A user made the virtual reminder visible as busy time.
+ await syncCalendar(db,'a',env,day);
+ await db.prepare("UPDATE orbit_calendar_exports SET state_json=json_set(state_json,'$.status','pending') WHERE owner_id=? AND event_id=?").bind('a','task-due:t').run();
+ assert.ok((await shown(db)).some(e=>e.google?.orbitEventId==='task-due:t'));
+}));
+
 test('an unpublished event deleted in ORBIT never touches Google',()=>fixture(async db=>{
  await connect(db);const g=google();
  await act(db,{type:'event.upsert',event});await act(db,{type:'event.delete',id:'meeting'});
