@@ -174,7 +174,9 @@ test('an ORBIT event turned all-day in Google is left as it is in ORBIT',()=>fix
  assert.deepEqual([mine.start,mine.end],[600,660]);
 }));
 
-test('settled events without memos and task blocks are not rewritten on every sync',()=>fixture(async db=>{
+test('settled events without memos and task blocks are not rewritten on every sync',t=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-07T00:00:00Z')});
+ return fixture(async db=>{
  const g=await published(db);
  assert.equal(g.only().description,'Orbit에서 등록한 일정','the outbox placeholder is present in Google');
  await act(db,{type:'project.upsert',project:{id:'hr',name:'채용',goal:'채용',due:'2026-12-31',priority:3,color:'#5484ed',symbol:'H'}});
@@ -189,7 +191,8 @@ test('settled events without memos and task blocks are not rewritten on every sy
  const meeting=(await local(db)).find(e=>e.id==='meeting');
  assert.equal(meeting.description,undefined,'the placeholder is not copied into ORBIT');
  assert.equal((await local(db)).find(e=>e.id===BLOCK).title,'집중 업무','a task block keeps the task title');
-}));
+ });
+});
 
 test('after reconnecting another Google account, ORBIT events are never deleted',()=>fixture(async db=>{
  const g=await published(db);
@@ -200,7 +203,9 @@ test('after reconnecting another Google account, ORBIT events are never deleted'
  assert.equal((await local(db)).length,1);
 }));
 
-test('deleting a task also removes its scheduled block from Google',()=>fixture(async db=>{
+test('deleting a task also removes its scheduled block from Google',t=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-07T00:00:00Z')});
+ return fixture(async db=>{
  const g=await published(db);
  await act(db,{type:'project.upsert',project:{id:'hr',name:'채용',goal:'채용',due:'2026-12-31',priority:3,color:'#5484ed',symbol:'H'}});
  await act(db,{type:'task.upsert',task:{id:'t1',title:'집중 업무',projectId:'hr',status:'todo',due:day,duration:60,impact:3,focus:false,definition:''}});
@@ -211,7 +216,8 @@ test('deleting a task also removes its scheduled block from Google',()=>fixture(
  await act(db,{type:'task.delete',id:'t1'});
  await flushCalendarOutbox(db,'a',env,BLOCK);
  assert.equal(blocks().length,0);
-}));
+ });
+});
 
 test('revoking an approved focus block and approving it again keeps its Google copy working',t=>{
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-27T00:00:00Z')});
