@@ -1,10 +1,11 @@
 import {AgentError} from './errors.ts';
 import type {Runtime} from './integrations.ts';
+import type {ImageContent} from '../attachments/direct.ts';
 
 export const DEFAULT_CHAT_MODEL='gpt-5.6-luna';
 export function directChatConfigured(env:Runtime){return !!env.OPENAI_API_KEY?.trim()&&env.ORBIT_DIRECT_CHAT_ENABLED!=='false'}
 export function chatModel(env:Runtime){return env.ORBIT_CHAT_MODEL?.trim()||DEFAULT_CHAT_MODEL}
-export type ModelRequest={outputTokens?:number;input:string;instructions:string;conversation_history:{role:'user'|'assistant';content:string}[]};
+export type ModelRequest={outputTokens?:number;input:string;content?:ImageContent;instructions:string;conversation_history:{role:'user'|'assistant';content:string}[]};
 
 // This transport can only produce a proposal/read envelope. It has no write tools.
 // A timeout is deliberately terminal: Responses submission idempotency is not assumed.
@@ -15,7 +16,7 @@ export async function directModelReply(env:Runtime,request:ModelRequest,model:st
   const response=await fetch('https://api.openai.com/v1/responses',{
    method:'POST',cache:'no-store',redirect:'error',signal:controller.signal,
    headers:{Authorization:'Bearer '+env.OPENAI_API_KEY.trim(),'Content-Type':'application/json'},
-   body:JSON.stringify({model,store:false,instructions:request.instructions+'\nReturn only the JSON envelope. For routine requests be concise. Never execute a change or claim a proposal has already been saved.',input:[...request.conversation_history,{role:'user',content:request.input}],text:{format:{type:'json_object'}},max_output_tokens:request.outputTokens??6000,...(/^gpt-(5|6)/.test(model)?{reasoning:{effort:'low'}}:{})}),
+   body:JSON.stringify({model,store:false,instructions:request.instructions+'\nReturn only the JSON envelope. For routine requests be concise. Never execute a change or claim a proposal has already been saved.',input:[...request.conversation_history,{role:'user',content:request.content??request.input}],text:{format:{type:'json_object'}},max_output_tokens:request.outputTokens??6000,...(/^gpt-(5|6)/.test(model)?{reasoning:{effort:'low'}}:{})}),
   });
   // A 429 is a provider limit shared by every job, so it gets its own code with the facts that tell a
   // short rate limit (retry-after) from a spent allowance (insufficient_quota).

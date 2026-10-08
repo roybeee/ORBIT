@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-09 캡처 일정 등록 속도(기준 main `8671954`): 원본 업로드/이미지 준비 병렬화, 명시적 이미지 일정 추가는 OpenAI·Hermes 모두 최소 일정 맥락 사용, 준비된 이미지에는 설정 시 direct Responses 입력 지원. 서버 신규 ID 생성·기존/대기 일정 중복 방지·추가 조회 차단·기존 승인 재사용. 전체 1073 passed(SQLite real, 모델 HTTP mocked), typecheck/build passed(real), 업로드 브라우저 최종 4 passed(로컬 R2/D1 real, 모델 접수 mocked; 반복 12 passed). 독립 리뷰 승인. 빈 워크스페이스 input 3115→312자, instructions 27083→1654자; 실제 모델 지연 not_run(로컬 API 키 없음). 운영 env에 OPENAI_API_KEY 없음 확인: Hermes 입력 축소/업로드 개선은 적용 가능, direct 활성화는 사용자 키 설정 선택 대기. 기존 날짜 민감 회귀 2건은 수정 전 main에서도 실패 확인 후 테스트 시계 고정. PR/게시 전.
+
 - 2026-10-04 일정 삭제 잔상(기준 main `d9cdc41`): 삭제 후 local 빨강 일정 대신 Google 캐시의 파란 사본이 나타나는 경로를 재현. 같은 소유자·Google ID·캘린더의 삭제 처리 기록으로만 사본을 숨기며 다른 가져오기 일정은 보존한다. 할 일이 없어도 삭제 직후 해당 일정의 Google 삭제 전송을 예약한다. 회귀 RED 5건 → GREEN, 전체 1048 passed(SQLite real, Google HTTP/후속 전송 mocked), typecheck/build passed(real). PR 및 Sites 게시 전, 운영 실계정 확인 not_run.
 
 - 2026-10-04 실행 제안 반려(기준 main `4c9ab34`): 결재함의 일반·지난 시각 카드에 반려 확인과 선택 이유 입력을 추가. 원본 할 일·일정은 유지하며 같은 날짜 재계산·핵심 업무·대기 배지에서 제외. 상세 화면/백업/즉시 저장 상태를 일치시킴. 검증: typecheck/build passed(real), 단위 1039 passed(일부 외부 통신 mocked), 새 브라우저 회귀 12 passed(로컬 API/D1 real, 인증·시각·오류 응답 mocked), 독립 리뷰 P2 1건 수정 후 승인. PR 통합 및 Sites 게시 전.
