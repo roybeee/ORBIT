@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-10-11 Google 일정 수정 잠금(기준 main `a7c270c`): 카테고리 등의 미확인 저장 요청이 외부 Google 일정의 수정 진입·변경 저장까지 비활성화하는 모바일 경로를 재현. 외부 Google 편집기만 대기 요청 잠금에서 분리하고 실제 저장 중 잠금은 유지, 일정 미루기와 중복된 React key도 분리. 모바일 회귀 수정 전 3 failed/4 passed → 수정 후 7 passed(API mocked), 보관된 요청 보존·저장 중 중복 방지·겹침 승인/취소 확인. typecheck/build passed(real), 전체 1073 passed(외부 API mocked 포함), 독립 리뷰 승인. PR/운영 게시 전.
+
 - 2026-10-09 캡처 일정 등록 속도(기준 main `8671954`): 원본 업로드/이미지 준비 병렬화, 명시적 이미지 일정 추가는 OpenAI·Hermes 모두 최소 일정 맥락 사용, 준비된 이미지에는 설정 시 direct Responses 입력 지원. 서버 신규 ID 생성·기존/대기 일정 중복 방지·추가 조회 차단·기존 승인 재사용. 전체 1073 passed(SQLite real, 모델 HTTP mocked), typecheck/build passed(real), 업로드 브라우저 최종 4 passed(로컬 R2/D1 real, 모델 접수 mocked; 반복 12 passed). 독립 리뷰 승인. 빈 워크스페이스 input 3115→312자, instructions 27083→1654자; 실제 모델 지연 not_run(로컬 API 키 없음). 운영 env에 OPENAI_API_KEY 없음 확인: Hermes 입력 축소/업로드 개선은 적용 가능, direct 활성화는 사용자 키 설정 선택 대기. 기존 날짜 민감 회귀 2건은 수정 전 main에서도 실패 확인 후 테스트 시계 고정. PR/게시 전.
 
 - 2026-10-04 일정 삭제 잔상(기준 main `d9cdc41`): 삭제 후 local 빨강 일정 대신 Google 캐시의 파란 사본이 나타나는 경로를 재현. 같은 소유자·Google ID·캘린더의 삭제 처리 기록으로만 사본을 숨기며 다른 가져오기 일정은 보존한다. 할 일이 없어도 삭제 직후 해당 일정의 Google 삭제 전송을 예약한다. 회귀 RED 5건 → GREEN, 전체 1048 passed(SQLite real, Google HTTP/후속 전송 mocked), typecheck/build passed(real). PR 및 Sites 게시 전, 운영 실계정 확인 not_run.
