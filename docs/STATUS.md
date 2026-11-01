@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-11-01 카카오톡 비서실장 PR #165·#166 merged `c7b5377`: 자동 읽은 방 이동 포함 **Sites version 185 published**(배포 `appgdep_6ae719744bd08191ae306235213c4328`, 10:50:51Z). 인증된 운영 결재함에서 자동 검토 UI 확인 passed(real). 운영 tree API 대조는 ORIGIN/DOM 네트워크 제약으로 blocked이며 runtime-verified로 승격하지 않는다. 필수 main CI 1163/1163·Linux cold/warm passed, 카카오 브라우저 14/14 passed(mocked); 비필수 전체 브라우저 main run은 기존 capture 테스트 응답 dispose 2 failed/110 passed/2 skipped. 실제 Native·외부 모델·Google 등록 not_run, 운영은 Mac 연결·전용 분석 준비가 필요하다. [게시 증거](releases/2026-11-01-c7b5377.md). 아래 항목들은 개발 단계의 기록이다.
+
 - 2026-11-01 카카오톡 자동 방 이동(`feat/kakao-auto-read`, 기준 main `c98e9f3`, PR #165 merged): 사용자 재지시에 따라 최근 7일·미읽음 0인 방을 자동 이동·스크롤한다. 메타데이터만 목록에서 검사하고 진입 전 재확인, 방 제목 정확 일치, 메인 창 hit-test, 사용자 입력 시 중단, 부분 이력 증분 재개를 추가했다. 전체 1163 passed(build 포함; SQLite real/외부 API mocked), 카카오 90 passed, 브라우저 14 passed(카카오·모델 mocked), 타입 검사 passed(real), Swift 순수 탐색 self-test 22 passed(실제 앱 접근 없음), 독립 코드·보안 리뷰 승인. Native 실제 자동 수집·외부 모델·Google 실등록은 not_run. 이 추가 변경의 merged/published/runtime-verified 상태는 PR·게시 기록에서 확인한다. 아래 수동 전용 기록은 이전 개발 단계다.
 
 - 2026-11-01 카카오톡 비서실장(`feat/kakao-chief`, 기준 main `1fb6524`): 최근 7일·미읽음 제외 수집 검증, Mac 읽기 전용 연결 프로그램과 다운로드 ZIP, 무도구 OpenAI/Anthropic 분석, 근거·업무·일정 후보·솔루션, 기존 결재함 승인/outbox, 증분·검토 삭제를 구현했다. 원문의 일반 에이전트/검색/계획 문맥 유입을 차단하고 인증정보 제외를 로컬·서버 단일화했다. typecheck/build passed(real), 전체 1139 passed(SQLite real, 외부 서비스 mocked 포함), 관련 66 passed·신규 도메인 줄 96.94%/분기 84.92%, 최신 브라우저 12 passed(로컬 worker real, 카카오·모델 API mocked), Swift compile passed(real), 독립 코드·보안 리뷰 승인. 기존 날짜 민감 회귀 10건은 변경 전 main에서도 동일 실패를 확인하고 테스트 fixture의 날짜만 상대값으로 수정했다. 자동 방 이동은 비활성이고 Native 실제 대화 수집·실제 외부 모델·Google 등록은 not_run. 아직 merged/published/runtime-verified 아님. [사용·범위 안내](Kakao_Secretary.ko.md).
