@@ -2,10 +2,10 @@ import type {KakaoCapture} from './kakao/types.ts';
 
 export const KAKAO_LOCAL_ENDPOINT='http://127.0.0.1:43128';
 export interface KakaoLocalHealth {
- protocol:1;connected:boolean;mode:'manual_only'|'verified_navigation';message:string;
+ protocol:1;connected:boolean;mode:'manual_only'|'verified_navigation'|'read_rooms';message:string;
  permissions?:{accessibility:boolean};active:boolean;
 }
-export interface KakaoScanResult {capture:KakaoCapture;skipped?:{reason:string}[]}
+export interface KakaoScanResult {capture:KakaoCapture;skipped?:{reason:string}[];complete?:boolean;visited?:number}
 const LOCAL_PATHS=['/health','/scan','/stop'];
 const FILE_LIMIT=2000000;
 
@@ -15,7 +15,7 @@ export async function localKakaoRequest<T>(token:string,path:string,input?:unkno
  if(!LOCAL_PATHS.includes(path))throw new Error('허용되지 않은 카카오톡 검토 동작입니다.');
  if(signal?.aborted)throw new Error('카카오톡 검토를 중지했습니다.');
  const controller=new AbortController(),cancel=()=>controller.abort();
- const timer=setTimeout(cancel,path==='/scan'?60000:8000);
+ const timer=setTimeout(cancel,path==='/scan'?150000:8000);
  signal?.addEventListener('abort',cancel,{once:true});
  try{
   const response=await fetch(KAKAO_LOCAL_ENDPOINT+path,{

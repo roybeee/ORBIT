@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
-import {collectReadRoom,fail} from './policy.mjs';
+import {collectReadRoom,collectReadRooms,fail,AUTO_SCAN_MS} from './policy.mjs';
 
 export const DEFAULT_ORIGIN='https://orbit-personal-os.hflameb.chatgpt.site';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,10 +20,11 @@ function validOrigin(value){
 /** Starts a browser-mediated bridge; no ORBIT credential or transcript is persisted. */
 export async function createKakaoBridge({adapter,port=43128,origin=DEFAULT_ORIGIN}){
  if(!adapter||!validOrigin(origin))throw fail('연결 프로그램 설정을 확인해 주세요.');
- const token=randomBytes(32).toString('hex'),used=new Set();let active=null,closing=false;
+ const token=randomBytes(32).toString('hex'),used=new Set();let active=null,closing=false,reviewedRoomIds=[],reviewedMessageIds=[];
  const health=async()=>{
   const result=await adapter.health();
-  return {protocol:1,connected:result.connected===true&&result.layoutSupported!==false,mode:'manual_only',permissions:{accessibility:result.accessibility===true},active:!!active,message:result.message??'자동 방 이동은 미읽음 도착 경쟁 검증 전 비활성입니다. 현재 직접 읽은 방만 검토할 수 있습니다.'};
+  const automatic=result.navigationSupported===true&&typeof adapter.scanRecent==='function'&&result.connected===true&&result.layoutSupported!==false;
+  return {protocol:1,connected:result.connected===true&&result.layoutSupported!==false,mode:automatic?'read_rooms':'manual_only',permissions:{accessibility:result.accessibility===true},active:!!active,message:result.message??(automatic?'최근 7일의 읽은 방을 자동 검토할 수 있습니다.':'현재 직접 읽은 방만 검토할 수 있습니다. 자동 이동은 지원되지 않습니다.')};
  };
  const server=http.createServer(async(request,response)=>{
   const send=(value,status=200)=>{response.writeHead(status,{'Cache-Control':'no-store','Content-Type':'application/json; charset=utf-8','X-Content-Type-Options':'nosniff','Vary':'Origin'});response.end(status===204?'':JSON.stringify(value))};
@@ -49,17 +50,26 @@ export async function createKakaoBridge({adapter,port=43128,origin=DEFAULT_ORIGI
     used.add(input.id);if(active?.id===input.id)active.controller.abort();
     return send({stopped:true,id:input.id});
    }
-   if(Object.keys(input).some(key=>!['id','scope'].includes(key))||input.scope!=='current_read_room')throw fail('현재 읽은 방 검토만 지원합니다.');
+   if(Object.keys(input).some(key=>!['id','scope'].includes(key))||!['current_read_room','recent_read_rooms'].includes(input.scope))throw fail('허용된 읽은 방 검토 범위를 선택해 주세요.');
    if(used.has(input.id))throw fail('이미 사용했거나 중지된 검토 번호입니다. 새 검토를 시작해 주세요.','REPLAY',409);
    if(active)throw fail('검토가 진행 중입니다. 먼저 중지하거나 완료해 주세요.','BUSY',409);
    if(used.size>=10000)throw fail('연결 프로그램을 다시 시작해 주세요.','SESSION_LIMIT',409);
    used.add(input.id);const controller=new AbortController();active={id:input.id,controller};
-   const timer=setTimeout(()=>controller.abort(),25000);
+   const timer=setTimeout(()=>controller.abort(),input.scope==='recent_read_rooms'?AUTO_SCAN_MS+10000:25000);
    request.once('aborted',()=>controller.abort());
-   try{const result=await collectReadRoom(adapter,input,new Date(),controller.signal);return send(result)}finally{clearTimeout(timer);if(active?.id===input.id)active=null}
+   const disconnected=()=>{if(!response.writableEnded)controller.abort();};response.once('close',disconnected);
+   try{
+    const result=input.scope==='recent_read_rooms'?await collectReadRooms(adapter,input,()=>new Date(),controller.signal,{reviewedRoomIds,reviewedMessageIds}):await collectReadRoom(adapter,input,new Date(),controller.signal);
+    if(input.scope==='recent_read_rooms'){
+     reviewedRoomIds=result.complete?[]:[...new Set([...reviewedRoomIds,...result.reviewedRoomIds])];
+     reviewedMessageIds=result.complete?[]:[...new Set([...reviewedMessageIds,...result.reviewedMessageIds])];
+    }
+    const publicResult={capture:result.capture,skipped:result.skipped,...(typeof result.complete==='boolean'?{complete:result.complete,visited:result.visited}:{})};
+    return send(publicResult);
+   }finally{clearTimeout(timer);response.removeListener('close',disconnected);if(active?.id===input.id)active=null}
   }catch(error){send({error:error.status?error.message:'연결 프로그램에서 검토를 완료하지 못했습니다.',code:error.code??'HELPER'},error.status??500)}
  });
- server.requestTimeout=30000;server.headersTimeout=10000;
+ server.requestTimeout=AUTO_SCAN_MS+15000;server.headersTimeout=10000;
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve)});
  return {token,port:server.address().port,close:async()=>{closing=true;active?.controller.abort();await new Promise(resolve=>server.close(resolve))}};
 }
