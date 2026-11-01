@@ -1,0 +1,19 @@
+.kakao-entry{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border,#353946);border-radius:16px;margin:16px 0}
+.kakao-entry p,.kakao-panel .form-hint{font-size:13px;line-height:1.65;opacity:.8;margin:6px 0}
+.kakao-entry button{flex-shrink:0;min-height:44px}
+.kakao-dialog{width:min(720px,calc(100vw - 24px));max-width:720px;max-height:88dvh;overflow-y:auto}
+.kakao-panel{display:grid;gap:18px;min-width:0}
+.kakao-panel .dialog-form{display:grid;gap:10px}
+.kakao-panel input,.kakao-panel select{width:100%;min-height:44px;min-width:0}
+.kakao-panel button,.kakao-panel summary{min-height:44px}
+.kakao-panel summary{display:flex;align-items:center;cursor:pointer;font-weight:600}
+.kakao-boundary,.kakao-connection,.kakao-warning{padding:12px 14px;border:1px solid var(--border,#353946);border-radius:12px;font-size:13px;line-height:1.7}
+.kakao-connection p{margin:8px 0 0}
+.kakao-warning{border-color:#b98e31}
+.kakao-results{border-top:1px solid var(--border,#353946);padding-top:18px;display:grid;gap:12px;line-height:1.7;overflow-wrap:anywhere}
+.kakao-results h3,.kakao-results h4,.kakao-results p{margin:0}
+.kakao-solution{display:grid;gap:10px;padding:16px;border:1px solid var(--border,#353946);border-radius:12px}
+.kakao-results blockquote{margin:8px 0;padding:10px 14px;border-left:3px solid #b98e31;background:color-mix(in srgb,currentColor 4%,transparent);font-size:13px;white-space:pre-wrap}
+.kakao-results cite{display:block;font-size:12px;font-style:normal;opacity:.75;margin-top:6px}
+.kakao-results ul{margin:0;padding-left:22px}
+@media(max-width:600px){.kakao-entry{align-items:stretch;flex-direction:column}.kakao-entry button{justify-content:center}.kakao-panel .chief-actions{flex-wrap:wrap}.kakao-dialog{padding:20px}}

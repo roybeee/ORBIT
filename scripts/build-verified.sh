@@ -16,6 +16,7 @@ fi
 node scripts/release-contract-manifest.mjs --check
 node scripts/port-sound.mjs
 node scripts/package-aside.mjs
+node scripts/package-kakao.mjs
 
 echo "Running bounded vinext build..."
 node scripts/bounded-build.mjs "${vinext}"

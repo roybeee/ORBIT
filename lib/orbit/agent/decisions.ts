@@ -16,6 +16,7 @@ import {parseAction,runAgent} from './runner.ts';
 import type {Runtime} from './integrations.ts';
 import {rehomeOrphanCards} from '../meetings/orphan-cards.ts';
 import {SLACK_REQUEST_CONVERSATION,eventStarted} from '../slack/request-view.ts';
+import {isKakaoTurn} from '../kakao/boundary.ts';
 const SLACK_EXPIRED_MESSAGE='예정 시간이 지나 만료된 초안입니다. 새 시간을 정해 수정 후 등록하거나 닫아 주세요.';
 // An approval may rename the registration, recolor it or move it to another project,
 // either an existing one or one created from a typed name. Only these fields, and only
@@ -121,6 +122,10 @@ export async function decide(db:Database,owner:string,input:z.infer<typeof decis
   if(parsed.type==='google.event.create'||parsed.type==='google.event.deleteSeries'){try{await syncCalendar(db,owner,env,parsed.type==='google.event.create'?parsed.event.date:undefined)}catch{/* External creation is acknowledged; sync can be retried separately. */}}
  }catch(error){
   if(error instanceof AgentError&&error.code==='ACTION_CHANGED'){
+   if(await isKakaoTurn(db,owner,action.turnId)){
+    await resetAction(db,owner,action.id,lease);
+    throw new AgentError('카카오톡 제안의 대상이 변경됐습니다. 비서실장에서 대화와 현재 기록을 다시 검토해 주세요. 일반 에이전트로 재분석하지 않습니다.','KAKAO_SOURCE_CHANGED',409);
+   }
    const meeting=action.guard?.meeting;
    if(meeting){await resetAction(db,owner,action.id,lease);
     // The usual cause: the new project this card belongs to was rejected. Move it and say so.

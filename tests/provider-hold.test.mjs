@@ -11,7 +11,7 @@ import {runAgent,advanceAgent} from '../lib/orbit/agent/runner.ts';
 import {tickRuntime,runtimeStatus} from '../lib/orbit/daily-runtime.ts';
 import {classifyLimit,nextCheckAt,activeHold,gateProvider,recordLimit} from '../lib/orbit/agent/provider-hold.ts';
 import {aiHoldStatus} from '../lib/orbit/agent/hold-status.ts';
-import {todayInZone} from '../lib/orbit/dates.ts';
+import {addDays,todayInZone} from '../lib/orbit/dates.ts';
 
 const owner='hold-owner',env={ORBIT_ENCRYPTION_KEY:randomBytes(32).toString('base64')};
 const QUOTA='Codex provider quota exhausted (429); credentials are valid; retry after 393141s';
@@ -20,7 +20,7 @@ const meetings=['m1','m2','m3'].map((id,i)=>({id,title:'회의 '+(i+1),text:`${i
 
 async function seed(db){
  await writeCommand(db,owner,{operationId:randomUUID(),expectedRevision:0,action:{type:'project.upsert',project}});
- for(const m of meetings)await importRecording(db,owner,{id:m.id,title:m.title,started:'2026-09-2'+m.id.slice(1),duration:5,transcript:m.text,summary:'',pending:false});
+ for(const [i,m] of meetings.entries())await importRecording(db,owner,{id:m.id,title:m.title,started:addDays(todayInZone('Asia/Seoul'),i-2),duration:5,transcript:m.text,summary:'',pending:false});
  await saveConnection(db,owner,'hermes',{endpoint:'https://hermes.example.com',token:'private-fixture-token',connectionId:'native'},{connected:true,endpoint:'https://hermes.example.com',model:'Hermes'},env.ORBIT_ENCRYPTION_KEY);
  const notes={};for(const m of meetings)notes[m.id]=await readNote(db,owner,'plaud:'+m.id);return notes;
 }
