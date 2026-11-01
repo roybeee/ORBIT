@@ -45,6 +45,7 @@ import {activeHold,clearHold,gateProvider,holdMessage,recordLimit,releaseProbe} 
 import {contract,parseAction} from './protocol.ts';
 import type {AgentAction} from './types.ts';
 import {proposalQueueFull,PROPOSAL_LIMIT} from '../inbox-backlog.ts';
+import {assertKakaoConversationReadOnly} from '../kakao/boundary.ts';
 const isNewProject=(proposal:{action?:unknown},data:{projects:{id:string}[]})=>{const a=proposal.action as {type?:string;project?:{id?:string}}|undefined;return a?.type==='project.upsert'&&!data.projects.some(p=>p.id===a.project?.id)};
 export {agentInput,parseAction,googleActionSchema} from './protocol.ts';
 
@@ -165,6 +166,7 @@ export async function runAgent(db:Database,owner:string,input:{id:string;message
  const old=await db.prepare('SELECT attachment_ids,conversation_id,input,status,updated_at FROM orbit_agent_turns WHERE owner_id=? AND id=?').bind(owner,input.id).first<{attachment_ids:string;conversation_id:string;input:string;status:string;updated_at:string}>();
  // Existing jobs retain their original conversation and native session across deployment.
  if(input.planning)conversationId=old?.conversation_id??await planningConversation(db,owner,input.planning.date);
+ await assertKakaoConversationReadOnly(db,owner,conversationId);
  if(old&&(old.input!==input.message||old.conversation_id!==conversationId||old.attachment_ids!==JSON.stringify(attachmentIds)))throw new AgentError('같은 대화 번호의 내용이 다릅니다. 새 메시지로 보내 주세요.','CONFLICT',409);
  if(old?.status==='completed')return 'completed' as const;
  if(old?.status==='failed'&&!input.retryFailed)return 'failed' as const;

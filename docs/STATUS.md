@@ -6,6 +6,8 @@
 
 ## 현재 단계
 
+- 2026-11-01 카카오톡 비서실장(`feat/kakao-chief`, 기준 main `1fb6524`): 최근 7일·미읽음 제외 수집 검증, Mac 읽기 전용 연결 프로그램과 다운로드 ZIP, 무도구 OpenAI/Anthropic 분석, 근거·업무·일정 후보·솔루션, 기존 결재함 승인/outbox, 증분·검토 삭제를 구현했다. 원문의 일반 에이전트/검색/계획 문맥 유입을 차단하고 인증정보 제외를 로컬·서버 단일화했다. typecheck/build passed(real), 전체 1139 passed(SQLite real, 외부 서비스 mocked 포함), 관련 66 passed·신규 도메인 줄 96.94%/분기 84.92%, 최신 브라우저 12 passed(로컬 worker real, 카카오·모델 API mocked), Swift compile passed(real), 독립 코드·보안 리뷰 승인. 기존 날짜 민감 회귀 10건은 변경 전 main에서도 동일 실패를 확인하고 테스트 fixture의 날짜만 상대값으로 수정했다. 자동 방 이동은 비활성이고 Native 실제 대화 수집·실제 외부 모델·Google 등록은 not_run. 아직 merged/published/runtime-verified 아님. [사용·범위 안내](Kakao_Secretary.ko.md).
+
 - 2026-10-11 Google 일정 수정 잠금(기준 main `a7c270c`): 카테고리 등의 미확인 저장 요청이 외부 Google 일정의 수정 진입·변경 저장까지 비활성화하는 모바일 경로를 재현. 외부 Google 편집기만 대기 요청 잠금에서 분리하고 실제 저장 중 잠금은 유지, 일정 미루기와 중복된 React key도 분리. 모바일 회귀 수정 전 3 failed/4 passed → 수정 후 7 passed(API mocked), 보관된 요청 보존·저장 중 중복 방지·겹침 승인/취소 확인. typecheck/build passed(real), 전체 1073 passed(외부 API mocked 포함), 독립 리뷰 승인. PR/운영 게시 전.
 
 - 2026-10-09 캡처 일정 등록 속도(기준 main `8671954`): 원본 업로드/이미지 준비 병렬화, 명시적 이미지 일정 추가는 OpenAI·Hermes 모두 최소 일정 맥락 사용, 준비된 이미지에는 설정 시 direct Responses 입력 지원. 서버 신규 ID 생성·기존/대기 일정 중복 방지·추가 조회 차단·기존 승인 재사용. 전체 1073 passed(SQLite real, 모델 HTTP mocked), typecheck/build passed(real), 업로드 브라우저 최종 4 passed(로컬 R2/D1 real, 모델 접수 mocked; 반복 12 passed). 독립 리뷰 승인. 빈 워크스페이스 input 3115→312자, instructions 27083→1654자; 실제 모델 지연 not_run(로컬 API 키 없음). 운영 env에 OPENAI_API_KEY 없음 확인: Hermes 입력 축소/업로드 개선은 적용 가능, direct 활성화는 사용자 키 설정 선택 대기. 기존 날짜 민감 회귀 2건은 수정 전 main에서도 실패 확인 후 테스트 시계 고정. PR/게시 전.
