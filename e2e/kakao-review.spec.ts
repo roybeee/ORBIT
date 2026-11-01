@@ -50,7 +50,7 @@ async function jsonLocal(route:Route,status:number,value:unknown){
  await route.fulfill({status,headers,json:value});
 }
 
-async function mockedBoundary(page:Page,{modelReady=true,scanError=false}:{modelReady?:boolean;scanError?:boolean}={}){
+async function mockedBoundary(page:Page,{modelReady=true,scanError=false,automatic=false}:{modelReady?:boolean;scanError?:boolean;automatic?:boolean}={}){
  const capture=sampleCapture(),review=sampleReview(capture);
  const calls:{path:string;method:string;authorization?:string;body?:unknown}[]=[],analysis:unknown[]=[],calendarWrites:string[]=[];
  let runs:ReturnType<typeof sampleReview>[]=[];
@@ -64,8 +64,8 @@ async function mockedBoundary(page:Page,{modelReady=true,scanError=false}:{model
   const request=route.request(),path=new URL(request.url()).pathname;
   if(request.method()==='OPTIONS')return jsonLocal(route,200,{});
   calls.push({path,method:request.method(),authorization:request.headers().authorization,body:request.postData()?request.postDataJSON():undefined});
-  if(path==='/health')return jsonLocal(route,200,{protocol:1,connected:true,mode:'manual_only',message:'현재 읽은 방만 확인할 수 있습니다.',permissions:{accessibility:true},active:false});
-  if(path==='/scan')return scanError?jsonLocal(route,409,{error:'읽지 않은 새 메시지가 있어 수집을 중단했습니다.',code:'UNREAD_MESSAGES'}):jsonLocal(route,200,{capture,skipped:[]});
+  if(path==='/health')return jsonLocal(route,200,{protocol:1,connected:true,mode:automatic?'read_rooms':'manual_only',message:automatic?'읽은 방 자동 이동을 지원합니다.':'현재 읽은 방만 확인할 수 있습니다.',permissions:{accessibility:true},active:false});
+  if(path==='/scan')return scanError?jsonLocal(route,409,{error:'읽지 않은 새 메시지가 있어 수집을 중단했습니다.',code:'UNREAD_MESSAGES'}):jsonLocal(route,200,{capture,skipped:[],complete:!automatic,visited:1});
   return jsonLocal(route,200,{stopped:true});
  });
  return {capture,review,calls,analysis,calendarWrites};
@@ -86,7 +86,7 @@ test('opening the review never scans Kakao and an unavailable model prevents col
 test('an unread-message capture rejection never reaches analysis and the local key is not retained',async({page})=>{
  const boundary=await mockedBoundary(page,{scanError:true}),review=new KakaoReviewPage(page);
  await review.open();await review.connectMac();
- await expect(review.dialog).toContainText('자동 방 이동은 꺼져 있습니다');
+ await expect(review.dialog).toContainText('현재 연결 프로그램은 수동 검토만 지원합니다');
  expect(boundary.calls.map(c=>c.path)).toEqual(['/health']);
  expect(boundary.calls[0].authorization).toBe('Bearer '+TOKEN);
  await review.scan.click();
@@ -155,4 +155,18 @@ test('dedicated analysis setup stores no key in browser storage and does not sca
  expect(await page.evaluate(()=>JSON.stringify({local:localStorage,session:sessionStorage}))).not.toContain('synthetic-test-key-not-a-real-key');
  expect(boundary.calls).toEqual([]);
  expect(boundary.analysis).toEqual([]);
+});
+
+test('automatic read-room review uses only the bounded recent scope and labels partial results',async({page})=>{
+ const boundary=await mockedBoundary(page,{automatic:true}),review=new KakaoReviewPage(page);
+ await review.open();await review.connectMac();
+ const automatic=page.getByTestId('kakao-scan-recent');
+ await expect(automatic).toBeEnabled();
+ expect(boundary.calls.filter(call=>call.path==='/scan')).toHaveLength(0);
+ await automatic.click();
+ await expect(review.result).toBeVisible();
+ expect(boundary.calls.find(call=>call.path==='/scan')?.body).toMatchObject({scope:'recent_read_rooms'});
+ await expect(review.dialog).toContainText('부분 검토');
+ expect(boundary.analysis).toEqual([boundary.capture]);
+ expect(boundary.calendarWrites).toEqual([]);
 });

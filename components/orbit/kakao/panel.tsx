@@ -36,16 +36,18 @@ function KakaoPanel({onClose}:{onClose:()=>void}){
  };
  const connect=()=>run('connect',async()=>{
   setHealth(null);const next=await localKakaoRequest<KakaoLocalHealth>(token,'/health');
-  if(next.protocol!==1||!['manual_only','verified_navigation'].includes(next.mode))throw new Error('지원하지 않는 Mac 연결 프로그램입니다.');
+  if(next.protocol!==1||!['manual_only','verified_navigation','read_rooms'].includes(next.mode))throw new Error('지원하지 않는 Mac 연결 프로그램입니다.');
   if(alive.current)setHealth(next);
  });
- const collect=()=>run('scan',async()=>{
+ const collect=(scope:'current_read_room'|'recent_read_rooms')=>run('scan',async()=>{
   if(!health?.connected||!status?.modelReady)throw new Error('Mac과 분석 연결을 확인해 주세요.');
+  if(scope==='recent_read_rooms'&&health.mode!=='read_rooms')throw new Error('자동 방 이동을 지원하는 최신 Mac 연결 프로그램으로 다시 연결해 주세요.');
   const active={id:crypto.randomUUID(),token,controller:new AbortController()};scan.current=active;
-  try{const result=await localKakaoRequest<KakaoScanResult>(token,'/scan',{id:active.id,scope:'current_read_room'},active.controller.signal);
+  try{const result=await localKakaoRequest<KakaoScanResult>(token,'/scan',{id:active.id,scope},active.controller.signal);
    if(active.controller.signal.aborted||!alive.current)return;
    if(!result.capture?.rooms?.length)throw new Error('조건을 충족하는 읽은 대화가 없습니다.');
-   if(result.skipped?.length)setNotice(`${result.skipped.length}개 항목을 수집 조건에 따라 제외했습니다.`);
+   const excluded=result.skipped?.length?`${result.skipped.length}개 항목을 수집 조건에 따라 제외했습니다. `:'';
+   setNotice(result.complete===false?`${excluded}부분 검토: 이번에 ${result.capture.rooms.length}개 방을 확인했습니다. 다시 실행하면 남은 방부터 이어서 검토합니다.`:excluded);
    await analyze(result.capture);
   }finally{if(scan.current===active)scan.current=null;}
  });
@@ -60,8 +62,8 @@ function KakaoPanel({onClose}:{onClose:()=>void}){
    <a className="text-button" href="/downloads/orbit-kakao-mac.zip" download>Mac 연결 프로그램 다운로드</a>
    <button className="secondary-button" data-testid="kakao-connect" disabled={!!busy||token.length<32}>Mac 연결 확인</button>
   </form>
-  {health&&<div className="kakao-connection" role="status"><strong>{health.connected?'Mac 연결 확인됨':'Mac 준비 필요'}</strong><p>{health.message}</p>{health.mode==='manual_only'&&<p>자동 방 이동은 꺼져 있습니다. 카카오톡에서 직접 열어 이미 읽은 방만 검토합니다. 새 메시지의 자동 읽음 처리 방지는 아직 보장되지 않습니다.</p>}</div>}
-  <div className="chief-actions"><button type="button" className="primary-button" data-testid="kakao-scan" disabled={!!busy||!status?.modelReady||!health?.connected} onClick={()=>void collect()}>{busy==='scan'||busy==='analyze'?<LoaderCircle size={15} className="animate-spin"/>:<MessageSquare size={15}/>}현재 읽은 방 검토</button>{scan.current&&<button type="button" className="secondary-button" onClick={()=>void stop()}>수집 중지</button>}<button type="button" className="text-button" data-testid="kakao-refresh" disabled={!!busy} onClick={()=>void run('refresh',refresh)}>결과 새로고침</button></div>
+  {health&&<div className="kakao-connection" role="status"><strong>{health.connected?'Mac 연결 확인됨':'Mac 준비 필요'}</strong><p>{health.message}</p>{health.mode==='manual_only'?<p>현재 연결 프로그램은 수동 검토만 지원합니다. 자동 이동을 사용하려면 최신 Mac 연결 프로그램을 내려받아 다시 연결하세요.</p>:<p>최근 7일에 대화한 방 중 미읽음이 없는 방만 자동으로 이동합니다. 새 메시지가 감지되거나 사용자가 조작하면 검토를 멈춥니다.</p>}<p className="form-hint">진입 직전에 미읽음을 다시 확인합니다. 확인과 진입 사이 새 메시지가 도착하면 카카오톡 자체 읽음 처리가 발생할 수 있습니다.</p></div>}
+  <div className="chief-actions"><button type="button" className="primary-button" data-testid="kakao-scan-recent" disabled={!!busy||!status?.modelReady||!health?.connected||health.mode!=='read_rooms'} onClick={()=>void collect('recent_read_rooms')}>{busy==='scan'?<LoaderCircle size={15} className="animate-spin"/>:<MessageSquare size={15}/>}최근 7일 읽은 방 자동 검토</button><button type="button" className="secondary-button" data-testid="kakao-scan" disabled={!!busy||!status?.modelReady||!health?.connected} onClick={()=>void collect('current_read_room')}>현재 읽은 방 검토</button>{scan.current&&<button type="button" className="secondary-button" onClick={()=>void stop()}>수집 중지</button>}<button type="button" className="text-button" data-testid="kakao-refresh" disabled={!!busy} onClick={()=>void run('refresh',refresh)}>결과 새로고침</button></div>
   <details><summary>검토용 수집 파일로 분석</summary><p className="form-hint">읽음 상태와 날짜가 포함된 전용 JSON 수집 파일만 사용할 수 있습니다. 카카오톡 전체 대화 내보내기는 받지 않습니다.</p><label>대화 캡처 파일<input data-testid="kakao-capture-file" type="file" accept="application/json,.json" disabled={!!busy||!status?.modelReady} onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void run('analyze',async()=>analyze(await readKakaoCaptureFile(file)));}}/></label></details>
   {capture&&!busy&&<button type="button" className="secondary-button" onClick={()=>void run('analyze',()=>analyze(capture))}>같은 수집 결과로 분석 다시 확인</button>}
   {error&&<p className="agent-error" role="alert" data-testid="kakao-error">{error}</p>}{notice&&<p role="status">{notice}</p>}

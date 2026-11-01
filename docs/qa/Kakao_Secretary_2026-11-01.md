@@ -1,5 +1,25 @@
 # 카카오톡 비서실장 검증 기록
 
+## 자동 방 이동 추가 검증
+
+기준 main `c98e9f3`(PR #165 merged), 브랜치 `feat/kakao-auto-read`. 사용자가 이미 읽은 방의 자동 이동을 재지시했다. 이전의 수동 전용 제한을 대체한다.
+
+| 검사 | 결과 | 실제/모의 범위 |
+|---|---|---|
+| `npm test` | passed · 1163/1163, 0 failed | build 포함; SQLite real, 외부 API mocked 포함 |
+| 카카오 관련 Node 회귀 | passed · 90/90 | HTTP·저장 real, Native AX·모델 mocked |
+| 타입 검사 | passed · real | TypeScript 전체 |
+| 브라우저 핵심 여정 | passed · 14/14 | 로컬 worker·Chromium real, 카카오·모델 API mocked |
+| Swift compile / self-test-navigation | passed · 22/22 | 순수 탐색·재개·제목/좌표 검증, 실제 앱 접근 없음 |
+| 자동수집 bridge 신규 커버리지 | 줄 100%, 분기 91.84%, 함수 94.83% | Native 어댑터 mocked |
+| 독립 코드·보안 리뷰 | 승인 | 정확 제목·부분 이력 누락·포커스/클릭 재확인 보완 |
+| Native 실제 자동 방 이동·수집 | not_run | OS 권한과 실제 Kakao 화면에서 별도 실증 필요 |
+| 외부 모델·Google 실등록 | not_run | 실제 계정 변경 없음 |
+
+RED 증거: read_rooms 버튼·scope가 없던 이전 구현에서 브라우저 회귀 실패 후 GREEN 14/14. 고정 Native 명령만 허용하며 사용자 좌표·키보드 입력을 받지 않는다. 목록 미리보기 본문은 읽지 않는다. 한 배치 최대 10방·250메시지·75KB·110초, bridge 상한·취소를 둔다. 부분 방은 완료로 표시하지 않고 메시지 해시로 이어서 읽는다. 목록·방의 unread/identity/date가 불명확하면 건너뛴다. 새 메시지 도착과 방 진입 사이의 읽음 경쟁은 원자적으로 막을 수 없으므로 실사용 보장을 주장하지 않는다.
+
+## 최초 구현 검증(이전 단계)
+
 개발 기준: GitHub `roybeee/ORBIT` main `1fb6524efcb05accf9cc94ada3bf630232793dfb`.
 작업 브랜치: `feat/kakao-chief`. 운영 게시 전 기록이다.
 
